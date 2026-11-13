@@ -1,11 +1,15 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/widgets.dart';
 import 'package:prism_ui/icons/icons.dart';
 import 'package:prism_ui/prism_ui.dart';
+import 'package:url_launcher/url_launcher.dart';
 
+import '../backend.dart';
 import '../glyphs.dart';
 import '../l10n.dart';
+import '../widgets/foundation.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key, required this.onSignedIn, this.onCancel});
@@ -20,23 +24,29 @@ class LoginPage extends StatefulWidget {
 enum _Stage { idle, waiting }
 
 class _LoginPageState extends State<LoginPage> {
-  _Stage _stage = Uri.base.queryParameters['login'] == 'waiting'
+  // Preview-only stage (web, or a run without the native library).
+  _Stage _previewStage = Uri.base.queryParameters['login'] == 'waiting'
       ? _Stage.waiting
       : _Stage.idle;
   bool _authKey = false;
   bool _advanced = false;
-  final _key = TextEditingController(text: 'tskey-auth-k...');
+  bool _busy = false;
+  String _openedUrl = '';
+  static const _previewUrl = 'login.tailscale.com/a/4f2c9e';
+  final _key = TextEditingController();
+  final _control = TextEditingController();
   Timer? _demoTimer;
 
   @override
   void dispose() {
     _demoTimer?.cancel();
     _key.dispose();
+    _control.dispose();
     super.dispose();
   }
 
   void _startBrowserLogin() {
-    setState(() => _stage = _Stage.waiting);
+    setState(() => _previewStage = _Stage.waiting);
     _demoTimer?.cancel();
     _demoTimer = Timer(const Duration(seconds: 4), () {
       if (mounted) widget.onSignedIn();
@@ -45,13 +55,59 @@ class _LoginPageState extends State<LoginPage> {
 
   void _cancel() {
     _demoTimer?.cancel();
-    setState(() => _stage = _Stage.idle);
+    setState(() => _previewStage = _Stage.idle);
+  }
+
+  String? _controlURL() {
+    final value = _control.text.trim();
+    return _advanced && value.isNotEmpty ? value : null;
+  }
+
+  Future<void> _connectWithKey(TaildeckBackend backend) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    await backend.signInWithKey(_key.text, controlURL: _controlURL());
+    if (mounted) setState(() => _busy = false);
+  }
+
+  Future<void> _connectInBrowser(TaildeckBackend backend) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    await backend.signInInBrowser(controlURL: _controlURL());
+    if (mounted) setState(() => _busy = false);
+  }
+
+  Future<void> _leaveWaiting(TaildeckBackend backend) async {
+    await backend.cancelSignIn();
+    if (mounted) setState(() => _previewStage = _Stage.idle);
+  }
+
+  /// The node hands us the login URL; open it once in the system browser.
+  void _openLoginUrl(String url) {
+    if (url.isEmpty || url == _openedUrl) return;
+    _openedUrl = url;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      try {
+        await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+      } on Object {
+        // No browser on this host: the URL stays visible and copyable.
+      }
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     final scheme = context.colorScheme;
     final l10n = AppLocalizations.of(context);
+    final backend = BackendScope.of(context);
+    final live = backend.available;
+    final waiting =
+        live &&
+        (backend.waitingForLogin ||
+            (backend.needsLogin && backend.authUrl.isNotEmpty));
+    if (live) _openLoginUrl(backend.authUrl);
+    final previewWaiting = !live && _previewStage == _Stage.waiting;
+    final showError = live && backend.error.isNotEmpty && !waiting;
     return Surface(
       color: SurfaceLevel.page.colorOf(scheme),
       child: SafeArea(
@@ -101,10 +157,38 @@ class _LoginPageState extends State<LoginPage> {
                               .copyWith(color: scheme.onSurfaceVariant),
                         ),
                         const SizedBox(height: 28),
-                        if (_stage == _Stage.idle)
-                          _buildChoices(context)
+                        if (waiting || previewWaiting)
+                          _waiting(
+                            context,
+                            url: waiting ? backend.authUrl : _previewUrl,
+                            onCancel: waiting
+                                ? () => _leaveWaiting(backend)
+                                : _cancel,
+                          )
+                        else if (live)
+                          _buildLiveChoices(context, backend)
                         else
-                          _waiting(context),
+                          _buildPreviewChoices(context),
+                        if (live && backend.state == BackendState.starting) ...[
+                          const SizedBox(height: 12),
+                          Text(
+                            l10n.startingNode,
+                            textAlign: TextAlign.center,
+                            style: AppTextStyle.caption1
+                                .of(context)
+                                .copyWith(color: scheme.onSurfaceVariant),
+                          ),
+                        ],
+                        if (showError) ...[
+                          const SizedBox(height: 14),
+                          InlineNotice(
+                            text: '${l10n.signInFailed}: ${backend.error}',
+                          ),
+                        ],
+                        if (!live && !kIsWeb) ...[
+                          const SizedBox(height: 14),
+                          InlineNotice(text: l10n.backendUnavailable),
+                        ],
                         const SizedBox(height: 22),
                         Text(
                           l10n.worksWith,
@@ -125,102 +209,39 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  Widget _buildChoices(BuildContext context) {
-    final scheme = context.colorScheme;
-    final l10n = AppLocalizations.of(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Card(
-          radius: AppCorner.xxl,
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _OptionRow(
-                glyph: Glyphs2.globe,
-                title: l10n.continueInBrowser,
-                subtitle: l10n.signInToControlServer,
-                onTap: _startBrowserLogin,
-                trailing: GlyphIcon(
-                  Glyphs.chevronForward,
-                  size: 16,
-                  color: scheme.onSurfaceVariant.opacity50,
-                ),
-              ),
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 4),
-                child: Divider(height: 0.5, thickness: 0.5),
-              ),
-              _OptionRow(
-                glyph: Glyphs2.bolt,
-                title: l10n.useAuthKey,
-                subtitle: _authKey ? null : l10n.pasteKey,
-                onTap: () => setState(() => _authKey = !_authKey),
-                trailing: GlyphIcon(
-                  _authKey ? Glyphs.chevronDown : Glyphs.chevronForward,
-                  size: 16,
-                  color: scheme.onSurfaceVariant.opacity50,
-                ),
-              ),
-              if (_authKey) ...[
-                const SizedBox(height: 10),
-                TextField(
-                  controller: _key,
-                  style: AppTextStyle.footnote
-                      .of(context)
-                      .copyWith(fontFamily: 'DejaVuSansMono', fontSize: 13),
-                  decoration: const InputDecoration(
-                    filled: true,
-                    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                FilledButton(
-                  onPressed: widget.onSignedIn,
-                  child: Text(l10n.connect),
-                ),
-              ],
-            ],
-          ),
-        ),
-        const SizedBox(height: 16),
-        TextButton(
-          onPressed: () => setState(() => _advanced = !_advanced),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                l10n.controlServer,
-                style: AppTextStyle.footnote
-                    .of(context)
-                    .copyWith(color: scheme.primary),
-              ),
-              GlyphIcon(
-                _advanced ? Glyphs.chevronDown : Glyphs.chevronForward,
-                size: 14,
-                color: scheme.primary,
-              ),
-            ],
-          ),
-        ),
-        if (_advanced)
-          Padding(
-            padding: const EdgeInsets.only(top: 4),
-            child: TextField(
-              style: context.listSubtitleStyle,
-              decoration: const InputDecoration(
-                hintText: 'https://controlplane.tailscale.com',
-                filled: true,
-                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-              ),
-            ),
-          ),
-      ],
+  Widget _buildLiveChoices(BuildContext context, TaildeckBackend backend) {
+    return _Choices(
+      authKey: _authKey,
+      advanced: _advanced,
+      keyController: _key,
+      controlController: _control,
+      connectEnabled: !_busy,
+      onToggleAuthKey: () => setState(() => _authKey = !_authKey),
+      onToggleAdvanced: () => setState(() => _advanced = !_advanced),
+      onConnect: () => _connectWithKey(backend),
+      onBrowser: () => _connectInBrowser(backend),
     );
   }
 
-  Widget _waiting(BuildContext context) {
+  Widget _buildPreviewChoices(BuildContext context) {
+    return _Choices(
+      authKey: _authKey,
+      advanced: _advanced,
+      keyController: _key,
+      controlController: _control,
+      connectEnabled: true,
+      onToggleAuthKey: () => setState(() => _authKey = !_authKey),
+      onToggleAdvanced: () => setState(() => _advanced = !_advanced),
+      onConnect: widget.onSignedIn,
+      onBrowser: _startBrowserLogin,
+    );
+  }
+
+  Widget _waiting(
+    BuildContext context, {
+    required String url,
+    required VoidCallback onCancel,
+  }) {
     final scheme = context.colorScheme;
     final l10n = AppLocalizations.of(context);
     return Card(
@@ -256,7 +277,7 @@ class _LoginPageState extends State<LoginPage> {
               children: [
                 Expanded(
                   child: Text(
-                    'login.tailscale.com/a/4f2c9e',
+                    url.isEmpty ? l10n.waitingForUrl : url,
                     style: AppTextStyle.footnote.of(context).copyWith(
                       fontFamily: 'DejaVuSansMono',
                       color: scheme.onSurfaceVariant,
@@ -269,7 +290,7 @@ class _LoginPageState extends State<LoginPage> {
           ),
           const SizedBox(height: 14),
           TextButton(
-            onPressed: _cancel,
+            onPressed: onCancel,
             child: Text(
               l10n.cancel,
               style: AppTextStyle.footnote
@@ -279,6 +300,128 @@ class _LoginPageState extends State<LoginPage> {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _Choices extends StatelessWidget {
+  const _Choices({
+    required this.authKey,
+    required this.advanced,
+    required this.keyController,
+    required this.controlController,
+    required this.connectEnabled,
+    required this.onToggleAuthKey,
+    required this.onToggleAdvanced,
+    required this.onConnect,
+    required this.onBrowser,
+  });
+
+  final bool authKey;
+  final bool advanced;
+  final TextEditingController keyController;
+  final TextEditingController controlController;
+  final bool connectEnabled;
+  final VoidCallback onToggleAuthKey;
+  final VoidCallback onToggleAdvanced;
+  final VoidCallback onConnect;
+  final VoidCallback onBrowser;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = context.colorScheme;
+    final l10n = AppLocalizations.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Card(
+          radius: AppCorner.xxl,
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _OptionRow(
+                glyph: Glyphs2.globe,
+                title: l10n.continueInBrowser,
+                subtitle: l10n.signInToControlServer,
+                onTap: onBrowser,
+                trailing: GlyphIcon(
+                  Glyphs.chevronForward,
+                  size: 16,
+                  color: scheme.onSurfaceVariant.opacity50,
+                ),
+              ),
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 4),
+                child: Divider(height: 0.5, thickness: 0.5),
+              ),
+              _OptionRow(
+                glyph: Glyphs2.bolt,
+                title: l10n.useAuthKey,
+                subtitle: authKey ? null : l10n.pasteKey,
+                onTap: onToggleAuthKey,
+                trailing: GlyphIcon(
+                  authKey ? Glyphs.chevronDown : Glyphs.chevronForward,
+                  size: 16,
+                  color: scheme.onSurfaceVariant.opacity50,
+                ),
+              ),
+              if (authKey) ...[
+                const SizedBox(height: 10),
+                TextField(
+                  controller: keyController,
+                  obscureText: true,
+                  style: AppTextStyle.footnote
+                      .of(context)
+                      .copyWith(fontFamily: 'DejaVuSansMono', fontSize: 13),
+                  decoration: const InputDecoration(
+                    filled: true,
+                    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                FilledButton(
+                  onPressed: connectEnabled ? onConnect : null,
+                  child: Text(l10n.connect),
+                ),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        TextButton(
+          onPressed: onToggleAdvanced,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                l10n.controlServer,
+                style: AppTextStyle.footnote
+                    .of(context)
+                    .copyWith(color: scheme.primary),
+              ),
+              GlyphIcon(
+                advanced ? Glyphs.chevronDown : Glyphs.chevronForward,
+                size: 14,
+                color: scheme.primary,
+              ),
+            ],
+          ),
+        ),
+        if (advanced)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: TextField(
+              controller: controlController,
+              style: context.listSubtitleStyle,
+              decoration: const InputDecoration(
+                hintText: 'https://controlplane.tailscale.com',
+                filled: true,
+                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }
@@ -334,7 +477,7 @@ class _OptionRow extends StatelessWidget {
                 ],
               ),
             ),
-            if (trailing != null) trailing!,
+            ?trailing,
           ],
         ),
       ),

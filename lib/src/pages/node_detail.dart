@@ -2,12 +2,13 @@ import 'package:flutter/widgets.dart';
 import 'package:prism_ui/icons/icons.dart';
 import 'package:prism_ui/prism_ui.dart';
 
+import '../backend.dart';
 import '../data.dart';
 import '../l10n.dart';
 import '../glyphs.dart';
 import '../widgets/foundation.dart';
 
-class NodeDetailPage extends StatelessWidget {
+class NodeDetailPage extends StatefulWidget {
   const NodeDetailPage({
     super.key,
     required this.node,
@@ -22,7 +23,32 @@ class NodeDetailPage extends StatelessWidget {
   final VoidCallback onOpenSsh;
 
   @override
+  State<NodeDetailPage> createState() => _NodeDetailPageState();
+}
+
+class _NodeDetailPageState extends State<NodeDetailPage> {
+  bool _pinging = false;
+  PingResult? _ping;
+
+  Future<void> _runPing() async {
+    if (_pinging) return;
+    final backend = BackendScope.of(context);
+    if (!backend.available) return;
+    setState(() {
+      _pinging = true;
+      _ping = null;
+    });
+    final result = await backend.ping(widget.node.ip);
+    if (!mounted) return;
+    setState(() {
+      _pinging = false;
+      _ping = result;
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final node = widget.node;
     final scheme = context.colorScheme;
     final l10n = AppLocalizations.of(context);
     final mono = AppTextStyle.body.of(context).copyWith(
@@ -36,7 +62,7 @@ class NodeDetailPage extends StatelessWidget {
       leading: Padding(
         padding: const EdgeInsets.only(top: 6, right: 6),
         child: IconButton(
-          onPressed: onBack,
+          onPressed: widget.onBack,
           icon: const GlyphIcon(Glyphs.arrowBack),
           tooltip: l10n.back,
         ),
@@ -50,19 +76,27 @@ class NodeDetailPage extends StatelessWidget {
               label: l10n.ssh,
               glyph: Glyphs2.terminal,
               selected: true,
-              onPressed: onOpenSsh,
+              onPressed: widget.onOpenSsh,
             ),
             ActionPill(label: l10n.web, glyph: Glyphs2.globe, onPressed: () {}),
-            ActionPill(label: l10n.ping, glyph: Glyphs2.ping, onPressed: () {}),
+            ActionPill(
+              label: l10n.ping,
+              glyph: Glyphs2.ping,
+              onPressed: _runPing,
+            ),
           ],
         ),
+        if (_pinging || _ping != null) ...[
+          const SizedBox(height: 10),
+          _PingLabel(pinging: _pinging, result: _ping),
+        ],
         const SizedBox(height: 14),
         PressRegion(
-          onTap: onOpenAgents,
+          onTap: widget.onOpenAgents,
           shape: AppShape.all(AppCorner.xxl),
           child: Card(
             radius: AppCorner.xxl,
-            onPressed: onOpenAgents,
+            onPressed: widget.onOpenAgents,
             child: Padding(
               padding: const EdgeInsets.all(14),
               child: Row(
@@ -111,15 +145,24 @@ class NodeDetailPage extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(node.dns.isEmpty ? node.name : node.dns, style: mono),
-                  const SizedBox(height: 2),
-                  Text(node.ip, style: mono),
-                  const SizedBox(height: 2),
-                  Text('fd7a:115c:a1e0::9', style: mono),
+                  if (node.dns.isNotEmpty) ...[
+                    Text(node.dns, style: mono),
+                    const SizedBox(height: 2),
+                  ],
+                  for (final ip in node.addresses) ...[
+                    Text(ip, style: mono),
+                    const SizedBox(height: 2),
+                  ],
                 ],
               ),
             ),
-            _DetailRow(label: l10n.owner, child: Text(node.owner, style: context.listTitleStyle)),
+            _DetailRow(
+              label: l10n.owner,
+              child: Text(
+                node.owner.isEmpty ? '—' : node.owner,
+                style: context.listTitleStyle,
+              ),
+            ),
             _DetailRow(
               label: l10n.connection,
               child: Padding(
@@ -129,20 +172,64 @@ class NodeDetailPage extends StatelessWidget {
             ),
             _DetailRow(
               label: l10n.tags,
-              child: Wrap(
-                spacing: 6,
-                runSpacing: 6,
-                children: [
-                  for (final tag in (node.tags.isEmpty ? ['tag:dev'] : node.tags))
-                    Chip(label: tag, onPressed: () {}),
-                ],
-              ),
+              child: node.tags.isEmpty
+                  ? Text('—', style: context.listTitleStyle)
+                  : Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        for (final tag in node.tags)
+                          Chip(label: tag, onPressed: () {}),
+                      ],
+                    ),
             ),
-            _DetailRow(label: l10n.keyExpiry, child: Text(node.expiry, style: context.listTitleStyle)),
+            if (node.expiry.isNotEmpty)
+              _DetailRow(
+                label: l10n.keyExpiry,
+                child: Text(node.expiry, style: context.listTitleStyle),
+              ),
             _DetailRow(label: l10n.traffic, child: TrafficLabel(node: node)),
           ],
         ),
       ],
+    );
+  }
+}
+
+class _PingLabel extends StatelessWidget {
+  const _PingLabel({required this.pinging, required this.result});
+
+  final bool pinging;
+  final PingResult? result;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = context.colorScheme;
+    final l10n = AppLocalizations.of(context);
+    final result = this.result;
+    final String text;
+    if (pinging || result == null) {
+      text = l10n.pinging;
+    } else if (!result.ok) {
+      text = l10n.pingFailed(result.error ?? '');
+    } else {
+      final latency = result.latencyMs;
+      final parts = [
+        if (latency != null) '${latency.toStringAsFixed(1)} ms',
+        if ((result.endpoint ?? '').isNotEmpty) result.endpoint!,
+        if ((result.derp ?? '').isNotEmpty) 'DERP ${result.derp}',
+      ];
+      text = parts.join(' · ');
+    }
+    final failed = result != null && !pinging && !result.ok;
+    return Padding(
+      padding: const EdgeInsets.only(left: 4),
+      child: Text(
+        text,
+        style: AppTextStyle.footnote.of(context).copyWith(
+          color: failed ? scheme.error : scheme.onSurfaceVariant,
+        ),
+      ),
     );
   }
 }
