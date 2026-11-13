@@ -32,29 +32,100 @@ jobs:
             os: macos-latest
             artifact: taildeck-ios
             zip: build/taildeck-ios.zip
+    env:
+      GOPROXY: https://proxy.golang.org,direct
+      GOTOOLCHAIN: auto
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-go@v6
+        with:
+          go-version: 1.27.x
+          cache-dependency-path: native/bridge/go.sum
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.1
+      - uses: msys2/setup-msys2@v2
+        if: matrix.name == 'windows-x64'
+        with:
+          msystem: MINGW64
+          update: false
+          install: mingw-w64-x86_64-gcc
+      - name: Put mingw on PATH (windows)
+        if: matrix.name == 'windows-x64'
+        shell: bash
+        run: echo "C:/msys64/mingw64/bin" >> "$GITHUB_PATH"
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: 3.47.9
           channel: stable
           cache: true
       - run: flutter pub get
+
+      - name: Build native libs (windows)
+        if: matrix.name == 'windows-x64'
+        shell: bash
+        run: |
+          tool/build_native.sh windows
+          tool/build_term.sh windows
+          for lib in windows/lib/taildeck_bridge.dll windows/lib/taildeck_term.dll; do
+            test -s "$lib" || { echo "::error::$lib missing, the app would run without the backend"; exit 1; }
+            echo "$lib $(stat -c%s "$lib") bytes"
+          done
+      - name: Build native libs (macos)
+        if: matrix.name == 'macos'
+        run: |
+          tool/build_native.sh macos
+          tool/build_term.sh macos
+          for lib in macos/Frameworks/libtaildeck_bridge.dylib macos/Frameworks/libtaildeck_term.dylib; do
+            test -s "$lib" || { echo "::error::$lib missing, the app would run without the backend"; exit 1; }
+            lipo -info "$lib"
+          done
+      - name: Build native libs (ios)
+        if: matrix.name == 'ios'
+        run: |
+          tool/build_native.sh ios
+          tool/build_term.sh ios
+          for lib in ios/Frameworks/libtaildeck_bridge.a ios/Frameworks/libtaildeck_term.a; do
+            test -s "$lib" || { echo "::error::$lib missing, the Runner would not link the backend"; exit 1; }
+            echo "$lib $(stat -f%z "$lib") bytes"
+          done
+
       - name: Build and zip (windows)
         if: matrix.name == 'windows-x64'
         shell: pwsh
         run: |
           flutter build windows --release
-          Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath build/taildeck-windows-x64.zip
+          $release = 'build/windows/x64/runner/Release'
+          foreach ($lib in @('taildeck_bridge.dll', 'taildeck_term.dll')) {
+            if (-not (Test-Path "$release/$lib")) { throw "error:: $lib missing from $release" }
+          }
+          Compress-Archive -Path "$release/*" -DestinationPath build/taildeck-windows-x64.zip
+          $zip = [IO.Compression.ZipFile]::OpenRead("$PWD/build/taildeck-windows-x64.zip")
+          try {
+            $names = $zip.Entries | ForEach-Object { $_.FullName }
+            foreach ($lib in @('taildeck_bridge.dll', 'taildeck_term.dll')) {
+              if (-not ($names -contains $lib)) { throw "error:: $lib missing from the zip" }
+            }
+          } finally { $zip.Dispose() }
       - name: Build and zip (macos)
         if: matrix.name == 'macos'
         run: |
           flutter build macos --release
-          ditto -c -k --sequesterRsrc --keepParent build/macos/Build/Products/Release/Taildeck.app build/taildeck-macos.zip
+          app=build/macos/Build/Products/Release/Taildeck.app
+          for lib in libtaildeck_bridge.dylib libtaildeck_term.dylib; do
+            test -s "$app/Contents/Frameworks/$lib" || { echo "::error::$lib missing from $app"; exit 1; }
+          done
+          ditto -c -k --sequesterRsrc --keepParent "$app" build/taildeck-macos.zip
       - name: Build and zip (ios)
         if: matrix.name == 'ios'
         run: |
           flutter build ios --release --no-codesign
+          # -force_load in ios/Flutter/Native*.xcconfig keeps the archives in
+          # the Runner binary; without them the link (or this check) fails.
+          for sym in td_start td_term_create; do
+            nm -g build/ios/iphoneos/Runner.app/Runner | grep -q "${sym}\$" \
+              || { echo "::error::$sym missing from the Runner binary"; exit 1; }
+          done
           ditto -c -k --sequesterRsrc --keepParent build/ios/iphoneos/Runner.app build/taildeck-ios.zip
       - uses: actions/upload-artifact@v4
         with:

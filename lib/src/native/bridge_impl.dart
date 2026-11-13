@@ -15,6 +15,9 @@ NativeBridge? openBridgePlatform() {
     if (Platform.isLinux)
       '${File(Platform.resolvedExecutable).parent.path}/lib/libtaildeck_bridge.so',
     if (Platform.isAndroid) 'libtaildeck_bridge.so',
+    if (Platform.isWindows) 'taildeck_bridge.dll',
+    if (Platform.isMacOS)
+      '${File(Platform.resolvedExecutable).parent.path}/../Frameworks/libtaildeck_bridge.dylib',
   ];
   for (final path in candidates) {
     if (path.contains('/') && !File(path).existsSync()) continue;

@@ -1,1 +1,3 @@
 #include "Generated.xcconfig"
+#include? "NativeBridge.xcconfig"
+#include? "NativeTerm.xcconfig"
