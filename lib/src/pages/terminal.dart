@@ -15,10 +15,16 @@ class _Line {
 }
 
 class TerminalPage extends StatefulWidget {
-  const TerminalPage({super.key, required this.node, required this.onClose});
+  const TerminalPage({
+    super.key,
+    required this.node,
+    required this.onClose,
+    this.user = 'root',
+  });
 
   final NodeItem node;
   final VoidCallback onClose;
+  final String user;
 
   @override
   State<TerminalPage> createState() => _TerminalPageState();
@@ -145,7 +151,12 @@ class _TerminalPageState extends State<TerminalPage> {
           child: SafeArea(
             child: Column(
               children: [
-                _Header(node: widget.node, onClose: widget.onClose, mono: mono),
+                _Header(
+                  node: widget.node,
+                  onClose: widget.onClose,
+                  mono: mono,
+                  user: widget.user,
+                ),
                 Expanded(
                   child: ListView.builder(
                     controller: _scroll,
@@ -167,7 +178,12 @@ class _TerminalPageState extends State<TerminalPage> {
                       return Padding(
                         padding: EdgeInsets.only(top: gap, bottom: 1),
                         child: isCommand
-                            ? _PromptLine(command: line.text, mono: mono)
+                            ? _PromptLine(
+                                command: line.text,
+                                mono: mono,
+                                user: widget.user,
+                                host: widget.node.name,
+                              )
                             : Text(
                                 line.text,
                                 style: mono.copyWith(color: _colorOf(line.kind)),
@@ -195,10 +211,17 @@ class _TerminalPageState extends State<TerminalPage> {
 }
 
 class _PromptLine extends StatelessWidget {
-  const _PromptLine({required this.command, required this.mono});
+  const _PromptLine({
+    required this.command,
+    required this.mono,
+    required this.user,
+    required this.host,
+  });
 
   final String command;
   final TextStyle mono;
+  final String user;
+  final String host;
 
   @override
   Widget build(BuildContext context) {
@@ -206,7 +229,7 @@ class _PromptLine extends StatelessWidget {
       TextSpan(
         children: [
           TextSpan(
-            text: 'root@devbox',
+            text: '$user@$host',
             style: mono.copyWith(color: const Color(0xFF57D7A0)),
           ),
           TextSpan(text: ':~\$ ', style: mono.copyWith(color: const Color(0xFF5C6370))),
@@ -224,11 +247,17 @@ class _PromptLine extends StatelessWidget {
 }
 
 class _Header extends StatelessWidget {
-  const _Header({required this.node, required this.onClose, required this.mono});
+  const _Header({
+    required this.node,
+    required this.onClose,
+    required this.mono,
+    required this.user,
+  });
 
   final NodeItem node;
   final VoidCallback onClose;
   final TextStyle mono;
+  final String user;
 
   @override
   Widget build(BuildContext context) {
@@ -251,7 +280,7 @@ class _Header extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  'root@${node.name}',
+                  '${user}@${node.name}',
                   style: mono.copyWith(fontWeight: FontWeight.w700, fontSize: 14),
                 ),
                 const SizedBox(height: 1),

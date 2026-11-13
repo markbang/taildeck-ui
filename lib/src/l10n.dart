@@ -33,6 +33,12 @@ class AppLocalizations implements UiLocalizations {
 
   String get back => _zh ? '返回' : 'Back';
   String get ssh => 'SSH';
+  String get sshUser => _zh ? '用户' : 'User';
+  String get sshPort => _zh ? '端口' : 'Port';
+  String get sshAuth => _zh ? '认证方式' : 'Authentication';
+  String get authTailscale => _zh ? 'Tailscale SSH' : 'Tailscale SSH';
+  String get authPassword => _zh ? '密码' : 'Password';
+  String get authKey => _zh ? '密钥' : 'Key';
   String get web => _zh ? '网页' : 'Web';
   String get ping => _zh ? '延迟' : 'Ping';
   String get agentsTitle => _zh ? '代理' : 'Agents';

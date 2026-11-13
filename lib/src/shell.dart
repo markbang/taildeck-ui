@@ -9,6 +9,7 @@ import 'pages/agents.dart';
 import 'pages/node_detail.dart';
 import 'pages/nodes.dart';
 import 'pages/services.dart';
+import 'pages/ssh_sheet.dart';
 import 'pages/login.dart';
 import 'pages/settings.dart';
 import 'pages/terminal.dart';
@@ -40,6 +41,7 @@ class _TaildeckShellState extends State<TaildeckShell>
     _ => false,
   };
   NodeItem? _sshNode = _querySsh();
+  String _sshUser = 'root';
 
   late final PageController _pageController = PageController(initialPage: _tab);
 
@@ -99,6 +101,7 @@ class _TaildeckShellState extends State<TaildeckShell>
     if (sshNode != null) {
       return TerminalPage(
         node: sshNode,
+        user: _sshUser,
         onClose: () => setState(() => _sshNode = null),
       );
     }
@@ -257,7 +260,14 @@ class _TaildeckShellState extends State<TaildeckShell>
           node: node,
           onBack: () => setState(() => _node = null),
           onOpenAgents: () => _toPage(2),
-          onOpenSsh: () => setState(() => _sshNode = node),
+          onOpenSsh: () async {
+            final choice = await showSshSheet(context, node);
+            if (choice == null) return;
+            setState(() {
+              _sshUser = choice.user;
+              _sshNode = node;
+            });
+          },
         );
     }
   }

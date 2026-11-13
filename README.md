@@ -30,6 +30,8 @@ prism_ui's surfaces and stroke-icon engine:
   variant you can switch to in Settings, and a Slide / Fade tab animation (fade cancels the slide and
   cross-fades in place, using prism_ui's `fadeTabDuration` / `fadeTabCurve`)
 - **Login** — browser sign-in with a waiting state, auth key entry, optional control server field
+- **SSH sheet** — user / port / authentication pickers built on prism_ui's `PopupAnchor` + `PopupMenu`
+  (checked items), presented as a form sheet; the choice flows into the terminal header
 - **SSH terminal** — full-bleed mono session with a working input line (`ls`, `uname`, `tailscale`, `docker ps` … are simulated), bundled DejaVu Sans Mono
 - **Bilingual** — English and 中文, switchable in Settings (or `?lang=zh`); every screen, plus prism_ui's own
   strings through `UiLocalizations`
