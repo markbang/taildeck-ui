@@ -57,3 +57,8 @@ native/term/build/
 # Native bridge builds (tool/build_native.sh)
 /linux/lib/
 /android/app/src/main/jniLibs/
+/windows/lib/
+/macos/Frameworks/
+/ios/Frameworks/
+/ios/Flutter/NativeBridge.xcconfig
+/ios/Flutter/NativeTerm.xcconfig

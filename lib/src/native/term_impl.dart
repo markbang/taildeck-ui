@@ -195,6 +195,9 @@ _Lib? _openLib() {
     if (Platform.isLinux)
       '${File(Platform.resolvedExecutable).parent.path}/lib/libtaildeck_term.so',
     if (Platform.isAndroid) 'libtaildeck_term.so',
+    if (Platform.isWindows) 'taildeck_term.dll',
+    if (Platform.isMacOS)
+      '${File(Platform.resolvedExecutable).parent.path}/../Frameworks/libtaildeck_term.dylib',
   ];
   for (final path in candidates) {
     if (path.contains('/') && !File(path).existsSync()) continue;

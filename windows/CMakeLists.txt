@@ -106,3 +106,16 @@ install(DIRECTORY "${PROJECT_BUILD_DIR}/${FLUTTER_ASSET_DIR_NAME}"
 install(FILES "${AOT_LIBRARY}" DESTINATION "${INSTALL_BUNDLE_DATA_DIR}"
   CONFIGURATIONS Profile;Release
   COMPONENT Runtime)
+
+# Go tsnet bridge and libghostty-vt shim built by tool/build_native.sh and
+# tool/build_term.sh; dart:ffi loads them from next to the executable.
+foreach(TAILDECK_LIB taildeck_bridge.dll taildeck_term.dll)
+  set(TAILDECK_LIB_PATH "${CMAKE_CURRENT_SOURCE_DIR}/lib/${TAILDECK_LIB}")
+  if(EXISTS "${TAILDECK_LIB_PATH}")
+    install(FILES "${TAILDECK_LIB_PATH}"
+      DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
+      COMPONENT Runtime)
+  else()
+    message(STATUS "taildeck: windows/lib/${TAILDECK_LIB} missing, run tool/build_native.sh windows and tool/build_term.sh windows")
+  endif()
+endforeach()

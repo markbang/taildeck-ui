@@ -21,6 +21,9 @@ NDK):
 |---|---|---|
 | linux/amd64 | `linux/lib/libtaildeck_bridge.so` | copied into the bundle's `lib/` by `linux/CMakeLists.txt`, opened next to the executable |
 | android/arm64 | `android/app/src/main/jniLibs/arm64-v8a/` | `DynamicLibrary.open('libtaildeck_bridge.so')` |
+| windows/x64 | `windows/lib/taildeck_bridge.dll` | installed next to the runner exe by `windows/CMakeLists.txt` |
+| macos (universal) | `macos/Frameworks/libtaildeck_bridge.dylib` | copied into `Taildeck.app/Contents/Frameworks/` by the Runner's "Copy native libs" phase |
+| ios/arm64 | `ios/Frameworks/libtaildeck_bridge.a` | linked into the Runner through `ios/Flutter/NativeBridge.xcconfig` |
 
 Both outputs are git-ignored, so a fresh checkout has to build them before the
 app finds the node; `lib/src/native/bridge.dart` returns null without the
@@ -48,8 +51,19 @@ CGO_ENABLED=1 GOOS=android GOARCH=arm64 \
 `tool/build_native.sh` prefers `aarch64-linux-android24-clang` to match the
 Flutter app's `minSdk`, and falls back to the 26 wrapper.
 
-iOS is not wired yet: it needs `-buildmode=c-archive` (Fat/arm64) on macOS
-with Xcode, so it cannot be produced from Linux.
+Every target has a name, so CI builds only what the job needs;
+`tool/build_native.sh all` builds each one the host can produce. Windows
+needs `mingw-w64` (`x86_64-w64-mingw32-gcc`); macOS and iOS need macOS with
+Xcode and skip with a message anywhere else. `tool/build_term.sh` takes the
+same names and puts `libtaildeck_term.{so,dll,dylib,a}` beside the bridge
+library (the iOS `.a` combines the shim with libghostty-vt).
+
+iOS builds `-buildmode=c-archive` for arm64 and links the runner with
+`-force_load`, because no Swift code references the symbols: the optional
+`#include? "NativeBridge.xcconfig"` in `ios/Flutter/{Debug,Release}.xcconfig`
+is written by the script. The iOS Dart side still needs
+`DynamicLibrary.process()` instead of a file path; until then the app falls
+back to mock data on iOS.
 
 ## Bridge ABI
 

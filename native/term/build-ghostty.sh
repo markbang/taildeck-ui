@@ -3,6 +3,12 @@
 # GHOSTTY_OUT selects the output dir (default native/term/build/ghostty),
 # GHOSTTY_SRC the checkout (reused when present).
 # Needs Zig 0.17; the Android targets also need the NDK only for later linking.
+#
+#   native/term/build-ghostty.sh                  # android + host linux
+#   native/term/build-ghostty.sh windows-x86_64
+#   native/term/build-ghostty.sh macos-arm64 ios-arm64
+#
+# Every non-Android ABI is cross-compiled by Zig, so any host can produce them.
 set -euo pipefail
 GHOSTTY_REV=83b57ac
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -17,12 +23,32 @@ if ! git -C "$SRC" cat-file -e "$GHOSTTY_REV^{commit}" 2>/dev/null; then
   git -C "$SRC" fetch --depth 1 origin "$GHOSTTY_REV" 2>/dev/null || true
 fi
 git -C "$SRC" checkout -q "$GHOSTTY_REV"
-rm -rf "$OUT" && mkdir -p "$OUT/lib"
-# abi:zig-target; the host entry is x86_64 glibc for the desktop bundle.
-TARGETS=("arm64-v8a:aarch64-linux-android" "x86_64:x86_64-linux-android")
-if [ "$(uname -s)-$(uname -m)" = "Linux-x86_64" ]; then
-  TARGETS+=("linux-x86_64:x86_64-linux-gnu")
+
+case "$(uname -s)-$(uname -m)" in
+  Linux-x86_64) HOST_ABI=linux-x86_64 ;;
+  *) HOST_ABI="" ;;
+esac
+
+TARGET_ABIS=("$@")
+if [ ${#TARGET_ABIS[@]} -eq 0 ]; then
+  # Historical default: both Android ABIs plus the host linux one.
+  TARGET_ABIS=(arm64-v8a x86_64)
+  [ -n "$HOST_ABI" ] && TARGET_ABIS+=("$HOST_ABI")
 fi
+
+abi_target() {
+  case "$1" in
+    arm64-v8a) echo aarch64-linux-android ;;
+    x86_64) echo x86_64-linux-android ;;
+    linux-x86_64) echo x86_64-linux-gnu ;;
+    windows-x86_64) echo x86_64-windows-gnu ;;
+    macos-arm64) echo aarch64-macos ;;
+    macos-x86_64) echo x86_64-macos ;;
+    ios-arm64) echo aarch64-ios ;;
+    *) echo "ghostty: unknown abi '$1'" >&2; return 1 ;;
+  esac
+}
+
 find_ndk() {
   if [ -n "${ANDROID_NDK_HOME:-}" ] && [ -d "$ANDROID_NDK_HOME" ]; then
     echo "$ANDROID_NDK_HOME"; return
@@ -37,8 +63,8 @@ if [ -z "${ANDROID_NDK_HOME:-}" ]; then
   [ -n "$ndk" ] && export ANDROID_NDK_HOME="$ndk"
 fi
 
-for pair in "${TARGETS[@]}"; do
-  abi=${pair%%:*}; target=${pair#*:}
+for abi in "${TARGET_ABIS[@]}"; do
+  target="$(abi_target "$abi")" || exit 1
   case "$target" in
     *-android)
       if [ -z "${ANDROID_NDK_HOME:-}" ]; then
@@ -50,6 +76,12 @@ for pair in "${TARGETS[@]}"; do
   echo "ghostty: $abi ($target)"
   (cd "$SRC" && zig build -Demit-lib-vt=true -Dtarget="$target" -Doptimize=ReleaseFast --prefix "$SRC/zig-out-$target")
   mkdir -p "$OUT/lib/$abi"
-  cp "$SRC/zig-out-$target/lib/libghostty-vt.a" "$OUT/lib/$abi/"
+  # Zig names the archive `.lib` for windows targets and `.a` everywhere else.
+  if [ -f "$SRC/zig-out-$target/lib/libghostty-vt.a" ]; then
+    cp "$SRC/zig-out-$target/lib/libghostty-vt.a" "$OUT/lib/$abi/"
+  else
+    cp "$SRC/zig-out-$target/lib/ghostty-vt-static.lib" "$OUT/lib/$abi/libghostty-vt.a"
+  fi
 done
-cp -r "$SRC/include" "$OUT/include"
+mkdir -p "$OUT/include"
+cp -r "$SRC/include/." "$OUT/include/"
