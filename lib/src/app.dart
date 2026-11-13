@@ -5,6 +5,7 @@ import 'package:prism_ui/prism_ui.dart';
 
 import 'backend.dart';
 import 'l10n.dart';
+import 'preview_env.dart';
 import 'services.dart';
 import 'shell.dart';
 import 'theme.dart';
@@ -49,12 +50,23 @@ class _TaildeckAppState extends State<TaildeckApp> {
         locale: theme.locale,
         localizationsDelegates: const [AppLocalizations.delegate],
         supportedLocales: const [Locale('en'), Locale('zh')],
+        // Readable at the platform's scale, never so large the shell breaks.
+        minTextScale: 0.9,
+        maxTextScale: 1.3,
+        textScale: double.tryParse(previewParam('scale') ?? ''),
         builder: (context, child) {
-          final size = MediaQuery.sizeOf(context);
-          return ViewScope(
-            size: size,
-            isMobile: size.width < 720,
-            child: child!,
+          final media = MediaQuery.of(context);
+          // '?motion=off' previews the platform's reduce-motion setting.
+          final still =
+              media.disableAnimations || previewParam('motion') == 'off';
+          final size = media.size;
+          return MediaQuery(
+            data: media.copyWith(disableAnimations: still),
+            child: ViewScope(
+              size: size,
+              isMobile: size.width < 720,
+              child: child!,
+            ),
           );
         },
         home: BackendScope(

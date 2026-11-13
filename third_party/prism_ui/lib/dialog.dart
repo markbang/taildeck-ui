@@ -110,8 +110,17 @@ mixin AlertMotionRouteMixin<T> on PopupRoute<T> {
 
   VoidCallback? get onBarrierDismiss => null;
 
+  /// The app's MediaQuery sits above the navigator, so an alert reads the
+  /// reduce-motion setting there and lands at once when it is on.
+  bool get _reduceMotion {
+    final anchor = navigator?.context;
+    return anchor != null &&
+        (MediaQuery.maybeDisableAnimationsOf(anchor) ?? false);
+  }
+
   @override
-  Duration get transitionDuration => _alertDuration;
+  Duration get transitionDuration =>
+      _reduceMotion ? Duration.zero : _alertDuration;
 
   @override
   Widget buildModalBarrier() {

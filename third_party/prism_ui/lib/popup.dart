@@ -192,12 +192,24 @@ class AnchoredPopupRoute<T> extends PopupRoute<T> {
   @override
   bool get barrierDismissible => true;
 
-  @override
-  Duration get transitionDuration => _openDuration;
+  /// Read off the navigator's own context, which is under the app's
+  /// MediaQuery; a menu then appears without its unfold.
+  bool get _reduceMotion {
+    final anchor = navigator?.context;
+    return anchor != null &&
+        (MediaQuery.maybeDisableAnimationsOf(anchor) ?? false);
+  }
 
   @override
-  Duration get reverseTransitionDuration =>
-      sourceImage == null ? _shrinkDuration : _dismissDuration;
+  Duration get transitionDuration =>
+      _reduceMotion ? Duration.zero : _openDuration;
+
+  @override
+  Duration get reverseTransitionDuration => _reduceMotion
+      ? Duration.zero
+      : sourceImage == null
+      ? _shrinkDuration
+      : _dismissDuration;
 
   // A controller reverses over the share of its duration it had run, so a
   // popup closed while opening would rush the return its morph times in full.

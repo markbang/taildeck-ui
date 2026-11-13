@@ -483,7 +483,9 @@ class _MessageBlock extends StatelessWidget {
       height: 1.45,
     );
     if (message.isTool) {
-      final name = message.name.isNotEmpty ? message.name : 'tool';
+      final name = message.name.isNotEmpty
+          ? message.name
+          : AppLocalizations.of(context).agentTool;
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 3),
         child: Text(

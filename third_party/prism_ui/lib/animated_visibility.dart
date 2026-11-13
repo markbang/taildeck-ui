@@ -76,6 +76,16 @@ class _AnimatedVisibilityState extends State<AnimatedVisibility>
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Reduce motion: the pane appears at its final layout in one frame.
+    final still = MediaQuery.disableAnimationsOf(context);
+    _controller
+      ..duration = still ? Duration.zero : _transitionDuration
+      ..reverseDuration = still ? Duration.zero : _transitionDuration;
+  }
+
+  @override
   void didUpdateWidget(covariant AnimatedVisibility oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.visible == oldWidget.visible) {

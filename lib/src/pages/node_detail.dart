@@ -32,7 +32,24 @@ class NodeDetailPage extends StatefulWidget {
 }
 
 class _NodeDetailPageState extends State<NodeDetailPage> {
+  final _focus = FocusNode(debugLabel: 'node detail');
   bool _pinging = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Takes focus on open, so Esc leaves the page before a click.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _focus.requestFocus();
+    });
+  }
+
+  @override
+  void dispose() {
+    _focus.dispose();
+    super.dispose();
+  }
+
   PingResult? _ping;
   bool _scanning = false;
   List<int>? _ports;
@@ -134,6 +151,7 @@ class _NodeDetailPageState extends State<NodeDetailPage> {
         ),
       ),
       children: [
+        Focus(focusNode: _focus, child: const SizedBox.shrink()),
         Wrap(
           spacing: 8,
           runSpacing: 8,

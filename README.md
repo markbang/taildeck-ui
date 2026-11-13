@@ -78,8 +78,9 @@ Preview params: `/?tab=1` (services), `/?tab=2` (agents), `/?tab=3` (settings), 
 `/?login=1` (sign-in), `/?login=waiting` (device approval pending), `/?preview=1` (signed-in shell without a
 node), `/?ssh=devbox` (terminal), `/?lang=zh`,
 `/?ssh=demo` (native libghostty-vt demo session), `/?chat=w1:p1` (a pane's chat on the native build; without a
-herdr connection it shows the real error state). The desktop bundle has no URL, so pass the same parameters as
-`TAILDECK_QUERY=ssh=demo`.
+herdr connection it shows the real error state), `/?motion=off` (preview the system's reduce-motion setting),
+`/?scale=1.3` (preview a text scale; the app clamps 0.9–1.3). The desktop bundle has no URL, so pass the same
+parameters as `TAILDECK_QUERY=ssh=demo`.
 
 ## Run
 
@@ -138,4 +139,5 @@ echoes a few simulated commands and there is no tsnet, WebView gateway or keysto
 ## Licenses
 
 prism_ui and Taildeck are GPL-3.0; this redesign inherits that. `third_party/prism_ui` is a vendored 0.1.2 with
-one web fix (`SceneBuilder.pushClipRSuperellipse` needs an explicit `clipBehavior`), documented in the repo.
+two local patches: a web fix (`SceneBuilder.pushClipRSuperellipse` needs an explicit `clipBehavior`) and
+reduce-motion checks (the sidebar, dock, sheets and menus land at once under `MediaQuery.disableAnimations`).

@@ -51,10 +51,7 @@ class NodesPage extends StatelessWidget {
           dividerInset: 60,
           children: [
             for (final node in nodes)
-              PressRegion(
-                onTap: () => onOpenNode(node),
-                child: _PeerRow(node: node),
-              ),
+              _PeerRow(node: node, onTap: () => onOpenNode(node)),
           ],
         ),
       ],
@@ -82,31 +79,40 @@ class _SelfCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            children: [
-              NodeBadge(node, size: 46),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      node.name,
-                      style: AppTextStyle.title3.of(context, emphasized: true),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      AppLocalizations.of(context).thisDevice(node.ip),
-                      style: context.listCaptionStyle,
-                    ),
-                  ],
+          RowSemantics(
+            label: AppLocalizations.of(context).nodeSemantics(
+              node.name,
+              online: node.online,
+              ip: node.ip,
+              direct: node.direct,
+              relay: node.relay,
+            ),
+            child: Row(
+              children: [
+                NodeBadge(node, size: 46),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        node.name,
+                        style: AppTextStyle.title3.of(context, emphasized: true),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        AppLocalizations.of(context).thisDevice(node.ip),
+                        style: context.listCaptionStyle,
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              StatusPill(
-                label: AppLocalizations.of(context).online,
-                tint: const Color(0xFF3BB273),
-              ),
-            ],
+                StatusPill(
+                  label: AppLocalizations.of(context).online,
+                  tint: const Color(0xFF3BB273),
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: 10),
           Padding(
@@ -114,33 +120,43 @@ class _SelfCard extends StatelessWidget {
             child: Column(
               children: [
                 for (var i = 0; i < peers.length; i++)
-                  PressRegion(
+                  RowSemantics(
+                    label: AppLocalizations.of(context).nodeSemantics(
+                      peers[i].name,
+                      online: peers[i].online,
+                      ip: peers[i].ip,
+                      direct: peers[i].direct,
+                      relay: peers[i].relay,
+                    ),
                     onTap: () => onOpenNode(peers[i]),
-                    child: SizedBox(
-                      height: 38,
-                      child: Row(
-                        children: [
-                          Connector(isFirst: i == 0),
-                          const SizedBox(width: 12),
-                          Text(
-                            peers[i].name,
-                            style: AppTextStyle.subheadline
-                                .of(context, emphasized: true),
-                          ),
-                          const Spacer(),
-                          GlyphIcon(
-                            Glyphs2.arrowDown,
-                            size: 11,
-                            color: scheme.onSurfaceVariant,
-                          ),
-                          const SizedBox(width: 2),
-                          Text(
-                            peers[i].rx,
-                            style: AppTextStyle.caption1
-                                .of(context)
-                                .copyWith(color: scheme.onSurfaceVariant),
-                          ),
-                        ],
+                    child: PressRegion(
+                      onTap: () => onOpenNode(peers[i]),
+                      child: SizedBox(
+                        height: 44,
+                        child: Row(
+                          children: [
+                            Connector(isFirst: i == 0),
+                            const SizedBox(width: 12),
+                            Text(
+                              peers[i].name,
+                              style: AppTextStyle.subheadline
+                                  .of(context, emphasized: true),
+                            ),
+                            const Spacer(),
+                            GlyphIcon(
+                              Glyphs2.arrowDown,
+                              size: 11,
+                              color: scheme.onSurfaceVariant,
+                            ),
+                            const SizedBox(width: 2),
+                            Text(
+                              peers[i].rx,
+                              style: AppTextStyle.caption1
+                                  .of(context)
+                                  .copyWith(color: scheme.onSurfaceVariant),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -154,9 +170,10 @@ class _SelfCard extends StatelessWidget {
 }
 
 class _PeerRow extends StatelessWidget {
-  const _PeerRow({required this.node});
+  const _PeerRow({required this.node, required this.onTap});
 
   final NodeItem node;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -165,48 +182,59 @@ class _PeerRow extends StatelessWidget {
     final now = DateTime.now();
     final seenAt = node.online ? null : node.lastSeenAt;
     final seen = seenAt == null ? null : l10n.lastSeen(seenAt, now);
+    final label = l10n.nodeSemantics(
+      node.name,
+      online: node.online,
+      ip: node.ip,
+      direct: node.direct,
+      relay: node.relay,
+      lastSeen: seenAt == null ? null : l10n.lastSeenSpoken(seenAt, now),
+    );
     final caption = Text(
       seen == null ? node.ip : '${node.ip} · $seen',
       style: context.listCaptionStyle,
     );
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-      child: Row(
-        children: [
-          NodeBadge(node),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  node.name,
-                  style: AppTextStyle.body.of(context, emphasized: true),
+    return RowSemantics(
+      label: label,
+      onTap: onTap,
+      child: PressRegion(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+          child: Row(
+            children: [
+              NodeBadge(node),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      node.name,
+                      style: AppTextStyle.body.of(context, emphasized: true),
+                    ),
+                    const SizedBox(height: 1),
+                    caption,
+                  ],
                 ),
-                const SizedBox(height: 1),
-                if (seenAt == null)
-                  caption
-                else
-                  Semantics(
-                    label: l10n.lastSeenSemantics(node.ip, seenAt, now),
-                    excludeSemantics: true,
-                    child: caption,
-                  ),
-              ],
-            ),
-          ),
-          if (node.online)
-            PathBadge(node: node)
-          else
-            Container(
-              width: 10,
-              height: 10,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(color: scheme.onSurfaceVariant.opacity50, width: 1.4),
               ),
-            ),
-        ],
+              if (node.online)
+                PathBadge(node: node)
+              else
+                Container(
+                  width: 10,
+                  height: 10,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: scheme.onSurfaceVariant.opacity50,
+                      width: 1.4,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
       ),
     );
   }

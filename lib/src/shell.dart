@@ -1,9 +1,11 @@
 import 'dart:async';
 
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:prism_ui/icons/icons.dart';
 import 'package:prism_ui/prism_ui.dart';
 
+import 'a11y.dart';
 import 'backend.dart';
 import 'data.dart';
 import 'herdr.dart';
@@ -91,6 +93,10 @@ class _TaildeckShellState extends State<TaildeckShell>
       if (index != 0) _node = null;
     });
     if (!_pageController.hasClients) return;
+    if (context.disableAnimations) {
+      _pageController.jumpToPage(index);
+      return;
+    }
     if (ViewScope.isMobileOf(context)) {
       final fade = _animation == TabAnimation.fade;
       _pageController.animateToPage(
@@ -101,6 +107,19 @@ class _TaildeckShellState extends State<TaildeckShell>
     } else {
       _pageController.jumpToPage(index);
     }
+  }
+
+  /// Esc leaves the terminal and node detail, the two pages the shell opens
+  /// over itself; sheets and dialogs answer Esc on their own routes.
+  void _handleEscape() {
+    if (_sshNode != null) {
+      setState(() {
+        _sshNode = null;
+        _sshSession = null;
+      });
+      return;
+    }
+    if (_node != null) setState(() => _node = null);
   }
 
   void _signOut() {
@@ -143,16 +162,19 @@ class _TaildeckShellState extends State<TaildeckShell>
     }
     final sshNode = _sshNode;
     if (sshNode != null) {
-      return TerminalPage(
-        node: sshNode,
-        user: _sshUser,
-        port: _sshPort,
-        ssh: _sshSession,
-        demo: _sshDemo,
-        onClose: () => setState(() {
-          _sshNode = null;
-          _sshSession = null;
-        }),
+      return CallbackShortcuts(
+        bindings: {const SingleActivator(LogicalKeyboardKey.escape): _handleEscape},
+        child: TerminalPage(
+          node: sshNode,
+          user: _sshUser,
+          port: _sshPort,
+          ssh: _sshSession,
+          demo: _sshDemo,
+          onClose: () => setState(() {
+            _sshNode = null;
+            _sshSession = null;
+          }),
+        ),
       );
     }
     final l10n = AppLocalizations.of(context);
@@ -195,7 +217,13 @@ class _TaildeckShellState extends State<TaildeckShell>
                           inset: dockInset,
                           child: _BodyPadding(
                             isMobile: mobile,
-                            child: _pages(),
+                            child: CallbackShortcuts(
+                              bindings: {
+                                const SingleActivator(LogicalKeyboardKey.escape):
+                                    _handleEscape,
+                              },
+                              child: _pages(),
+                            ),
                           ),
                         ),
                       ),
@@ -247,6 +275,7 @@ class _TaildeckShellState extends State<TaildeckShell>
               ],
             ),
           ),
+          const _StatusLive(),
         ],
       ),
     );
@@ -397,5 +426,53 @@ class _NavigationPadding extends StatelessWidget {
       context: context,
       child: child,
     );
+  }
+}
+
+/// Announces the backend's state and each node's online/offline change through
+/// one throttled live region, so a screen reader hears what the dots show.
+class _StatusLive extends StatefulWidget {
+  const _StatusLive();
+
+  @override
+  State<_StatusLive> createState() => _StatusLiveState();
+}
+
+class _StatusLiveState extends State<_StatusLive> {
+  BackendState? _state;
+  Map<String, bool> _online = const {};
+  String _message = '';
+
+  @override
+  Widget build(BuildContext context) {
+    final backend = BackendScope.of(context);
+    final l10n = AppLocalizations.of(context);
+    final found = <String>[];
+    if (backend.available) {
+      final state = backend.state;
+      if (_state != null && state != _state) {
+        found.add(switch (state) {
+          BackendState.running => l10n.a11yTailnetConnected,
+          BackendState.stopped || BackendState.error => l10n.a11yTailnetOffline,
+          BackendState.starting || BackendState.needsLogin =>
+            l10n.a11yTailnetStarting,
+          BackendState.unavailable => '',
+        });
+      }
+      _state = state;
+      final online = {for (final node in backend.nodes) node.name: node.online};
+      for (final node in online.entries) {
+        final was = _online[node.key];
+        if (was == null || was == node.value) continue;
+        found.add(
+          node.value
+              ? l10n.a11yNodeOnline(node.key)
+              : l10n.a11yNodeOffline(node.key),
+        );
+      }
+      _online = online;
+    }
+    if (found.isNotEmpty) _message = found.where((line) => line.isNotEmpty).join('; ');
+    return LiveRegion(message: _message);
   }
 }
