@@ -9,7 +9,7 @@ import 'dart:typed_data';
 
 import 'bridge_stub.dart' if (dart.library.ffi) 'bridge_impl.dart';
 
-enum BridgeEventKind { state, login, log, sshData, sshClosed }
+enum BridgeEventKind { state, login, log, sshData, sshClosed, herdr }
 
 class BridgeEvent {
   const BridgeEvent(this.kind, this.data);
@@ -33,6 +33,12 @@ class BridgeEvent {
 
   /// Why an `sshClosed` session ended.
   String get reason => data['reason'] as String? ?? '';
+
+  /// herdr signal: `changed` (re-read state) or `closed` (connection lost).
+  String get event => data['event'] as String? ?? '';
+
+  /// Connection a herdr event belongs to; 0 when it carries none.
+  int get herdrId => (data['id'] as num?)?.toInt() ?? 0;
 }
 
 /// One frame of an SSH session: output bytes, or the end with a reason.
@@ -112,6 +118,38 @@ abstract class NativeBridge {
 
   /// Drops the trusted host keys stored in [dir].
   void forgetHostKeys(String dir);
+
+  /// Attaches to herdr on [host] over the tailnet. Errors that start with
+  /// `HERDR_NOT_INSTALLED` / `HERDR_NOT_RUNNING` say which part is missing.
+  ///
+  /// Dialing blocks, so these calls run off the UI isolate.
+  Future<Map<String, dynamic>> herdrConnect({
+    required String host,
+    int port = 22,
+    String user = 'root',
+    String password = '',
+    String keyPath = '',
+    String passphrase = '',
+    String certPath = '',
+  });
+
+  /// One herdr socket request; [paramsJSON] defaults to `{}`.
+  Future<String> herdrCall(String method, [String paramsJSON = '{}']);
+
+  /// The agent transcript in a pane as herdr JSON (transcript or screen text).
+  Future<String> herdrTranscript(String pane);
+
+  /// Reads further back next time; false when the whole session is shown.
+  Future<bool> herdrTranscriptMore(String pane);
+
+  /// Restarts the agent in [pane] in the same session, optionally sending a
+  /// prompt once it is ready. Returns the new agent name.
+  Future<String> herdrRestart(String pane, {String thenPrompt = ''});
+
+  /// Models and reasoning levels reported by the agent in [pane].
+  Future<String> herdrModels(String kind, String pane);
+
+  Future<void> herdrClose();
 }
 
 /// Null on web or when the shared library is missing; callers fall back to

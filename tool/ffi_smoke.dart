@@ -79,6 +79,9 @@ Future<void> main(List<String> args) async {
   final sshClose = lib.lookupFunction<_IntArgFnNative, _IntArgFn>('td_ssh_close');
   final keyEnsure = lib.lookupFunction<_TwoStrFnNative, _TwoStrFn>('td_key_ensure');
   final forgetHostKeys = lib.lookupFunction<_StrArgFn, _StrArgFn>('td_forget_host_keys');
+  final herdrConnect = lib.lookupFunction<_StrArgFn, _StrArgFn>('td_herdr_connect');
+  final herdrCall = lib.lookupFunction<_TwoStrFnNative, _TwoStrFn>('td_herdr_call');
+  final herdrClose = lib.lookupFunction<_StrFn, _StrFn>('td_herdr_close');
 
   String call(Pointer<Int8> Function() fn) {
     final p = fn();
@@ -136,6 +139,34 @@ Future<void> main(List<String> args) async {
   out.add('probe without engine: ${callTwo(probe, '100.64.0.1', '80,443')}');
 
   // Probing before start has no node to dial through: a clean envelope.
+  // herdr before the node exists: a clean envelope, never a crash or a hang.
+  final beforeHerdr = decode(
+    callArg(herdrConnect, '{"host":"devbox","user":"root"}'),
+  );
+  check(beforeHerdr['ok'] == false, 'td_herdr_connect without a node fails');
+  check(
+    (beforeHerdr['error'] as String? ?? '').contains('not running'),
+    'td_herdr_connect error names the missing node: ${beforeHerdr['error']}',
+  );
+  check(
+    decode(callArg(herdrConnect, ''))['ok'] == false,
+    'td_herdr_connect without a config fails',
+  );
+  check(
+    decode(callArg(herdrConnect, '{"user":"root"}'))['ok'] == false,
+    'td_herdr_connect without a host fails',
+  );
+  final noHerdrCall = decode(callTwo(herdrCall, 'agent.list', '{}'));
+  check(noHerdrCall['ok'] == false, 'td_herdr_call without a connection fails');
+  check(
+    (noHerdrCall['error'] as String? ?? '').contains('not connected'),
+    'td_herdr_call explains the missing connection: ${noHerdrCall['error']}',
+  );
+  check(
+    decode(call(herdrClose))['ok'] == true,
+    'td_herdr_close without a connection is a no-op',
+  );
+
   final beforeProbe = decode(callTwo(probe, '100.64.0.1', '80,443'));
   check(beforeProbe['ok'] == false, 'td_probe without a node fails');
   check(
@@ -219,6 +250,23 @@ Future<void> main(List<String> args) async {
     'ssh_dial explains the state: $unreadyError',
   );
   check(!events.any((e) => e['kind'] == 4 || e['kind'] == 5), 'no SSH session events were emitted');
+
+  // The node is up but not signed in: herdr must say so instead of dialing.
+  final herdrUnready = decode(
+    callArg(herdrConnect, '{"host":"devbox","user":"root"}'),
+  );
+  check(
+    herdrUnready['ok'] == false,
+    'td_herdr_connect with an unauthenticated node fails',
+  );
+  check(
+    (herdrUnready['error'] as String? ?? '').contains('not logged in'),
+    'td_herdr_connect explains the state: ${herdrUnready['error']}',
+  );
+  check(
+    !events.any((e) => e['kind'] == 6),
+    'no herdr events without a connection',
+  );
 
   out.add('stop: ${call(stop)}');
 

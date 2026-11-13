@@ -37,8 +37,11 @@ prism_ui's surfaces and stroke-icon engine:
 - **Path badge** — `Direct` (bolt) vs `Relay · tok` as a single compact label instead of a bare dot
 - **Node detail** — action pills (SSH / Web / Ping), an Agents summary card, then one grouped details card
 - **Services** — grouped by node with the node's own path state in the section header
-- **Agents** — sections by project, state pills (Working / Idle / Done), task and `project · window` meta;
-  "New agent" opens a sheet with harness and project selects plus a task field, and the list updates in place
+- **Agents (herdr)** — on Android/Linux the list, states and transcripts come from a real herdr server on a node,
+  over the same SSH connection as the terminal: sections by workspace, state pills (Working / Blocked / Idle / Done),
+  the pane's title and `kind · pane`, a connection card that explains `HERDR_NOT_INSTALLED` / `HERDR_NOT_RUNNING`,
+  and a chat page with the agent's transcript, a prompt box, restart and `/model` switching. The web preview keeps
+  the demo list, and "New agent" really starts an agent (`workspace.create` + `agent.start`) when connected
 - **Navigation matches FlClash** — same prism_ui shell: `PageView` + `KeepScope` (pages keep their scroll state and
   slide on switch), sidebar inside `AnimatedVisibility.sidebar` on a chrome surface with a divider, floating
   `NavigationDock` in `BarItemPresence.held` + `AnimatedVisibility.bottomNavigation`, and a docked `NavigationBar`
@@ -74,7 +77,8 @@ Preview params: `/?tab=1` (services), `/?tab=2` (agents), `/?tab=3` (settings), 
 `/?theme=light`, `/?nav=docked` (docked bottom bar instead of the floating dock), `/?anim=fade`,
 `/?login=1` (sign-in), `/?login=waiting` (device approval pending), `/?preview=1` (signed-in shell without a
 node), `/?ssh=devbox` (terminal), `/?lang=zh`,
-`/?ssh=demo` (native libghostty-vt demo session). The desktop bundle has no URL, so pass the same parameters as
+`/?ssh=demo` (native libghostty-vt demo session), `/?chat=w1:p1` (a pane's chat on the native build; without a
+herdr connection it shows the real error state). The desktop bundle has no URL, so pass the same parameters as
 `TAILDECK_QUERY=ssh=demo`.
 
 ## Run
@@ -84,6 +88,23 @@ source tool/env.sh          # China mirrors + Flutter 3.47.9
 flutter pub get
 flutter run -d web-server --web-port 8099
 ```
+
+## herdr agents
+
+The Agents tab talks to [herdr](https://github.com/markbang/herdr) on a tailnet node. It logs in with the node's
+SSH credentials (Tailscale SSH, a key from Settings, or a password), attaches to the herdr socket and re-reads
+`agent.list` whenever herdr reports a change. The connection target is remembered in `config.json`; the password
+never is.
+
+```bash
+tool/build_native.sh          # Go ABI: td_herdr_connect / _call / _transcript / _restart / _models / _close
+dart run tool/ffi_smoke.dart  # exports and clean error envelopes, no network
+```
+
+Not built yet, compared with the Kotlin app: per-node SSH profiles (this build keeps one herdr target), notification
+actions (allow/deny, reply), prompt queues while an agent works, subagent transcripts, image attachments, and
+slash-command completion. A live tailnet and a running herdr server were not available here, so real panes and
+streaming are unverified.
 
 ## Native terminal
 

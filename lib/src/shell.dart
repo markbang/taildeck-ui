@@ -6,10 +6,12 @@ import 'package:prism_ui/prism_ui.dart';
 
 import 'backend.dart';
 import 'data.dart';
+import 'herdr.dart';
 import 'preview_env.dart';
 import 'glyphs.dart';
 import 'l10n.dart';
 import 'native/ssh.dart';
+import 'pages/agent_chat.dart';
 import 'pages/agents.dart';
 import 'pages/node_detail.dart';
 import 'pages/nodes.dart';
@@ -121,6 +123,22 @@ class _TaildeckShellState extends State<TaildeckShell>
     if (!signedIn) {
       return LoginPage(
         onSignedIn: () => setState(() => _previewSignedIn = true),
+      );
+    }
+    // `?chat=<pane>`: open a pane's chat on the preview build. Without a
+    // herdr connection the page shows its real error state.
+    final previewChat = previewParam('chat');
+    final herdr = backend.herdr;
+    if (previewChat != null && herdr != null) {
+      return AgentChatPage(
+        agent: HerdrAgent(
+          paneId: previewChat,
+          kind: previewParam('kind') ?? 'claude',
+          label: previewChat,
+          status: HerdrStatus.unknown,
+          workspace: '',
+        ),
+        herdr: herdr,
       );
     }
     final sshNode = _sshNode;

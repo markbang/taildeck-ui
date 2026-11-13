@@ -97,6 +97,7 @@ func td_start(configJSON *C.char) *C.char {
 
 //export td_stop
 func td_stop() *C.char {
+	closeHerdr()
 	tsbridge.Stop()
 	stopTail()
 	return ok(nil)
@@ -104,6 +105,7 @@ func td_stop() *C.char {
 
 //export td_logout
 func td_logout() *C.char {
+	closeHerdr()
 	if err := tsbridge.Logout(); err != nil {
 		return fail(err)
 	}
