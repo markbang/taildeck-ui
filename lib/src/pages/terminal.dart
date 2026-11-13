@@ -115,9 +115,10 @@ class _TerminalPageState extends State<TerminalPage> {
 
   @override
   Widget build(BuildContext context) {
-    final mono = const TextStyle(
+    final wide = MediaQuery.sizeOf(context).width > 900;
+    final mono = TextStyle(
       fontFamily: 'DejaVuSansMono',
-      fontSize: 13.5,
+      fontSize: wide ? 14.5 : 13.5,
       height: 1.6,
       color: _fg,
       decoration: TextDecoration.none,
@@ -141,7 +142,7 @@ class _TerminalPageState extends State<TerminalPage> {
                 Expanded(
                   child: ListView.builder(
                     controller: _scroll,
-                    padding: const EdgeInsets.fromLTRB(18, 14, 18, 10),
+                    padding: EdgeInsets.fromLTRB(wide ? 24 : 18, 14, wide ? 24 : 18, 10),
                     itemCount: _lines.length,
                     itemBuilder: (context, index) {
                       final line = _lines[index];
