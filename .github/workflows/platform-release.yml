@@ -1,0 +1,63 @@
+name: platform-release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: platform-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  package:
+    name: ${{ matrix.name }} (unsigned)
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: windows-x64
+            os: windows-latest
+            artifact: taildeck-windows-x64
+            zip: build/taildeck-windows-x64.zip
+          - name: macos
+            os: macos-latest
+            artifact: taildeck-macos
+            zip: build/taildeck-macos.zip
+          - name: ios
+            os: macos-latest
+            artifact: taildeck-ios
+            zip: build/taildeck-ios.zip
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.9
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Build and zip (windows)
+        if: matrix.name == 'windows-x64'
+        shell: pwsh
+        run: |
+          flutter build windows --release
+          Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath build/taildeck-windows-x64.zip
+      - name: Build and zip (macos)
+        if: matrix.name == 'macos'
+        run: |
+          flutter build macos --release
+          ditto -c -k --sequesterRsrc --keepParent build/macos/Build/Products/Release/Taildeck.app build/taildeck-macos.zip
+      - name: Build and zip (ios)
+        if: matrix.name == 'ios'
+        run: |
+          flutter build ios --release --no-codesign
+          ditto -c -k --sequesterRsrc --keepParent build/ios/iphoneos/Runner.app build/taildeck-ios.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.zip }}
+          if-no-files-found: error
