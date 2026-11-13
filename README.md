@@ -1,5 +1,7 @@
 # Taildeck · Flutter + prism_ui redesign
 
+**Live preview:** https://markbang.github.io/taildeck-ui/
+
 A re-design of [Taildeck](https://github.com/markbang/taildeck)'s Android (Jetpack Compose) UI in Flutter,
 built on [prism_ui](https://github.com/chen08209/prism_ui) — the iOS-style design system behind FlClash.
 
