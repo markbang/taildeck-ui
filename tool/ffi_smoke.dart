@@ -68,12 +68,13 @@ Future<void> main(List<String> args) async {
     }
   }
 
-  // Kind only: the event JSON is owned by Go and valid just during the call,
-  // so a listener would read it after it is gone. The Flutter plugin needs a C
-  // shim that copies the string before handing it to Dart.
-  final events = <int>[];
+  // Events arrive on Go threads, so the listener posts them to this isolate;
+  // the payload stays valid until we free it, which is why Go hands it over.
+  final events = <Map<String, dynamic>>[];
   final cb = NativeCallable<_EventFn>.listener((int kind, Pointer<Int8> json, int ctx) {
-    events.add(kind);
+    final text = readC(json);
+    free(json);
+    events.add({'kind': kind, ...jsonDecode(text) as Map<String, dynamic>});
   });
   setCb(cb.nativeFunction, 0);
 
@@ -97,7 +98,9 @@ Future<void> main(List<String> args) async {
   out.add('start: $started');
   out.add('gateway port after start: ${port()}');
   await Future<void>.delayed(const Duration(milliseconds: 800));
-  out.add('event kinds: $events');
+  out.add('events: ${events.length}');
+  out.add('first event: ${events.isEmpty ? '-' : jsonEncode(events.first)}');
+  out.add('event kinds: ${events.map((e) => e['kind']).toSet().toList()..sort()}');
   final st = jsonDecode(call(status)) as Map<String, dynamic>;
   out.add('status state: ${st['state']} (ok=${st['ok']})');
   out.add('stop: ${call(stop)}');

@@ -216,8 +216,9 @@ func hostHooksReady() bool {
 	return hostHooks.ifaces != nil && hostHooks.def != nil && hostHooks.lookup != nil
 }
 
-// emit sends an event to the host callback. json is copied for the call; the
-// host must not retain the pointer.
+// emit sends an event to the host callback. json is malloc'd and the host
+// takes ownership: it must release it with td_free, which keeps the string
+// valid past the callback (Dart reads it on another thread).
 func emit(kind int, v any) {
 	cbMu.Lock()
 	cb, ctx := cbFn, cbCtx
@@ -229,9 +230,7 @@ func emit(kind int, v any) {
 	if err != nil {
 		return
 	}
-	p := C.CString(string(b))
-	C.td_emit(cb, C.int(kind), p, ctx)
-	C.free(unsafe.Pointer(p))
+	C.td_emit(cb, C.int(kind), C.CString(string(b)), ctx)
 }
 
 type listener struct{}

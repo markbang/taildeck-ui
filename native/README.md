@@ -37,8 +37,8 @@ with Xcode, so it cannot be produced from Linux.
 
 ## Bridge ABI
 
-`td_free` frees every `char*` the library returns. All of them are JSON:
-`{"ok":true,...}` or `{"ok":false,"error":"..."}`.
+`td_free` frees every `char*` the library returns or hands to the event
+callback. All of them are JSON: `{"ok":true,...}` or `{"ok":false,"error":"..."}`.
 
 | Function | Result fields |
 |---|---|
@@ -57,7 +57,17 @@ with Xcode, so it cannot be produced from Linux.
 
 Events: `td_set_event_cb(cb, ctx)` with `void cb(int kind, char* json, void* ctx)`,
 kind `1` state `{"state","authUrl"}`, `2` login URL `{"url"}`, `3` log line
-`{"line"}`. `json` is owned by Go and valid only during the call.
+`{"line"}`.
+
+Callback strings are `malloc`'d and owned by the host: keep them as long as
+needed and release each one with `td_free` (they are not freed by Go, so
+Dart's async listener can read them safely).
+
+Callbacks arrive on Go threads, never the Flutter UI thread, and they keep
+arriving while the callback runs. On Dart that means a
+`NativeCallable.listener` (it posts to the isolate's event loop), never
+`NativeCallable.isolateLocal`, and every payload is copied into Dart types and
+then `td_free`d.
 
 ## Build the terminal
 
