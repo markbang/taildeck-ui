@@ -98,10 +98,20 @@ class AppLocalizations implements UiLocalizations {
   String get connect => _zh ? '连接' : 'Connect';
   String get controlServer => _zh ? '控制服务器' : 'Control server';
   String get waitingTitle => _zh ? '等待授权' : 'Waiting for approval';
+  String get waitingForUrl => _zh
+      ? '等待控制服务器返回登录地址…'
+      : 'Waiting for the login URL from the control server…';
   String get waitingBody => _zh
       ? '浏览器标签页应该已经打开。完成登录后回到这里，本页会自动更新。'
       : 'A browser tab should have opened. Sign in, then come back — this screen updates on its own.';
   String get cancel => _zh ? '取消' : 'Cancel';
+  String get startingNode => _zh ? '正在启动节点…' : 'Starting the node…';
+  String get backendUnavailable => _zh
+      ? '原生后端不可用：未找到 libtaildeck_bridge.so，正在显示演示数据。'
+      : 'Native backend unavailable: libtaildeck_bridge.so not found, showing demo data.';
+  String get signInFailed => _zh ? '登录失败' : 'Sign-in failed';
+  String get pinging => _zh ? '正在 Ping…' : 'Pinging…';
+  String pingFailed(String error) => _zh ? 'Ping 失败：$error' : 'Ping failed: $error';
   String get worksWith => _zh
       ? '支持 Tailscale 与 Headscale 控制服务器。'
       : 'Works with Tailscale and Headscale control servers.';

@@ -1,7 +1,9 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/widgets.dart';
 import 'package:prism_ui/icons/icons.dart';
 import 'package:prism_ui/prism_ui.dart';
 
+import '../backend.dart';
 import '../data.dart';
 import '../l10n.dart';
 import '../glyphs.dart';
@@ -20,27 +22,35 @@ class NodesPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = context.colorScheme;
-    final online = peers.where((node) => node.online).toList();
+    final backend = BackendScope.of(context);
+    final live = backend.available && backend.self != null;
+    final self = live ? backend.self! : selfNode;
+    final nodes = live ? backend.peers : peers;
+    final online = nodes.where((node) => node.online).toList();
     return PageBody(
-      title: tailnet,
+      title: live ? backend.tailnet : tailnet,
       trailing: IconButton(
         onPressed: onToggleTheme,
         icon: const GlyphIcon(Glyphs2.sun),
         tooltip: AppLocalizations.of(context).theme,
       ),
       children: [
+        if (!backend.available && !kIsWeb) ...[
+          InlineNotice(text: AppLocalizations.of(context).backendUnavailable),
+          const SizedBox(height: 14),
+        ],
         SearchField(
           hintText: AppLocalizations.of(context).searchNodes,
           fill: SurfaceLevel.card.colorOf(scheme),
           onChanged: (_) {},
         ),
         const SizedBox(height: 14),
-        _SelfCard(node: selfNode, peers: online),
+        _SelfCard(node: self, peers: online, onOpenNode: onOpenNode),
         const SizedBox(height: 14),
         GroupCard(
           dividerInset: 60,
           children: [
-            for (final node in peers)
+            for (final node in nodes)
               PressRegion(
                 onTap: () => onOpenNode(node),
                 child: _PeerRow(node: node),
@@ -53,10 +63,15 @@ class NodesPage extends StatelessWidget {
 }
 
 class _SelfCard extends StatelessWidget {
-  const _SelfCard({required this.node, required this.peers});
+  const _SelfCard({
+    required this.node,
+    required this.peers,
+    required this.onOpenNode,
+  });
 
   final NodeItem node;
   final List<NodeItem> peers;
+  final ValueChanged<NodeItem> onOpenNode;
 
   @override
   Widget build(BuildContext context) {
@@ -100,7 +115,7 @@ class _SelfCard extends StatelessWidget {
               children: [
                 for (var i = 0; i < peers.length; i++)
                   PressRegion(
-                    onTap: () {},
+                    onTap: () => onOpenNode(peers[i]),
                     child: SizedBox(
                       height: 38,
                       child: Row(
@@ -162,7 +177,9 @@ class _PeerRow extends StatelessWidget {
                 ),
                 const SizedBox(height: 1),
                 Text(
-                  node.online ? node.ip : '${node.ip} · Nov 5, 2026',
+                  node.online || node.lastSeen.isEmpty
+                      ? node.ip
+                      : '${node.ip} · ${node.lastSeen}',
                   style: context.listCaptionStyle,
                 ),
               ],

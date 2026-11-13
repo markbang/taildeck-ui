@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/widgets.dart';
 import 'package:prism_ui/icons/icons.dart';
 import 'package:prism_ui/prism_ui.dart';
 
+import 'backend.dart';
 import 'data.dart';
 import 'glyphs.dart';
 import 'l10n.dart';
@@ -36,7 +39,8 @@ class _TaildeckShellState extends State<TaildeckShell>
   TabAnimation _animation =
       Uri.base.queryParameters['anim'] == 'fade' ? TabAnimation.fade : TabAnimation.slide;
   bool _sidebarExpanded = true;
-  bool _signedIn = switch (Uri.base.queryParameters['login']) {
+  // Mock/preview sign-in; the native backend reports its own state.
+  bool _previewSignedIn = switch (Uri.base.queryParameters['login']) {
     null || '0' => true,
     _ => false,
   };
@@ -88,13 +92,24 @@ class _TaildeckShellState extends State<TaildeckShell>
     }
   }
 
+  void _signOut() {
+    unawaited(BackendScope.of(context).signOut());
+    setState(() {
+      _previewSignedIn = false;
+      _tab = 0;
+      _node = null;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final scheme = context.colorScheme;
     final mobile = ViewScope.isMobileOf(context);
-    if (!_signedIn) {
+    final backend = BackendScope.of(context);
+    final signedIn = backend.available ? backend.signedIn : _previewSignedIn;
+    if (!signedIn) {
       return LoginPage(
-        onSignedIn: () => setState(() => _signedIn = true),
+        onSignedIn: () => setState(() => _previewSignedIn = true),
       );
     }
     final sshNode = _sshNode;
@@ -241,11 +256,7 @@ class _TaildeckShellState extends State<TaildeckShell>
               setState(() => _floating = value),
           tabAnimation: _animation,
           onTabAnimationChanged: (value) => setState(() => _animation = value),
-          onSignOut: () => setState(() {
-            _signedIn = false;
-            _tab = 0;
-            _node = null;
-          }),
+          onSignOut: _signOut,
           onToggleTheme: widget.theme.toggle,
         );
       default:

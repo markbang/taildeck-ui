@@ -133,6 +133,30 @@ class GroupCard extends StatelessWidget {
   }
 }
 
+/// A tinted strip for inline errors and notices.
+class InlineNotice extends StatelessWidget {
+  const InlineNotice({super.key, required this.text, this.tint});
+
+  final String text;
+  final Color? tint;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = tint ?? context.colorScheme.error;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: ShapeDecoration(
+        color: color.withValues(alpha: 0.12),
+        shape: AppShape.all(AppCorner.sm),
+      ),
+      child: Text(
+        text,
+        style: AppTextStyle.footnote.of(context).copyWith(color: color),
+      ),
+    );
+  }
+}
+
 class SectionLabel extends StatelessWidget {
   const SectionLabel(this.text, {super.key, this.trailing});
 

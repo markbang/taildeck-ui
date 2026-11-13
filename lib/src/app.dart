@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/widgets.dart';
 import 'package:prism_ui/prism_ui.dart';
 
+import 'backend.dart';
 import 'l10n.dart';
 import 'shell.dart';
 import 'theme.dart';
@@ -14,9 +17,17 @@ class TaildeckApp extends StatefulWidget {
 
 class _TaildeckAppState extends State<TaildeckApp> {
   final theme = TaildeckTheme();
+  final backend = TaildeckBackend();
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(backend.init());
+  }
 
   @override
   void dispose() {
+    backend.dispose();
     theme.dispose();
     super.dispose();
   }
@@ -42,7 +53,10 @@ class _TaildeckAppState extends State<TaildeckApp> {
             child: child!,
           );
         },
-        home: TaildeckShell(theme: theme),
+        home: BackendScope(
+          backend: backend,
+          child: TaildeckShell(theme: theme),
+        ),
       ),
     );
   }
