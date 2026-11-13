@@ -23,7 +23,8 @@ prism_ui's surfaces and stroke-icon engine:
 - **Path badge** — `Direct` (bolt) vs `Relay · tok` as a single compact label instead of a bare dot
 - **Node detail** — action pills (SSH / Web / Ping), an Agents summary card, then one grouped details card
 - **Services** — grouped by node with the node's own path state in the section header
-- **Agents** — sections by project, state pills (Working / Idle / Done), task and `project · window` meta
+- **Agents** — sections by project, state pills (Working / Idle / Done), task and `project · window` meta;
+  "New agent" opens a sheet with harness and project selects plus a task field, and the list updates in place
 - **Navigation matches FlClash** — same prism_ui shell: `PageView` + `KeepScope` (pages keep their scroll state and
   slide on switch), sidebar inside `AnimatedVisibility.sidebar` on a chrome surface with a divider, floating
   `NavigationDock` in `BarItemPresence.held` + `AnimatedVisibility.bottomNavigation`, and a docked `NavigationBar`

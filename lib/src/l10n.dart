@@ -59,6 +59,11 @@ class AppLocalizations implements UiLocalizations {
   String get idle => _zh ? '空闲' : 'Idle';
   String get done => _zh ? '已完成' : 'Done';
   String get newAgent => _zh ? '新建代理' : 'New agent';
+  String get harness => _zh ? '运行器' : 'Harness';
+  String get project => _zh ? '项目' : 'Project';
+  String get task => _zh ? '任务' : 'Task';
+  String get taskHint => _zh ? '可选，一句话描述' : 'Optional, one line';
+  String get create => _zh ? '创建' : 'Create';
 
   String get appearance => _zh ? '外观' : 'Appearance';
   String get theme => _zh ? '主题' : 'Theme';

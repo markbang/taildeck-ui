@@ -5,10 +5,41 @@ import '../data.dart';
 import '../l10n.dart';
 import '../glyphs.dart';
 import '../widgets/foundation.dart';
+import 'new_agent_sheet.dart';
 import 'package:prism_ui/icons/icons.dart';
 
-class AgentsPage extends StatelessWidget {
+class AgentsPage extends StatefulWidget {
   const AgentsPage({super.key});
+
+  @override
+  State<AgentsPage> createState() => _AgentsPageState();
+}
+
+class _AgentsPageState extends State<AgentsPage> {
+  late final List<({String section, List<AgentItem> items})> _groups = [
+    for (final group in agents)
+      (section: group.section, items: [...group.items]),
+  ];
+
+  Future<void> _addAgent() async {
+    final choice = await showNewAgentSheet(context);
+    if (choice == null || !mounted) return;
+    setState(() {
+      final index = _groups.indexWhere((g) => g.section == choice.project);
+      final item = AgentItem(
+        name: choice.harness,
+        state: AgentState.idle,
+        task: choice.task,
+        project: choice.project,
+        window: 'w1:p1',
+      );
+      if (index == -1) {
+        _groups.add((section: choice.project, items: [item]));
+      } else {
+        _groups[index].items.add(item);
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -16,12 +47,12 @@ class AgentsPage extends StatelessWidget {
       title: AppLocalizations.of(context).agentsTitle,
       subtitle: 'herdr · devbox',
       trailing: IconButton(
-        onPressed: () {},
+        onPressed: _addAgent,
         icon: const GlyphIcon(Glyphs2.plus),
         tooltip: AppLocalizations.of(context).newAgent,
       ),
       children: [
-        for (final group in agents) ...[
+        for (final group in _groups) ...[
           SectionLabel(group.section == 'Needs you'
               ? AppLocalizations.of(context).needsYou
               : group.section),
