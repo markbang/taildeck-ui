@@ -1,0 +1,17 @@
+Taildeck UI redesign
+Copyright (C) 2026 markbang
+
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by the Free Software
+Foundation, either version 3 of the License, or (at your option) any later
+version. It is licensed GPL-3.0 because it links prism_ui.
+
+Third-party code:
+
+- prism_ui (https://github.com/chen08209/prism_ui), GPL-3.0.
+  Vendored under third_party/prism_ui at 0.1.2 with one patch: the web build of
+  SceneBuilder.pushClipRSuperellipse requires an explicit clipBehavior.
+
+- Taildeck (https://github.com/markbang/taildeck), MIT.
+  This repository is a UI redesign of that app; the Android implementation,
+  tsnet bridge, SSH terminal and gateways are not included.

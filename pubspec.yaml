@@ -1,0 +1,19 @@
+name: taildeck_ui
+description: "Taildeck redesign, built with prism_ui."
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.13.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  prism_ui:
+    path: third_party/prism_ui
+
+dev_dependencies:
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: false
