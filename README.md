@@ -31,6 +31,8 @@ prism_ui's surfaces and stroke-icon engine:
   cross-fades in place, using prism_ui's `fadeTabDuration` / `fadeTabCurve`)
 - **Login** — browser sign-in with a waiting state, auth key entry, optional control server field
 - **SSH terminal** — full-bleed mono session with a working input line (`ls`, `uname`, `tailscale`, `docker ps` … are simulated), bundled DejaVu Sans Mono
+- **Bilingual** — English and 中文, switchable in Settings (or `?lang=zh`); every screen, plus prism_ui's own
+  strings through `UiLocalizations`
 - **Self-contained fonts** — Roboto, DejaVu Sans Mono and a Noto Sans CJK subset (SC/TC/JP/KR) ship with the app, and the build uses `--no-web-resources-cdn`, so nothing is fetched from `fonts.gstatic.com` / `www.gstatic.com` at runtime (that CDN is unreliable from mainland China)
 - **Responsive** — sidebar above 720 dp, glass dock below, both from prism_ui
 
@@ -50,7 +52,7 @@ lib/src/
 
 Preview params: `/?tab=1` (services), `/?tab=2` (agents), `/?tab=3` (settings), `/?node=devbox` (node detail),
 `/?theme=light`, `/?nav=docked` (docked bottom bar instead of the floating dock), `/?anim=fade`,
-`/?login=1` (sign-in), `/?login=waiting` (device approval pending), `/?ssh=devbox` (terminal).
+`/?login=1` (sign-in), `/?login=waiting` (device approval pending), `/?ssh=devbox` (terminal), `/?lang=zh`.
 
 ## Run
 

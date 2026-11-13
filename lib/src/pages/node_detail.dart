@@ -3,6 +3,7 @@ import 'package:prism_ui/icons/icons.dart';
 import 'package:prism_ui/prism_ui.dart';
 
 import '../data.dart';
+import '../l10n.dart';
 import '../glyphs.dart';
 import '../widgets/foundation.dart';
 
@@ -23,6 +24,7 @@ class NodeDetailPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = context.colorScheme;
+    final l10n = AppLocalizations.of(context);
     final mono = AppTextStyle.body.of(context).copyWith(
       fontFamily: 'DejaVuSansMono',
       fontSize: 14.5,
@@ -30,13 +32,13 @@ class NodeDetailPage extends StatelessWidget {
     );
     return PageBody(
       title: node.name,
-      subtitle: '${node.os} · ${node.online ? 'Online' : 'Offline'}',
+      subtitle: '${node.os} · ${node.online ? l10n.online : l10n.offline}',
       leading: Padding(
         padding: const EdgeInsets.only(top: 6, right: 6),
         child: IconButton(
           onPressed: onBack,
           icon: const GlyphIcon(Glyphs.arrowBack),
-          tooltip: 'Back',
+          tooltip: l10n.back,
         ),
       ),
       children: [
@@ -45,13 +47,13 @@ class NodeDetailPage extends StatelessWidget {
           runSpacing: 8,
           children: [
             ActionPill(
-              label: 'SSH',
+              label: l10n.ssh,
               glyph: Glyphs2.terminal,
               selected: true,
               onPressed: onOpenSsh,
             ),
-            ActionPill(label: 'Web', glyph: Glyphs2.globe, onPressed: () {}),
-            ActionPill(label: 'Ping', glyph: Glyphs2.ping, onPressed: () {}),
+            ActionPill(label: l10n.web, glyph: Glyphs2.globe, onPressed: () {}),
+            ActionPill(label: l10n.ping, glyph: Glyphs2.ping, onPressed: () {}),
           ],
         ),
         const SizedBox(height: 14),
@@ -81,11 +83,11 @@ class NodeDetailPage extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Agents',
+                          l10n.agentsTitle,
                           style: AppTextStyle.body.of(context, emphasized: true),
                         ),
                         const SizedBox(height: 2),
-                        Text('4 agents · 2 working', style: context.listCaptionStyle),
+                        Text(l10n.agentsSummary(4, 2), style: context.listCaptionStyle),
                       ],
                     ),
                   ),
@@ -100,12 +102,12 @@ class NodeDetailPage extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 22),
-        SectionLabel('Details'),
+        SectionLabel(l10n.details),
         GroupCard(
           dividerInset: 0,
           children: [
             _DetailRow(
-              label: 'Addresses',
+              label: l10n.addresses,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -117,16 +119,16 @@ class NodeDetailPage extends StatelessWidget {
                 ],
               ),
             ),
-            _DetailRow(label: 'Owner', child: Text(node.owner, style: context.listTitleStyle)),
+            _DetailRow(label: l10n.owner, child: Text(node.owner, style: context.listTitleStyle)),
             _DetailRow(
-              label: 'Connection',
+              label: l10n.connection,
               child: Padding(
                 padding: const EdgeInsets.only(top: 2),
                 child: PathBadge(node: node),
               ),
             ),
             _DetailRow(
-              label: 'Tags',
+              label: l10n.tags,
               child: Wrap(
                 spacing: 6,
                 runSpacing: 6,
@@ -136,8 +138,8 @@ class NodeDetailPage extends StatelessWidget {
                 ],
               ),
             ),
-            _DetailRow(label: 'Key expiry', child: Text(node.expiry, style: context.listTitleStyle)),
-            _DetailRow(label: 'Traffic', child: TrafficLabel(node: node)),
+            _DetailRow(label: l10n.keyExpiry, child: Text(node.expiry, style: context.listTitleStyle)),
+            _DetailRow(label: l10n.traffic, child: TrafficLabel(node: node)),
           ],
         ),
       ],

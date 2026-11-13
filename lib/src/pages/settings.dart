@@ -3,6 +3,7 @@ import 'package:prism_ui/icons/icons.dart';
 import 'package:prism_ui/prism_ui.dart';
 
 import '../glyphs.dart';
+import '../l10n.dart';
 import '../shell.dart';
 import '../theme.dart';
 import '../widgets/foundation.dart';
@@ -29,10 +30,11 @@ class SettingsPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return PageBody(
-      title: 'Settings',
+      title: l10n.tabSettings,
       children: [
-        SectionLabel('Appearance'),
+        SectionLabel(l10n.appearance),
         GroupCard(
           dividerInset: 16,
           children: [
@@ -41,16 +43,38 @@ class SettingsPage extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Theme', style: context.listTitleStyle),
+                  Text(l10n.theme, style: context.listTitleStyle),
                   const SizedBox(height: 10),
                   SegmentedControl<ThemeMode>(
-                    segments: const [
-                      (ThemeMode.system, 'System'),
-                      (ThemeMode.light, 'Light'),
-                      (ThemeMode.dark, 'Dark'),
+                    segments: [
+                      (ThemeMode.system, l10n.system),
+                      (ThemeMode.light, l10n.light),
+                      (ThemeMode.dark, l10n.dark),
                     ],
                     value: theme.mode,
                     onChanged: (value) => theme.setMode(value),
+                  ),
+                  const SizedBox(height: 18),
+                  Text(l10n.language, style: context.listTitleStyle),
+                  const SizedBox(height: 10),
+                  SegmentedControl<String>(
+                    segments: [
+                      ('system', l10n.system),
+                      ('en', l10n.english),
+                      ('zh', l10n.chinese),
+                    ],
+                    value: switch (theme.locale?.languageCode) {
+                      'en' => 'en',
+                      'zh' => 'zh',
+                      _ => 'system',
+                    },
+                    onChanged: (value) => theme.setLocale(
+                      switch (value) {
+                        'en' => const Locale('en'),
+                        'zh' => const Locale('zh'),
+                        _ => null,
+                      },
+                    ),
                   ),
                 ],
               ),
@@ -58,7 +82,7 @@ class SettingsPage extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 20),
-        SectionLabel('Navigation'),
+        SectionLabel(l10n.navigation),
         GroupCard(
           dividerInset: 16,
           children: [
@@ -67,37 +91,35 @@ class SettingsPage extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Bottom bar', style: context.listTitleStyle),
+                  Text(l10n.bottomBar, style: context.listTitleStyle),
                   const SizedBox(height: 2),
                   Text(
-                    floatingNavigation
-                        ? 'Floating dock over the content'
-                        : 'Docked bar under the content',
+                    floatingNavigation ? l10n.floatingHint : l10n.dockedHint,
                     style: context.listCaptionStyle,
                   ),
                   const SizedBox(height: 10),
                   SegmentedControl<bool>(
-                    segments: const [
-                      (true, 'Floating'),
-                      (false, 'Docked'),
+                    segments: [
+                      (true, l10n.floating),
+                      (false, l10n.docked),
                     ],
                     value: floatingNavigation,
                     onChanged: onFloatingNavigationChanged,
                   ),
                   const SizedBox(height: 18),
-                  Text('Tab animation', style: context.listTitleStyle),
+                  Text(l10n.tabAnimation, style: context.listTitleStyle),
                   const SizedBox(height: 2),
                   Text(
                     tabAnimation == TabAnimation.fade
-                        ? 'Cross-fade in place'
-                        : 'Slide between pages',
+                        ? l10n.fadeHint
+                        : l10n.slideHint,
                     style: context.listCaptionStyle,
                   ),
                   const SizedBox(height: 10),
                   SegmentedControl<TabAnimation>(
-                    segments: const [
-                      (TabAnimation.slide, 'Slide'),
-                      (TabAnimation.fade, 'Fade'),
+                    segments: [
+                      (TabAnimation.slide, l10n.slide),
+                      (TabAnimation.fade, l10n.fade),
                     ],
                     value: tabAnimation,
                     onChanged: onTabAnimationChanged,
@@ -108,7 +130,7 @@ class SettingsPage extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 20),
-        SectionLabel('Session'),
+        SectionLabel(l10n.session),
         GroupCard(
           dividerInset: 16,
           children: [
@@ -120,7 +142,7 @@ class SettingsPage extends StatelessWidget {
                   children: [
                     Expanded(
                       child: Text(
-                        'Sign out of the tailnet',
+                        l10n.signOut,
                         style: context.listTitleStyle.copyWith(color: context.colorScheme.error),
                       ),
                     ),
@@ -136,7 +158,7 @@ class SettingsPage extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 20),
-        SectionLabel('About'),
+        SectionLabel(l10n.about),
         GroupCard(
           dividerInset: 60,
           children: [

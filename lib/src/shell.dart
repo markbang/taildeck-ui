@@ -4,6 +4,7 @@ import 'package:prism_ui/prism_ui.dart';
 
 import 'data.dart';
 import 'glyphs.dart';
+import 'l10n.dart';
 import 'pages/agents.dart';
 import 'pages/node_detail.dart';
 import 'pages/nodes.dart';
@@ -101,11 +102,12 @@ class _TaildeckShellState extends State<TaildeckShell>
         onClose: () => setState(() => _sshNode = null),
       );
     }
+    final l10n = AppLocalizations.of(context);
     final items = <({Glyph glyph, String label})>[
-      (glyph: Glyphs2.nodes, label: 'Nodes'),
-      (glyph: Glyphs2.grid, label: 'Services'),
-      (glyph: Glyphs2.agents, label: 'Agents'),
-      (glyph: Glyphs2.sliders, label: 'Settings'),
+      (glyph: Glyphs2.nodes, label: l10n.tabNodes),
+      (glyph: Glyphs2.grid, label: l10n.tabServices),
+      (glyph: Glyphs2.agents, label: l10n.tabAgents),
+      (glyph: Glyphs2.sliders, label: l10n.tabSettings),
     ];
     final dockInset = mobile && _floating ? NavigationDock.insetOf(context) : 0.0;
     return Surface(

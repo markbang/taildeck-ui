@@ -2,6 +2,7 @@ import 'package:flutter/widgets.dart';
 import 'package:prism_ui/prism_ui.dart';
 
 import '../data.dart';
+import '../l10n.dart';
 import '../glyphs.dart';
 import '../widgets/foundation.dart';
 import 'package:prism_ui/icons/icons.dart';
@@ -12,16 +13,18 @@ class AgentsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return PageBody(
-      title: 'Agents',
+      title: AppLocalizations.of(context).agentsTitle,
       subtitle: 'herdr · devbox',
       trailing: IconButton(
         onPressed: () {},
         icon: const GlyphIcon(Glyphs2.plus),
-        tooltip: 'New agent',
+        tooltip: AppLocalizations.of(context).newAgent,
       ),
       children: [
         for (final group in agents) ...[
-          SectionLabel(group.section),
+          SectionLabel(group.section == 'Needs you'
+              ? AppLocalizations.of(context).needsYou
+              : group.section),
           GroupCard(
             dividerInset: 56,
             children: [for (final agent in group.items) _AgentRow(agent: agent)],
@@ -41,10 +44,11 @@ class _AgentRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = context.colorScheme;
+    final l10n = AppLocalizations.of(context);
     final (label, tint) = switch (agent.state) {
-      AgentState.working => ('Working', scheme.primary),
-      AgentState.idle => ('Idle', scheme.onSurfaceVariant),
-      AgentState.done => ('Done', const Color(0xFF3BB273)),
+      AgentState.working => (l10n.working, scheme.primary),
+      AgentState.idle => (l10n.idle, scheme.onSurfaceVariant),
+      AgentState.done => (l10n.done, const Color(0xFF3BB273)),
     };
     return PressRegion(
       onTap: () {},

@@ -5,6 +5,7 @@ import 'package:prism_ui/icons/icons.dart';
 import 'package:prism_ui/prism_ui.dart';
 
 import '../glyphs.dart';
+import '../l10n.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key, required this.onSignedIn, this.onCancel});
@@ -50,6 +51,7 @@ class _LoginPageState extends State<LoginPage> {
   @override
   Widget build(BuildContext context) {
     final scheme = context.colorScheme;
+    final l10n = AppLocalizations.of(context);
     return Surface(
       color: SurfaceLevel.page.colorOf(scheme),
       child: SafeArea(
@@ -93,7 +95,7 @@ class _LoginPageState extends State<LoginPage> {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          'Your tailnet, without the VPN slot.',
+                          l10n.tagline,
                           style: AppTextStyle.body
                               .of(context)
                               .copyWith(color: scheme.onSurfaceVariant),
@@ -105,7 +107,7 @@ class _LoginPageState extends State<LoginPage> {
                           _waiting(context),
                         const SizedBox(height: 22),
                         Text(
-                          'Works with Tailscale and Headscale control servers.',
+                          l10n.worksWith,
                           textAlign: TextAlign.center,
                           style: AppTextStyle.caption1.of(context).copyWith(
                             color: scheme.onSurfaceVariant.withValues(alpha: 0.7),
@@ -125,6 +127,7 @@ class _LoginPageState extends State<LoginPage> {
 
   Widget _buildChoices(BuildContext context) {
     final scheme = context.colorScheme;
+    final l10n = AppLocalizations.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -136,8 +139,8 @@ class _LoginPageState extends State<LoginPage> {
             children: [
               _OptionRow(
                 glyph: Glyphs2.globe,
-                title: 'Continue in browser',
-                subtitle: 'Sign in to your control server',
+                title: l10n.continueInBrowser,
+                subtitle: l10n.signInToControlServer,
                 onTap: _startBrowserLogin,
                 trailing: GlyphIcon(
                   Glyphs.chevronForward,
@@ -151,8 +154,8 @@ class _LoginPageState extends State<LoginPage> {
               ),
               _OptionRow(
                 glyph: Glyphs2.bolt,
-                title: 'Use an auth key',
-                subtitle: _authKey ? null : 'Paste a tskey-… key',
+                title: l10n.useAuthKey,
+                subtitle: _authKey ? null : l10n.pasteKey,
                 onTap: () => setState(() => _authKey = !_authKey),
                 trailing: GlyphIcon(
                   _authKey ? Glyphs.chevronDown : Glyphs.chevronForward,
@@ -175,7 +178,7 @@ class _LoginPageState extends State<LoginPage> {
                 const SizedBox(height: 10),
                 FilledButton(
                   onPressed: widget.onSignedIn,
-                  child: const Text('Connect'),
+                  child: Text(l10n.connect),
                 ),
               ],
             ],
@@ -188,7 +191,7 @@ class _LoginPageState extends State<LoginPage> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Text(
-                'Control server',
+                l10n.controlServer,
                 style: AppTextStyle.footnote
                     .of(context)
                     .copyWith(color: scheme.primary),
@@ -219,6 +222,7 @@ class _LoginPageState extends State<LoginPage> {
 
   Widget _waiting(BuildContext context) {
     final scheme = context.colorScheme;
+    final l10n = AppLocalizations.of(context);
     return Card(
       radius: AppCorner.xxl,
       padding: const EdgeInsets.all(20),
@@ -229,7 +233,7 @@ class _LoginPageState extends State<LoginPage> {
             children: [
               Expanded(
                 child: Text(
-                  'Waiting for approval',
+                  l10n.waitingTitle,
                   style: AppTextStyle.body.of(context, emphasized: true),
                 ),
               ),
@@ -238,7 +242,7 @@ class _LoginPageState extends State<LoginPage> {
           ),
           const SizedBox(height: 10),
           Text(
-            'A browser tab should have opened. Sign in, then come back — this screen updates on its own.',
+            l10n.waitingBody,
             style: context.listSubtitleStyle,
           ),
           const SizedBox(height: 16),
@@ -267,7 +271,7 @@ class _LoginPageState extends State<LoginPage> {
           TextButton(
             onPressed: _cancel,
             child: Text(
-              'Cancel',
+              l10n.cancel,
               style: AppTextStyle.footnote
                   .of(context, emphasized: true)
                   .copyWith(color: scheme.primary),

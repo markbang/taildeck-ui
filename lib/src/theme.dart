@@ -13,6 +13,13 @@ class TaildeckTheme extends ChangeNotifier {
   final Color seed = const Color(0xFF5B6BFF);
   ThemeMode mode = ThemeMode.dark;
 
+  /// Null follows the device locale.
+  Locale? locale = switch (Uri.base.queryParameters['lang']) {
+    'en' => const Locale('en'),
+    'zh' => const Locale('zh'),
+    _ => null,
+  };
+
   ThemeData get light => _build(Brightness.light);
   ThemeData get dark => _build(Brightness.dark);
 
@@ -29,6 +36,12 @@ class TaildeckTheme extends ChangeNotifier {
   void setMode(ThemeMode value) {
     if (value == mode) return;
     mode = value;
+    notifyListeners();
+  }
+
+  void setLocale(Locale? value) {
+    if (value == locale) return;
+    locale = value;
     notifyListeners();
   }
 

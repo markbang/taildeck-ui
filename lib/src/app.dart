@@ -31,8 +31,9 @@ class _TaildeckAppState extends State<TaildeckApp> {
         darkTheme: theme.dark,
         themeMode: theme.mode,
         liquidGlass: LiquidGlassQuality.ultra,
-        localizationsDelegates: const [TaildeckStrings.delegate],
-        supportedLocales: const [Locale('en')],
+        locale: theme.locale,
+        localizationsDelegates: const [AppLocalizations.delegate],
+        supportedLocales: const [Locale('en'), Locale('zh')],
         builder: (context, child) {
           final size = MediaQuery.sizeOf(context);
           return ViewScope(

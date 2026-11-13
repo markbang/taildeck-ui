@@ -3,6 +3,7 @@ import 'package:prism_ui/icons/icons.dart';
 import 'package:prism_ui/prism_ui.dart';
 
 import '../data.dart';
+import '../l10n.dart';
 import '../glyphs.dart';
 
 class PageBody extends StatelessWidget {
@@ -208,7 +209,9 @@ class PathBadge extends StatelessWidget {
         GlyphIcon(direct ? Glyphs2.bolt : Glyphs2.relay, size: 13, color: tint),
         const SizedBox(width: 4),
         Text(
-          direct ? 'Direct' : (node.relay == null ? 'Relay' : 'Relay · ${node.relay}'),
+          direct
+              ? AppLocalizations.of(context).direct
+              : AppLocalizations.of(context).relay(node.relay),
           style: AppTextStyle.caption1.of(context).copyWith(color: tint),
         ),
       ],

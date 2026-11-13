@@ -3,6 +3,7 @@ import 'package:prism_ui/icons/icons.dart';
 import 'package:prism_ui/prism_ui.dart';
 
 import '../data.dart';
+import '../l10n.dart';
 import '../glyphs.dart';
 import '../widgets/foundation.dart';
 
@@ -25,11 +26,11 @@ class NodesPage extends StatelessWidget {
       trailing: IconButton(
         onPressed: onToggleTheme,
         icon: const GlyphIcon(Glyphs2.sun),
-        tooltip: 'Theme',
+        tooltip: AppLocalizations.of(context).theme,
       ),
       children: [
         SearchField(
-          hintText: 'Search nodes',
+          hintText: AppLocalizations.of(context).searchNodes,
           fill: SurfaceLevel.card.colorOf(scheme),
           onChanged: (_) {},
         ),
@@ -80,14 +81,14 @@ class _SelfCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      'This device · ${node.ip}',
+                      AppLocalizations.of(context).thisDevice(node.ip),
                       style: context.listCaptionStyle,
                     ),
                   ],
                 ),
               ),
               StatusPill(
-                label: 'Online',
+                label: AppLocalizations.of(context).online,
                 tint: const Color(0xFF3BB273),
               ),
             ],

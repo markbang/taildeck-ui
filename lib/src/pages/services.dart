@@ -3,6 +3,7 @@ import 'package:prism_ui/icons/icons.dart';
 import 'package:prism_ui/prism_ui.dart';
 
 import '../data.dart';
+import '../l10n.dart';
 import '../glyphs.dart';
 import '../widgets/foundation.dart';
 
@@ -13,11 +14,11 @@ class ServicesPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final nodes = <String>{for (final service in services) service.node};
     return PageBody(
-      title: 'Services',
+      title: AppLocalizations.of(context).tabServices,
       trailing: IconButton(
         onPressed: () {},
         icon: const GlyphIcon(Glyphs2.plus),
-        tooltip: 'Add service',
+        tooltip: AppLocalizations.of(context).addService,
       ),
       children: [
         for (final nodeName in nodes) ...[

@@ -3,6 +3,7 @@ import 'package:prism_ui/icons/icons.dart';
 import 'package:prism_ui/prism_ui.dart';
 
 import '../data.dart';
+import '../l10n.dart';
 
 enum _Kind { command, output, muted, error, ok }
 
@@ -34,7 +35,6 @@ class _TerminalPageState extends State<TerminalPage> {
   final _input = TextEditingController();
   final _scroll = ScrollController();
   late final List<_Line> _lines = [
-    _Line('Connected to ${widget.node.name} · Tailscale SSH · 18 ms', _Kind.ok),
     _Line('Linux devbox 6.8.0-45-generic x86_64', _Kind.output),
     _Line('Last login: Thu Nov 13 16:02:11 from 100.101.4.2', _Kind.muted),
     const _Line('uptime', _Kind.command),
@@ -150,11 +150,20 @@ class _TerminalPageState extends State<TerminalPage> {
                   child: ListView.builder(
                     controller: _scroll,
                     padding: EdgeInsets.fromLTRB(wide ? 24 : 18, 14, wide ? 24 : 18, 10),
-                    itemCount: _lines.length,
+                    itemCount: _lines.length + 1,
                     itemBuilder: (context, index) {
-                      final line = _lines[index];
+                      if (index == 0) {
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 2),
+                          child: Text(
+                            AppLocalizations.of(context).connectedTo(widget.node.name),
+                            style: mono.copyWith(color: _green),
+                          ),
+                        );
+                      }
+                      final line = _lines[index - 1];
                       final isCommand = line.kind == _Kind.command;
-                      final gap = isCommand && index > 0 ? 10.0 : 0.0;
+                      final gap = isCommand ? 10.0 : 0.0;
                       return Padding(
                         padding: EdgeInsets.only(top: gap, bottom: 1),
                         child: isCommand
@@ -233,7 +242,7 @@ class _Header extends StatelessWidget {
           IconButton(
             onPressed: onClose,
             icon: const GlyphIcon(Glyphs.chevronBack, color: Color(0xFFE7E9ED)),
-            tooltip: 'Close',
+            tooltip: AppLocalizations.of(context).close,
           ),
           const SizedBox(width: 2),
           Expanded(
@@ -272,7 +281,7 @@ class _Header extends StatelessWidget {
                 ),
                 const SizedBox(width: 5),
                 Text(
-                  'Connected',
+                  AppLocalizations.of(context).connected,
                   style: mono.copyWith(fontSize: 10.5, color: const Color(0xFF57D7A0)),
                 ),
               ],
@@ -368,9 +377,9 @@ class _InputBar extends StatelessWidget {
                 cursorColor: const Color(0xFF7FB4FF),
                 cursorHeight: 15,
                 style: mono.copyWith(fontSize: 13),
-                decoration: const InputDecoration.collapsed(
-                  hintText: 'Type a command',
-                  hintStyle: TextStyle(
+                decoration: InputDecoration.collapsed(
+                  hintText: AppLocalizations.of(context).typeCommand,
+                  hintStyle: const TextStyle(
                     fontFamily: 'DejaVuSansMono',
                     fontSize: 13,
                     color: Color(0xFF4A515B),
