@@ -34,6 +34,8 @@ LINUX_OUT="$ROOT/linux/lib/libtaildeck_term.so"
 WINDOWS_OUT="$ROOT/windows/lib/taildeck_term.dll"
 MACOS_DIR="$ROOT/macos/Frameworks"
 IOS_DIR="$ROOT/ios/Frameworks"
+IOS_MIN="13.0"
+MACOS_MIN="11.0"
 
 die() { echo "build_term: $*" >&2; exit 1; }
 
@@ -127,23 +129,33 @@ build_macos() {
     echo "macos: skipped, needs macOS with Xcode (clang, lipo)"
     return 0
   fi
-  local arch lib dylibs=() out
+  local cc sdkroot arch carg lib dylibs=() out cflags
+  cc="$(xcrun --find clang)"
+  sdkroot="$(xcrun --show-sdk-path)"
+  [ -d "$sdkroot" ] || die "macos: xcrun --show-sdk-path returned no SDK ($sdkroot)"
   out="$MACOS_DIR/libtaildeck_term.dylib"
-  echo "macos/universal: $out"
+  echo "macos/universal ($cc): $out"
+  echo "macos: SDKROOT=$sdkroot min=$MACOS_MIN"
   mkdir -p "$MACOS_DIR" "$BUILD_DIR"
   for arch in arm64 amd64; do
+    carg=arm64
+    if [ "$arch" = amd64 ]; then carg=x86_64; fi
     case "$arch" in
-      arm64) lib="$(ghostty_lib macos-arm64)"; target=aarch64-macos ;;
-      amd64) lib="$(ghostty_lib macos-x86_64)"; target=x86_64-macos ;;
+      arm64) lib="$(ghostty_lib macos-arm64)" ;;
+      amd64) lib="$(ghostty_lib macos-x86_64)" ;;
     esac
-    "$ZIG" cc -target "$target" -dynamiclib -O2 -Wall -Wextra \
-      -DGHOSTTY_STATIC -I"$GHOSTTY_OUT/include" -Inative/term \
+    cflags="-isysroot $sdkroot -arch $carg -mmacosx-version-min=$MACOS_MIN -dynamiclib -O2 -Wall -Wextra -DGHOSTTY_STATIC -I$GHOSTTY_OUT/include -Inative/term"
+    echo "macos/$arch: $cc $cflags native/term/term_ffi.c $lib"
+    "$cc" -isysroot "$sdkroot" -arch "$carg" -mmacosx-version-min="$MACOS_MIN" \
+      -dynamiclib -O2 -Wall -Wextra -DGHOSTTY_STATIC \
+      -I"$GHOSTTY_OUT/include" -Inative/term \
       native/term/term_ffi.c "$lib" \
       -Wl,-install_name,@rpath/libtaildeck_term.dylib \
       -o "$BUILD_DIR/libtaildeck_term-$arch.dylib"
     dylibs+=("$BUILD_DIR/libtaildeck_term-$arch.dylib")
   done
   lipo -create "${dylibs[@]}" -output "$out"
+  lipo -info "$out"
 }
 
 build_ios() {
@@ -151,16 +163,23 @@ build_ios() {
     echo "ios: skipped, needs macOS with Xcode"
     return 0
   fi
-  local lib out work
+  local cc sdkroot lib out work cflags
+  cc="$(xcrun --sdk iphoneos --find clang)"
+  sdkroot="$(xcrun --sdk iphoneos --show-sdk-path)"
+  [ -d "$sdkroot" ] || die "ios: xcrun --show-sdk-path returned no SDK ($sdkroot)"
   lib="$(ghostty_lib ios-arm64)"
   out="$IOS_DIR/libtaildeck_term.a"
   work="$BUILD_DIR/ios"
-  echo "ios/arm64 (static): $out"
+  cflags="-isysroot $sdkroot -arch arm64 -mios-version-min=$IOS_MIN -O2 -Wall -Wextra -DGHOSTTY_STATIC -I$GHOSTTY_OUT/include -Inative/term"
+  echo "ios/arm64 ($cc): $out"
+  echo "ios: $cc $cflags -c native/term/term_ffi.c"
   mkdir -p "$IOS_DIR" "$work"
-  "$ZIG" cc -target aarch64-ios -c -O2 -Wall -Wextra \
-    -DGHOSTTY_STATIC -I"$GHOSTTY_OUT/include" -Inative/term \
+  "$cc" -isysroot "$sdkroot" -arch arm64 -mios-version-min="$IOS_MIN" \
+    -c -O2 -Wall -Wextra -DGHOSTTY_STATIC \
+    -I"$GHOSTTY_OUT/include" -Inative/term \
     native/term/term_ffi.c -o "$work/term_ffi.o"
   libtool -static -o "$out" "$work/term_ffi.o" "$lib"
+  ls -l "$out"
   # Optional include from ios/Flutter/{Debug,Release}.xcconfig: -force_load
   # keeps the archive in the Runner binary even though no Swift code calls it.
   cat > "$ROOT/ios/Flutter/NativeTerm.xcconfig" <<EOF

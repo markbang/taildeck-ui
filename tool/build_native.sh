@@ -33,6 +33,7 @@ WINDOWS_OUT="$ROOT/windows/lib/taildeck_bridge.dll"
 MACOS_DIR="$ROOT/macos/Frameworks"
 IOS_DIR="$ROOT/ios/Frameworks"
 IOS_MIN="13.0"
+MACOS_MIN="11.0"
 
 # Same tags as the Kotlin app's build script: the NDK toolchain needs them.
 ANDROID_TAGS="badlinkname,tfogo_checklinkname0"
@@ -115,18 +116,30 @@ build_macos() {
     echo "macos: skipped, needs macOS with Xcode (clang, lipo)"
     return 0
   fi
-  local cc arch out dylibs=()
+  local cc sdkroot arch carg cflags out dylibs=()
   cc="$(xcrun --find clang)"
+  sdkroot="$(xcrun --show-sdk-path)"
+  [ -d "$sdkroot" ] || die "macos: xcrun --show-sdk-path returned no SDK ($sdkroot)"
+  # cgo does not pick the SDK up on its own: without -isysroot clang cannot
+  # find the standard headers.
+  export SDKROOT="$sdkroot"
   out="$MACOS_DIR/libtaildeck_bridge.dylib"
   echo "macos/universal ($cc): $out"
+  echo "macos: SDKROOT=$sdkroot min=$MACOS_MIN"
   mkdir -p "$MACOS_DIR" "$BUILD_DIR"
   for arch in arm64 amd64; do
+    carg=arm64
+    if [ "$arch" = amd64 ]; then carg=x86_64; fi
+    cflags="-isysroot $sdkroot -arch $carg -mmacosx-version-min=$MACOS_MIN"
+    echo "macos/$arch: CGO_CFLAGS=\"$cflags\" CGO_LDFLAGS=\"$cflags\""
     (cd native/bridge && CGO_ENABLED=1 GOOS=darwin GOARCH="$arch" CC="$cc" \
+      CGO_CFLAGS="$cflags" CGO_LDFLAGS="$cflags" \
       "$GO" build -buildmode=c-shared -trimpath \
       -o "$BUILD_DIR/libtaildeck_bridge-$arch.dylib" ./cmd/cshared)
     dylibs+=("$BUILD_DIR/libtaildeck_bridge-$arch.dylib")
   done
   lipo -create "${dylibs[@]}" -output "$out"
+  lipo -info "$out"
 }
 
 write_ios_link_config() {
@@ -143,15 +156,17 @@ build_ios() {
     echo "ios: skipped, needs macOS with Xcode"
     return 0
   fi
-  local sdk out
+  local sdk cc cflags out
   sdk="$(xcrun --sdk iphoneos --show-sdk-path)"
+  cc="$(xcrun --sdk iphoneos --find clang)"
+  cflags="-isysroot $sdk -arch arm64 -mios-version-min=$IOS_MIN"
   out="$IOS_DIR/libtaildeck_bridge.a"
-  echo "ios/arm64 ($sdk): $out"
+  echo "ios/arm64 ($cc): $out"
+  echo "ios: SDKROOT=$sdk CGO_CFLAGS=\"$cflags\" CGO_LDFLAGS=\"$cflags\""
   mkdir -p "$IOS_DIR"
-  (cd native/bridge && CGO_ENABLED=1 GOOS=ios GOARCH=arm64 \
-    CC="$(xcrun --sdk iphoneos --find clang)" \
-    CGO_CFLAGS="-isysroot $sdk -arch arm64 -mios-version-min=$IOS_MIN" \
-    CGO_LDFLAGS="-isysroot $sdk -arch arm64 -mios-version-min=$IOS_MIN" \
+  (cd native/bridge && CGO_ENABLED=1 GOOS=ios GOARCH=arm64 CC="$cc" \
+    CGO_CFLAGS="$cflags" \
+    CGO_LDFLAGS="$cflags" \
     "$GO" build -buildmode=c-archive -trimpath -o "$out" ./cmd/cshared)
   write_ios_link_config
 }
