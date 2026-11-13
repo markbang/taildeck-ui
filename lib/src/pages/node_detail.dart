@@ -263,10 +263,13 @@ class _NodeDetailPageState extends State<NodeDetailPage> {
                       ],
                     ),
             ),
-            if (node.expiry.isNotEmpty)
+            if (node.expiryAt case final expiry?)
               _DetailRow(
                 label: l10n.keyExpiry,
-                child: Text(node.expiry, style: context.listTitleStyle),
+                child: Text(
+                  l10n.shortDate(expiry.toLocal()),
+                  style: context.listTitleStyle,
+                ),
               ),
             _DetailRow(label: l10n.traffic, child: TrafficLabel(node: node)),
           ],

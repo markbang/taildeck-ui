@@ -32,6 +32,52 @@ class AppLocalizations implements UiLocalizations {
     return _zh ? '中继 · $region' : 'Relay · $region';
   }
 
+  /// Relative within a day, a short date beyond it. Both locales, no `intl`
+  /// dependency: the only patterns are "5 min ago" and "Nov 5, 2026".
+  String lastSeen(DateTime value, DateTime now) =>
+      _lastSeen(value, now, spoken: false);
+
+  /// The same value written out for screen readers.
+  String lastSeenSpoken(DateTime value, DateTime now) =>
+      _lastSeen(value, now, spoken: true);
+
+  String lastSeenSemantics(String ip, DateTime value, DateTime now) => _zh
+      ? '$ip，上次在线 ${lastSeenSpoken(value, now)}'
+      : '$ip, last seen ${lastSeenSpoken(value, now)}';
+
+  String shortDate(DateTime value) => _zh
+      ? '${value.year}年${value.month}月${value.day}日'
+      : '${_months[value.month - 1]} ${value.day}, ${value.year}';
+
+  String _lastSeen(DateTime value, DateTime now, {required bool spoken}) {
+    final at = value.toLocal();
+    final minutes = now.difference(at).inMinutes;
+    if (minutes < 1) return _zh ? '刚刚' : 'just now';
+    if (minutes < 60) {
+      if (_zh) return '$minutes 分钟前';
+      return spoken
+          ? '$minutes ${minutes == 1 ? 'minute' : 'minutes'} ago'
+          : '$minutes min ago';
+    }
+    final hours = minutes ~/ 60;
+    final days = DateTime(now.year, now.month, now.day)
+        .difference(DateTime(at.year, at.month, at.day))
+        .inDays;
+    if (hours < 24) {
+      if (_zh) return '$hours 小时前';
+      return spoken
+          ? '$hours ${hours == 1 ? 'hour' : 'hours'} ago'
+          : '$hours h ago';
+    }
+    if (days == 1) return _zh ? '昨天' : 'Yesterday';
+    return shortDate(at);
+  }
+
+  static const _months = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  ];
+
   String get back => _zh ? '返回' : 'Back';
   String get ssh => 'SSH';
   String get sshUser => _zh ? '用户' : 'User';

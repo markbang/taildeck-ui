@@ -161,6 +161,14 @@ class _PeerRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = context.colorScheme;
+    final l10n = AppLocalizations.of(context);
+    final now = DateTime.now();
+    final seenAt = node.online ? null : node.lastSeenAt;
+    final seen = seenAt == null ? null : l10n.lastSeen(seenAt, now);
+    final caption = Text(
+      seen == null ? node.ip : '${node.ip} · $seen',
+      style: context.listCaptionStyle,
+    );
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
       child: Row(
@@ -176,12 +184,14 @@ class _PeerRow extends StatelessWidget {
                   style: AppTextStyle.body.of(context, emphasized: true),
                 ),
                 const SizedBox(height: 1),
-                Text(
-                  node.online || node.lastSeen.isEmpty
-                      ? node.ip
-                      : '${node.ip} · ${node.lastSeen}',
-                  style: context.listCaptionStyle,
-                ),
+                if (seenAt == null)
+                  caption
+                else
+                  Semantics(
+                    label: l10n.lastSeenSemantics(node.ip, seenAt, now),
+                    excludeSemantics: true,
+                    child: caption,
+                  ),
               ],
             ),
           ),

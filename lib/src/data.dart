@@ -27,6 +27,8 @@ class NodeItem {
 
   /// Every tailnet address; [ip] stays the primary IPv4 for compact rows.
   final List<String> ips;
+
+  /// RFC3339 timestamp from the backend, empty when unknown.
   final String lastSeen;
   final bool direct;
   final String? relay;
@@ -36,10 +38,16 @@ class NodeItem {
   final List<String> routes;
   final bool isSelf;
   final String owner;
+
+  /// RFC3339 timestamp from the backend, empty when the key never expires.
   final String expiry;
   final String dns;
 
   List<String> get addresses => ips.isEmpty ? [ip] : ips;
+
+  DateTime? get lastSeenAt => DateTime.tryParse(lastSeen);
+
+  DateTime? get expiryAt => DateTime.tryParse(expiry);
 
   Color get tint => switch (os) {
     'macOS' => const Color(0xFF7C8CFF),
@@ -70,7 +78,7 @@ const selfNode = NodeItem(
   dns: 'pixel-9.tail4a2c.ts.net',
 );
 
-const peers = <NodeItem>[
+final peers = <NodeItem>[
   NodeItem(
     name: 'nas',
     ip: '100.88.12.7',
@@ -120,6 +128,7 @@ const peers = <NodeItem>[
     ip: '100.77.3.101',
     os: 'Windows',
     online: false,
+    lastSeen: _ago(const Duration(hours: 2)),
     rx: '1.2 GB',
     tx: '640 MB',
     dns: 'win-gaming.tail4a2c.ts.net',
@@ -192,6 +201,10 @@ const agents = <({String section, List<AgentItem> items})>[
   ),
 ];
 
+/// Demo timestamps stay recent so the mock node list reads like a live tailnet.
+String _ago(Duration duration) =>
+    DateTime.now().toUtc().subtract(duration).toIso8601String();
+
 /// Maps one node from `td_status` (`native/bridge/bridge.go` `nodeJSON`) onto
 /// [NodeItem]. Missing fields stay empty rather than guessed.
 NodeItem nodeFromJson(Map<String, dynamic> json, {bool isSelf = false}) {
@@ -221,8 +234,8 @@ NodeItem nodeFromJson(Map<String, dynamic> json, {bool isSelf = false}) {
     ],
     isSelf: isSelf,
     owner: json['user'] as String? ?? '',
-    expiry: _date(json['keyExpiry'] as String? ?? ''),
-    lastSeen: _date(json['lastSeen'] as String? ?? ''),
+    expiry: _stamp(json['keyExpiry'] as String? ?? ''),
+    lastSeen: _stamp(json['lastSeen'] as String? ?? ''),
     dns: json['dnsName'] as String? ?? '',
   );
 }
@@ -236,10 +249,10 @@ String _nodeOs(String os) => switch (os.toLowerCase()) {
   _ => os,
 };
 
-/// RFC3339 to `yyyy-MM-dd`; the zero time means "never expires".
-String _date(String raw) {
+/// Drops the zero time (keys that never expire) and malformed values.
+String _stamp(String raw) {
   if (raw.length < 10 || raw.startsWith('0001')) return '';
-  return raw.substring(0, 10);
+  return raw;
 }
 
 String _bytes(int value) {
