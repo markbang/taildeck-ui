@@ -9,6 +9,7 @@ import 'data.dart';
 import 'preview_env.dart';
 import 'glyphs.dart';
 import 'l10n.dart';
+import 'native/ssh.dart';
 import 'pages/agents.dart';
 import 'pages/node_detail.dart';
 import 'pages/nodes.dart';
@@ -48,6 +49,8 @@ class _TaildeckShellState extends State<TaildeckShell>
   NodeItem? _sshNode = _querySsh();
   bool _sshDemo = previewParam('ssh') == 'demo';
   String _sshUser = 'root';
+  int _sshPort = 22;
+  SshSession? _sshSession;
 
   late final PageController _pageController = PageController(initialPage: _tab);
 
@@ -120,8 +123,13 @@ class _TaildeckShellState extends State<TaildeckShell>
       return TerminalPage(
         node: sshNode,
         user: _sshUser,
+        port: _sshPort,
+        ssh: _sshSession,
         demo: _sshDemo,
-        onClose: () => setState(() => _sshNode = null),
+        onClose: () => setState(() {
+          _sshNode = null;
+          _sshSession = null;
+        }),
       );
     }
     final l10n = AppLocalizations.of(context);
@@ -280,6 +288,8 @@ class _TaildeckShellState extends State<TaildeckShell>
             if (choice == null) return;
             setState(() {
               _sshUser = choice.user;
+              _sshPort = choice.port;
+              _sshSession = choice.session;
               _sshNode = node;
               _sshDemo = false;
             });

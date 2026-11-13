@@ -1,13 +1,17 @@
+import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:flutter/gestures.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:prism_ui/icons/icons.dart';
 import 'package:prism_ui/prism_ui.dart';
 
 import '../data.dart';
 import '../l10n.dart';
+import '../native/bridge.dart';
+import '../native/keys.dart';
+import '../native/ssh.dart';
 import '../native/term.dart';
 import '../native/term_demo.dart';
 import 'term_view.dart';
@@ -27,15 +31,23 @@ class TerminalPage extends StatefulWidget {
     required this.node,
     required this.onClose,
     this.user = 'root',
+    this.port = 22,
+    this.ssh,
     this.demo = false,
   });
 
   final NodeItem node;
   final VoidCallback onClose;
   final String user;
+  final int port;
+
+  /// Live session from the Go node; null on the mock/web path.
+  final SshSession? ssh;
 
   /// `?ssh=demo`: feed a canned ANSI session through the emulator.
   final bool demo;
+
+  bool get live => ssh != null;
 
   @override
   State<TerminalPage> createState() => _TerminalPageState();
@@ -67,17 +79,113 @@ class _TerminalPageState extends State<TerminalPage> {
 
   /// The libghostty-vt emulator; null on Web or when the library is missing.
   TerminalSession? _session;
+  final _focus = FocusNode(debugLabel: 'terminal');
+  StreamSubscription<SshOutput>? _output;
+  String? _closedReason;
+  bool _connected = false;
   bool _bannerFed = false;
+  String _sent = '';
 
   @override
   void initState() {
     super.initState();
+    final ssh = widget.ssh;
     final term = createNativeTerm(cols: 80, rows: 24, scrollback: 5000);
-    if (term == null) return;
-    _session = TerminalSession(term)..addListener(_onSessionChanged);
-    if (widget.demo) {
-      _session!.feed(demoSessionBytes());
+    if (term != null) {
+      _session = TerminalSession(term)
+        ..addListener(_onSessionChanged)
+        ..onResize = (cols, rows) => ssh?.resize(cols, rows);
+      if (widget.demo) _session!.feed(demoSessionBytes());
     }
+    if (ssh != null) {
+      _focus.onKeyEvent = _onKey;
+      _output = ssh.output.listen(_onOutput);
+    }
+  }
+
+  void _onOutput(SshOutput frame) {
+    if (!mounted) return;
+    final session = _session;
+    if (frame.closed) {
+      final l10n = AppLocalizations.of(context);
+      final line = frame.reason.isEmpty
+          ? l10n.disconnected
+          : l10n.disconnectedReason(frame.reason);
+      setState(() => _closedReason = frame.reason);
+      session?.feed(_ansi('\r\n\x1b[31m$line\x1b[0m\r\n'));
+      return;
+    }
+    final bytes = frame.bytes;
+    if (bytes == null) return;
+    final reply = session?.feed(bytes);
+    if (reply != null && reply.isNotEmpty) widget.ssh?.write(reply);
+    if (!frame.notice && !_connected) setState(() => _connected = true);
+  }
+
+  static Uint8List _ansi(String text) => Uint8List.fromList(utf8.encode(text));
+
+  /// Hardware keys reach the emulator's encoder; printable characters come
+  /// through the text field below and are encoded there.
+  KeyEventResult _onKey(FocusNode node, KeyEvent event) {
+    final ssh = widget.ssh;
+    final session = _session;
+    if (ssh == null || session == null) return KeyEventResult.ignored;
+    if (event is KeyUpEvent) return KeyEventResult.handled;
+    final mods = ghosttyModsOf(HardwareKeyboard.instance);
+    final text = event.character;
+    // Plain printable keys go through the text field, which encodes them.
+    if (text != null && text.isNotEmpty && mods & ~GhosttyMods.shift == 0) {
+      return KeyEventResult.ignored;
+    }
+    final encoded = session.term.encodeKey(ghosttyKeyOf(event), mods);
+    if (encoded != null) ssh.write(encoded);
+    return KeyEventResult.handled;
+  }
+
+  void _onTextChanged(String value) {
+    final ssh = widget.ssh;
+    final session = _session;
+    if (ssh == null || session == null) return;
+    // An IME preedit is not committed text: wait for the commit.
+    if (_input.value.composing.isValid) return;
+    final added = _sent.isEmpty
+        ? value
+        : (value.startsWith(_sent) ? value.substring(_sent.length) : value);
+    _sent = value;
+    for (final rune in added.runes) {
+      final text = String.fromCharCode(rune);
+      final encoded = session.term.encodeKey(
+        ghosttyKeyForText(text),
+        0,
+        text: text,
+      );
+      if (encoded != null) ssh.write(encoded);
+    }
+    if (value.isEmpty) return;
+    // The line is a keystroke buffer, not an input box: clear it once the
+    // frames are out.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _input.clear();
+      _sent = '';
+    });
+  }
+
+  void _sendLine(String text) {
+    final ssh = widget.ssh;
+    final session = _session;
+    if (ssh == null || session == null) return;
+    for (final rune in text.runes) {
+      final ch = String.fromCharCode(rune);
+      final encoded = session.term.encodeKey(
+        ghosttyKeyForText(ch),
+        0,
+        text: ch,
+      );
+      if (encoded != null) ssh.write(encoded);
+    }
+    final enter = session.term.encodeKey(58, 0); // GHOSTTY_KEY_ENTER
+    if (enter != null) ssh.write(enter);
   }
 
   /// Keeps the header's grid size in step with the emulator.
@@ -86,7 +194,7 @@ class _TerminalPageState extends State<TerminalPage> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (_bannerFed || widget.demo) return;
+    if (_bannerFed || widget.demo || widget.live) return;
     _bannerFed = true;
     final session = _session;
     if (session == null) return;
@@ -96,6 +204,9 @@ class _TerminalPageState extends State<TerminalPage> {
 
   @override
   void dispose() {
+    _output?.cancel();
+    widget.ssh?.close();
+    _focus.dispose();
     _session?.removeListener(_onSessionChanged);
     _session?.dispose();
     _input.dispose();
@@ -106,9 +217,13 @@ class _TerminalPageState extends State<TerminalPage> {
   void _run(String raw) {
     final command = raw.trim();
     if (command.isEmpty) return;
+    if (widget.live) {
+      _sendLine(command);
+      return;
+    }
     final session = _session;
     if (session != null) {
-      // Demo echoes locally; the SSH session lands in the next milestone.
+      // Demo echoes locally; there is no remote behind it.
       if (widget.demo) {
         session.feed(Uint8List.fromList(utf8.encode('$command\r\n')));
       }
@@ -190,12 +305,20 @@ class _TerminalPageState extends State<TerminalPage> {
     );
     final (status, statusColor) = widget.demo
         ? (l10n.demo, const Color(0xFFE3B341))
+        : widget.live
+        ? (_closedReason != null
+              ? (l10n.disconnected, _red)
+              : _connected
+              ? (l10n.connected, _green)
+              : (l10n.connecting, const Color(0xFFE3B341)))
         : session == null
         ? (l10n.connected, _green)
         : (l10n.notConnected, _dim);
     final grid = session?.snapshot;
     final subtitle = widget.demo
         ? (grid == null ? 'libghostty-vt' : 'libghostty-vt · ${grid.cols}×${grid.rows}')
+        : widget.live
+        ? '${widget.node.ip}:${widget.port} · ${widget.node.os}'
         : '${widget.node.os} · ${widget.node.ip} · 18 ms';
     return Surface(
       color: _bgTop,
@@ -230,7 +353,14 @@ class _TerminalPageState extends State<TerminalPage> {
                 _InputBar(
                   controller: _input,
                   mono: mono,
+                  focusNode: widget.live ? _focus : null,
+                  onChanged: widget.live ? _onTextChanged : null,
                   onSubmitted: (value) {
+                    if (widget.live) {
+                      if (value.isNotEmpty) _sendLine(value);
+                      _input.clear();
+                      return;
+                    }
                     _run(value);
                     _input.clear();
                   },
@@ -250,7 +380,11 @@ class _TerminalPageState extends State<TerminalPage> {
         final lines = (event.scrollDelta.dy / 20).round();
         if (lines != 0) session.scroll(lines);
       },
-      child: TerminalCanvas(session: session, fontSize: fontSize),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: widget.live ? _focus.requestFocus : null,
+        child: TerminalCanvas(session: session, fontSize: fontSize),
+      ),
     );
   }
 
@@ -461,11 +595,15 @@ class _InputBar extends StatelessWidget {
     required this.controller,
     required this.mono,
     required this.onSubmitted,
+    this.focusNode,
+    this.onChanged,
   });
 
   final TextEditingController controller;
   final TextStyle mono;
   final ValueChanged<String> onSubmitted;
+  final FocusNode? focusNode;
+  final ValueChanged<String>? onChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -489,7 +627,9 @@ class _InputBar extends StatelessWidget {
             Expanded(
               child: TextField(
                 controller: controller,
+                focusNode: focusNode,
                 autofocus: true,
+                onChanged: onChanged,
                 onSubmitted: onSubmitted,
                 cursorColor: const Color(0xFF7FB4FF),
                 cursorHeight: 15,

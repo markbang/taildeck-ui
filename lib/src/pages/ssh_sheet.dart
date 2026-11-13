@@ -1,23 +1,34 @@
+import 'dart:async';
+
 import 'package:flutter/widgets.dart';
 import 'package:prism_ui/icons/icons.dart';
 import 'package:prism_ui/prism_ui.dart';
 
+import '../backend.dart';
 import '../data.dart';
 import '../l10n.dart';
+import '../native/bridge.dart';
+import '../native/ssh.dart';
 
-typedef SshChoice = ({String user, int port});
+typedef SshChoice = ({String user, int port, SshSession? session});
 
 Future<SshChoice?> showSshSheet(BuildContext context, NodeItem node) {
+  // The sheet lives on its own route, above the BackendScope in the page tree,
+  // so the backend is handed in from here.
+  final backend = BackendScope.of(context);
   return showFormSheet<SshChoice>(
     context: context,
-    builder: (context) => _SshSheet(node: node),
+    builder: (context) => _SshSheet(node: node, backend: backend),
   );
 }
 
+enum _Auth { tailscale, password, key }
+
 class _SshSheet extends StatefulWidget {
-  const _SshSheet({required this.node});
+  const _SshSheet({required this.node, required this.backend});
 
   final NodeItem node;
+  final TaildeckBackend backend;
 
   @override
   State<_SshSheet> createState() => _SshSheetState();
@@ -26,11 +37,76 @@ class _SshSheet extends StatefulWidget {
 class _SshSheetState extends State<_SshSheet> {
   String _user = 'root';
   int _port = 22;
+  _Auth _auth = _Auth.tailscale;
+  final _password = TextEditingController();
+  String _publicKey = '';
+  String _keyError = '';
+  bool _busy = false;
+  String _error = '';
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.backend.available) unawaited(_loadKey(widget.backend));
+  }
+
+  Future<void> _loadKey(TaildeckBackend backend) async {
+    try {
+      final pub = await backend.sshPublicKey();
+      if (mounted) setState(() => _publicKey = pub);
+    } on Object catch (error) {
+      if (mounted) setState(() => _keyError = _message(error));
+    }
+  }
+
+  static String _message(Object error) =>
+      error is BridgeException ? error.message : '$error';
+
+  @override
+  void dispose() {
+    _password.dispose();
+    super.dispose();
+  }
+
+  Future<void> _connect() async {
+    if (_busy) return;
+    final backend = widget.backend;
+    if (!backend.available) {
+      Navigator.of(context).pop((user: _user, port: _port, session: null));
+      return;
+    }
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _busy = true;
+      _error = '';
+    });
+    try {
+      final session = await backend.openSshSession(
+        host: widget.node.name,
+        user: _user,
+        port: _port,
+        password: _auth == _Auth.password ? _password.text : '',
+      );
+      if (!mounted) {
+        session.close();
+        return;
+      }
+      Navigator.of(context).pop((user: _user, port: _port, session: session));
+    } on Object catch (error) {
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _error = _message(error);
+        });
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final scheme = context.colorScheme;
+    final backend = widget.backend;
     return Padding(
       padding: EdgeInsets.fromLTRB(
         20,
@@ -38,93 +114,173 @@ class _SshSheetState extends State<_SshSheet> {
         20,
         20 + MediaQuery.paddingOf(context).bottom,
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      l10n.ssh,
-                      style: AppTextStyle.title2.of(context, emphasized: true),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      '${widget.node.name} · ${widget.node.ip}',
-                      style: AppTextStyle.footnote
-                          .of(context)
-                          .copyWith(color: scheme.onSurfaceVariant),
-                    ),
-                  ],
-                ),
-              ),
-              IconButton(
-                onPressed: () => Navigator.of(context).pop(),
-                icon: const GlyphIcon(Glyphs.close),
-                tooltip: l10n.close,
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Card(
-            radius: AppCorner.xl,
-            padding: EdgeInsets.zero,
-            child: Column(
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
               children: [
-                _SelectRow<String>(
-                  label: l10n.sshUser,
-                  value: _user,
-                  options: const [
-                    ('root', 'root'),
-                    ('ubuntu', 'ubuntu'),
-                    ('pi', 'pi'),
-                  ],
-                  onChanged: (value) => setState(() => _user = value),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        l10n.ssh,
+                        style: AppTextStyle.title2.of(
+                          context,
+                          emphasized: true,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '${widget.node.name} · ${widget.node.ip}',
+                        style: AppTextStyle.footnote
+                            .of(context)
+                            .copyWith(color: scheme.onSurfaceVariant),
+                      ),
+                    ],
+                  ),
                 ),
-                Padding(
-                  padding: const EdgeInsets.only(left: 16),
-                  child: Divider(height: 0.5, thickness: 0.5),
-                ),
-                _SelectRow<int>(
-                  label: l10n.sshPort,
-                  value: _port,
-                  options: const [
-                    (22, '22'),
-                    (2222, '2222'),
-                    (2200, '2200'),
-                  ],
-                  onChanged: (value) => setState(() => _port = value),
-                ),
-                Padding(
-                  padding: const EdgeInsets.only(left: 16),
-                  child: Divider(height: 0.5, thickness: 0.5),
-                ),
-                _SelectRow<String>(
-                  label: l10n.sshAuth,
-                  value: 'tailscale',
-                  options: [
-                    ('tailscale', l10n.authTailscale),
-                    ('password', l10n.authPassword),
-                    ('key', l10n.authKey),
-                  ],
-                  onChanged: (_) {},
+                IconButton(
+                  onPressed: _busy ? null : () => Navigator.of(context).pop(),
+                  icon: const GlyphIcon(Glyphs.close),
+                  tooltip: l10n.close,
                 ),
               ],
             ),
-          ),
-          const SizedBox(height: 16),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(
-              (user: _user, port: _port),
+            const SizedBox(height: 14),
+            Card(
+              radius: AppCorner.xl,
+              padding: EdgeInsets.zero,
+              child: Column(
+                children: [
+                  _SelectRow<String>(
+                    label: l10n.sshUser,
+                    value: _user,
+                    options: const [
+                      ('root', 'root'),
+                      ('ubuntu', 'ubuntu'),
+                      ('pi', 'pi'),
+                    ],
+                    onChanged: (value) => setState(() => _user = value),
+                  ),
+                  const _RowDivider(),
+                  _SelectRow<int>(
+                    label: l10n.sshPort,
+                    value: _port,
+                    options: const [(22, '22'), (2222, '2222'), (2200, '2200')],
+                    onChanged: (value) => setState(() => _port = value),
+                  ),
+                  const _RowDivider(),
+                  _SelectRow<_Auth>(
+                    label: l10n.sshAuth,
+                    value: _auth,
+                    options: [
+                      (_Auth.tailscale, l10n.authTailscale),
+                      (_Auth.password, l10n.authPassword),
+                      (_Auth.key, l10n.authKey),
+                    ],
+                    onChanged: (value) => setState(() => _auth = value),
+                  ),
+                  if (_auth == _Auth.password) ...[
+                    const _RowDivider(),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+                      child: TextField(
+                        controller: _password,
+                        obscureText: true,
+                        style: context.listTitleStyle,
+                        decoration: InputDecoration(
+                          hintText: l10n.sshPasswordHint,
+                          filled: true,
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 12,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
             ),
-            child: Text(l10n.connect),
-          ),
-        ],
+            if (_auth == _Auth.key) ...[
+              const SizedBox(height: 12),
+              Card(
+                radius: AppCorner.lg,
+                child: Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        l10n.sshKeyTitle,
+                        style: AppTextStyle.body.of(context, emphasized: true),
+                      ),
+                      const SizedBox(height: 6),
+                      SelectableText(
+                        _publicKey.isEmpty
+                            ? (_keyError.isEmpty ? '…' : _keyError)
+                            : _publicKey,
+                        style: AppTextStyle.footnote
+                            .of(context)
+                            .copyWith(
+                              fontFamily: 'DejaVuSansMono',
+                              fontSize: 11,
+                              color: _keyError.isEmpty ? null : scheme.error,
+                            ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        l10n.sshKeyHint,
+                        style: AppTextStyle.footnote
+                            .of(context)
+                            .copyWith(color: scheme.onSurfaceVariant),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+            if (!backend.available) ...[
+              const SizedBox(height: 12),
+              Text(
+                l10n.sshNoBackend,
+                style: AppTextStyle.footnote
+                    .of(context)
+                    .copyWith(color: scheme.onSurfaceVariant),
+              ),
+            ],
+            if (_error.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Text(
+                _error,
+                style: AppTextStyle.footnote
+                    .of(context)
+                    .copyWith(color: scheme.error),
+              ),
+            ],
+            const SizedBox(height: 16),
+            FilledButton(
+              onPressed: _busy ? null : _connect,
+              child: Text(_busy ? l10n.connecting : l10n.connect),
+            ),
+          ],
+        ),
       ),
+    );
+  }
+}
+
+class _RowDivider extends StatelessWidget {
+  const _RowDivider();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Padding(
+      padding: EdgeInsets.only(left: 16),
+      child: Divider(height: 0.5, thickness: 0.5),
     );
   }
 }
