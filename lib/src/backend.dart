@@ -6,6 +6,7 @@ import 'package:flutter/widgets.dart';
 import 'data.dart';
 import 'herdr.dart';
 import 'native/bridge.dart';
+import 'native/platform_hooks.dart';
 import 'native/ssh.dart';
 import 'native/storage.dart';
 import 'ssh_identities.dart';
@@ -63,6 +64,8 @@ class TaildeckBackend extends ChangeNotifier {
   List<SshIdentity> _identities = const [];
   bool _identitiesLoaded = false;
   bool _openInApp = false;
+  String _platform = 'go';
+  String _platformWarning = '';
   bool _herdrAutoTried = false;
   String _herdrNode = '';
   String _herdrUser = 'root';
@@ -79,6 +82,14 @@ class TaildeckBackend extends ChangeNotifier {
   NodeItem? get self => _self;
   List<NodeItem> get peers => _peers;
   List<NodeItem> get nodes => [?_self, ..._peers];
+
+  /// `td_start` adapter: `host` when Android's Java hooks are installed,
+  /// `go` everywhere else (and as the fallback).
+  bool get hostPlatform => _platform == 'host';
+
+  /// Why the Android platform hooks could not be installed; empty when the
+  /// node has the adapters it wants. Shown at the top of the log page.
+  String get platformWarning => _platformWarning;
 
   /// Loopback gateway port from `td_start`; 0 while the node is not running.
   int get gatewayPort => _gatewayPort;
@@ -116,6 +127,10 @@ class TaildeckBackend extends ChangeNotifier {
     final storage = _storage;
     if (bridge == null || storage == null) return;
     _events = bridge.events.listen(_onEvent);
+    final mode = await resolvePlatformMode();
+    _platform = mode.name;
+    _platformWarning = mode.warning ?? '';
+    if (_platformWarning.isNotEmpty) debugPrint('taildeck: $_platformWarning');
     try {
       final config = await storage.readConfig();
       _hostname = config.hostname;
@@ -416,11 +431,12 @@ class TaildeckBackend extends ChangeNotifier {
   /// `td_logs()` on native; the event buffer when there is no bridge.
   String logsText() {
     final bridge = _bridge;
-    if (bridge == null) return _logs.join('\n');
+    final head = _platformWarning.isEmpty ? '' : 'platform: $_platformWarning\n';
+    if (bridge == null) return head + _logs.join('\n');
     try {
-      return bridge.logs();
+      return head + bridge.logs();
     } on BridgeException {
-      return _logs.join('\n');
+      return head + _logs.join('\n');
     }
   }
 
@@ -490,6 +506,7 @@ class TaildeckBackend extends ChangeNotifier {
         controlURL: _controlURL,
         authKey: authKey,
         gatewayPort: defaultGatewayPort,
+        platform: _platform,
       );
       _started = true;
       _gatewayPort = (reply['gatewayPort'] as num?)?.toInt() ?? 0;

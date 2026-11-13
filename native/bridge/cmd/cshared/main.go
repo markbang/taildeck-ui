@@ -9,6 +9,7 @@ package main
 #include <stdlib.h>
 
 typedef void (*td_event_fn)(int kind, char *json, void *ctx);
+// The platform hooks return malloc'd strings; this package frees them.
 typedef char *(*td_ifaces_fn)(void *ctx);
 typedef char *(*td_default_if_fn)(void *ctx);
 typedef char *(*td_lookup_fn)(char *host, void *ctx);
@@ -167,6 +168,9 @@ func td_free(p *C.char) {
 	C.free(unsafe.Pointer(p))
 }
 
+// td_set_platform_cb installs the host's network hooks: Android 11+ blocks
+// Go's netlink access and has no resolv.conf. Each hook returns a malloc'd
+// UTF-8 string, which hostPlatform frees.
 //export td_set_platform_cb
 func td_set_platform_cb(ifaces C.td_ifaces_fn, def C.td_default_if_fn, lookup C.td_lookup_fn, ctx C.uintptr_t) {
 	hostHooks.mu.Lock()
@@ -193,7 +197,12 @@ func (hostPlatform) Interfaces() string {
 	if fn == nil {
 		return "[]"
 	}
-	if s := C.GoString(C.td_call_ifaces(fn, ctx)); s != "" {
+	raw := C.td_call_ifaces(fn, ctx)
+	if raw == nil {
+		return "[]"
+	}
+	defer C.free(unsafe.Pointer(raw))
+	if s := C.GoString(raw); s != "" {
 		return s
 	}
 	return "[]"
@@ -206,7 +215,12 @@ func (hostPlatform) DefaultInterface() string {
 	if fn == nil {
 		return ""
 	}
-	return C.GoString(C.td_call_default_if(fn, ctx))
+	raw := C.td_call_default_if(fn, ctx)
+	if raw == nil {
+		return ""
+	}
+	defer C.free(unsafe.Pointer(raw))
+	return C.GoString(raw)
 }
 
 func (hostPlatform) Lookup(host string) string {
@@ -218,7 +232,12 @@ func (hostPlatform) Lookup(host string) string {
 	}
 	chost := C.CString(host)
 	defer C.free(unsafe.Pointer(chost))
-	return C.GoString(C.td_call_lookup(fn, chost, ctx))
+	raw := C.td_call_lookup(fn, chost, ctx)
+	if raw == nil {
+		return ""
+	}
+	defer C.free(unsafe.Pointer(raw))
+	return C.GoString(raw)
 }
 
 func hostHooksReady() bool {
