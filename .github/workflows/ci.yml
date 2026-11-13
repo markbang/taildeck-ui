@@ -37,14 +37,11 @@ jobs:
           done
           cat /tmp/http.log
           exit 1
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - name: Install Playwright Chromium
+      - name: Screenshot with headless Chrome
         run: |
-          python3 -m pip install playwright
-          python3 -m playwright install --with-deps chromium
-      - run: python3 tool/shots.py --out shots
+          sudo apt-get update
+          sudo apt-get install -y imagemagick
+          bash tool/shots.sh shots http://127.0.0.1:8099/taildeck-ui/
       - name: Job summary
         if: always()
         run: |
