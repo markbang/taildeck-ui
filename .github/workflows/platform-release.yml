@@ -298,8 +298,13 @@ jobs:
           for lib in ios/Frameworks/libtaildeck_bridge.a ios/Frameworks/libtaildeck_term.a; do
             test -s "$lib" || { echo "::error::$lib missing, the Runner would not link the backend"; exit 1; }
             echo "$lib $(stat -f%z "$lib") bytes"
-            grep -q "$(basename "$lib")" ios/Flutter/NativeBridge.xcconfig \
-              || { echo "::error::$(basename "$lib") missing from NativeBridge.xcconfig"; exit 1; }
+            grep -q -- "-force_load \"\$(SRCROOT)/Frameworks/$(basename "$lib")\"" \
+              ios/Flutter/NativeBridge.xcconfig \
+              || { echo "::error::$(basename "$lib") is not force-loaded by NativeBridge.xcconfig"; exit 1; }
+          done
+          for cfg in ios/Flutter/Debug.xcconfig ios/Flutter/Release.xcconfig; do
+            grep -q 'NativeBridge.xcconfig' "$cfg" \
+              || { echo "::error::$cfg does not include NativeBridge.xcconfig"; exit 1; }
           done
 
       - name: Build and zip (windows)
@@ -334,12 +339,24 @@ jobs:
         if: matrix.name == 'ios'
         run: |
           flutter build ios --release --no-codesign
-          # -force_load in ios/Flutter/Native*.xcconfig keeps the archives in
-          # the Runner binary; without them the link (or this check) fails.
+          # -force_load in ios/Flutter/NativeBridge.xcconfig keeps the archives
+          # in the Runner binary; Mach-O exports C symbols with a leading "_".
+          runner=build/ios/iphoneos/Runner.app/Runner
+          missing=0
           for sym in td_start td_term_create; do
-            nm -g build/ios/iphoneos/Runner.app/Runner | grep -q "${sym}\$" \
-              || { echo "::error::$sym missing from the Runner binary"; exit 1; }
+            if nm -g "$runner" | grep -qE "[ _]${sym}\$"; then continue; fi
+            echo "::error::$sym missing from the Runner binary"
+            missing=1
           done
+          if [ "$missing" -ne 0 ]; then
+            echo "--- td_* symbols in $runner"
+            nm -g "$runner" | grep -E 'td_(start|term_create)' | head -20 || true
+            echo "--- ios/Flutter/NativeBridge.xcconfig"
+            cat ios/Flutter/NativeBridge.xcconfig
+            echo "--- archives"
+            ls -l ios/Frameworks/*.a || true
+            exit 1
+          fi
           ditto -c -k --sequesterRsrc --keepParent build/ios/iphoneos/Runner.app \
             "build/taildeck-ios-${VERSION}-unsigned.zip"
       - uses: actions/upload-artifact@v4
