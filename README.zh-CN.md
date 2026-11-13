@@ -76,7 +76,8 @@ lib/src/
 `/?login=1`（登录）、`/?login=waiting`（等待设备批准）、`/?preview=1`（无节点也能看已登录界面）、
 `/?ssh=devbox`（终端）、`/?lang=zh`、
 `/?ssh=demo`（原生 libghostty-vt 演示会话）、`/?chat=w1:p1`（原生构建下某个 pane 的聊天页；没有 herdr 连接时
-显示真实的错误状态）。桌面版没有 URL，用 `TAILDECK_QUERY=ssh=demo` 传同样的参数。
+显示真实的错误状态）、`/?motion=off`（预览系统的「减少动态效果」）、`/?scale=1.3`（预览文字缩放，应用会限制在
+0.9–1.3）。桌面版没有 URL，用 `TAILDECK_QUERY=ssh=demo` 传同样的参数。
 
 ## 运行
 
@@ -133,4 +134,5 @@ pyftsubset /usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc --font-number=
 ## 许可
 
 prism_ui 与 Taildeck 均为 GPL-3.0，本重设计沿用该许可。`third_party/prism_ui` 是 vendored 的 0.1.2，附带
-一处 Web 修复（`SceneBuilder.pushClipRSuperellipse` 需要显式 `clipBehavior`），已在仓库中记录。
+两处本地修改：一处 Web 修复（`SceneBuilder.pushClipRSuperellipse` 需要显式 `clipBehavior`），以及「减少动态效果」支持
+（侧边栏、Dock、弹层和菜单在 `MediaQuery.disableAnimations` 下即时到位）。

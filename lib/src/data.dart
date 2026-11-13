@@ -137,6 +137,9 @@ final peers = <NodeItem>[
 
 enum AgentState { working, idle, done }
 
+/// The demo list's task lines, so the sample data reads in both languages.
+enum DemoTask { grafanaAlerts, releaseWorkflow, headscaleBump }
+
 class AgentItem {
   const AgentItem({
     required this.name,
@@ -145,11 +148,13 @@ class AgentItem {
     required this.project,
     required this.window,
     this.agent = '',
+    this.demoTask,
   });
 
   final String name;
   final AgentState state;
   final String task;
+  final DemoTask? demoTask;
   final String project;
   final String window;
   final String agent;
@@ -162,7 +167,8 @@ const agents = <({String section, List<AgentItem> items})>[
       AgentItem(
         name: 'claude',
         state: AgentState.done,
-        task: 'Tune Grafana alerts',
+        task: '',
+        demoTask: DemoTask.grafanaAlerts,
         project: 'infra',
         window: 'w3:p4',
       ),
@@ -174,7 +180,8 @@ const agents = <({String section, List<AgentItem> items})>[
       AgentItem(
         name: 'claude',
         state: AgentState.working,
-        task: 'Add release workflow',
+        task: '',
+        demoTask: DemoTask.releaseWorkflow,
         project: 'taildeck',
         window: 'w1:p2',
       ),
@@ -193,7 +200,8 @@ const agents = <({String section, List<AgentItem> items})>[
       AgentItem(
         name: 'pi',
         state: AgentState.working,
-        task: 'Bump headscale to 0.27',
+        task: '',
+        demoTask: DemoTask.headscaleBump,
         project: 'router',
         window: 'w2:p1',
       ),

@@ -77,6 +77,15 @@ class _NavigationSidebarState extends State<NavigationSidebar>
   );
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final duration = context.motionDuration(_expandDuration);
+    _overlayExpansion
+      ..duration = duration
+      ..reverseDuration = duration;
+  }
+
+  @override
   void didUpdateWidget(covariant NavigationSidebar oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.onToggle != null && _overlayController.isShowing) {
@@ -148,7 +157,7 @@ class _NavigationSidebarState extends State<NavigationSidebar>
       child: SafeArea(
         child: TweenAnimationBuilder<double>(
           tween: Tween(end: widget.expanded ? 1.0 : 0.0),
-          duration: _expandDuration,
+          duration: context.motionDuration(_expandDuration),
           curve: Easing.standard,
           builder: (context, progress, _) => _SidebarPane(
             progress: progress,
@@ -519,6 +528,12 @@ class _SelectionIndicatorState extends State<_SelectionIndicator>
     value: 1,
   );
   late int _from = widget.index;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _controller.duration = context.motionDuration(_indicatorDuration);
+  }
 
   @override
   void didUpdateWidget(covariant _SelectionIndicator oldWidget) {

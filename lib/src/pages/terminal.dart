@@ -7,6 +7,7 @@ import 'package:flutter/widgets.dart';
 import 'package:prism_ui/icons/icons.dart';
 import 'package:prism_ui/prism_ui.dart';
 
+import '../a11y.dart';
 import '../data.dart';
 import '../l10n.dart';
 import '../native/bridge.dart';
@@ -101,6 +102,9 @@ class _TerminalPageState extends State<TerminalPage> {
       _focus.onKeyEvent = _onKey;
       _output = ssh.output.listen(_onOutput);
     }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _focus.requestFocus();
+    });
   }
 
   void _onOutput(SshOutput frame) {
@@ -274,8 +278,13 @@ class _TerminalPageState extends State<TerminalPage> {
   void _toBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_scroll.hasClients) return;
+      final bottom = _scroll.position.maxScrollExtent;
+      if (context.disableAnimations) {
+        _scroll.jumpTo(bottom);
+        return;
+      }
       _scroll.animateTo(
-        _scroll.position.maxScrollExtent,
+        bottom,
         duration: const Duration(milliseconds: 200),
         curve: Curves.easeOut,
       );
@@ -344,16 +353,23 @@ class _TerminalPageState extends State<TerminalPage> {
                   status: status,
                   statusColor: statusColor,
                 ),
+                LiveRegion(message: status),
                 Expanded(
-                  child: session == null
-                      ? _simulated(wide, mono)
-                      : _emulator(session, wide ? 14.0 : 13.0),
+                  child: Semantics(
+                    container: true,
+                    readOnly: true,
+                    label: l10n.terminalOutput,
+                    hint: l10n.terminalReadOnly,
+                    child: session == null
+                        ? _simulated(wide, mono)
+                        : _emulator(session, wide ? 14.0 : 13.0),
+                  ),
                 ),
                 _QuickBar(onRun: _run),
                 _InputBar(
                   controller: _input,
                   mono: mono,
-                  focusNode: widget.live ? _focus : null,
+                  focusNode: _focus,
                   onChanged: widget.live ? _onTextChanged : null,
                   onSubmitted: (value) {
                     if (widget.live) {
@@ -555,7 +571,7 @@ class _QuickBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 38,
+      height: 44,
       child: ListView(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 14),

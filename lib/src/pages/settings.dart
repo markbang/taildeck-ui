@@ -447,6 +447,10 @@ class _SettingsPageState extends State<SettingsPage> {
                     value: widget.tabAnimation,
                     onChanged: widget.onTabAnimationChanged,
                   ),
+                  if (context.disableAnimations) ...[
+                    const SizedBox(height: 8),
+                    Text(l10n.motionHint, style: context.listCaptionStyle),
+                  ],
                 ],
               ),
             ),
@@ -513,7 +517,14 @@ class _InfoRow extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
       child: Row(
         children: [
-          Text(label, style: context.listTitleStyle),
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: context.listTitleStyle,
+            ),
+          ),
           const SizedBox(width: 16),
           Expanded(
             child: Text(

@@ -131,9 +131,13 @@ class _AgentsPageState extends State<AgentsPage> {
                 dividerInset: 56,
                 children: [
                   for (final agent in group.items)
-                    _LiveAgentRow(
-                      agent: agent,
+                    RowSemantics(
+                      label: _liveAgentLabel(context, l10n, agent),
                       onTap: () => _openAgent(herdr, agent),
+                      child: _LiveAgentRow(
+                        agent: agent,
+                        onTap: () => _openAgent(herdr, agent),
+                      ),
                     ),
                 ],
               ),
@@ -208,7 +212,11 @@ class _AgentsPageState extends State<AgentsPage> {
           GroupCard(
             dividerInset: 56,
             children: [
-              for (final agent in group.items) _DemoAgentRow(agent: agent),
+              for (final agent in group.items)
+                RowSemantics(
+                  label: _demoAgentLabel(l10n, agent),
+                  child: _DemoAgentRow(agent: agent),
+                ),
             ],
           ),
           const SizedBox(height: 16),
@@ -254,6 +262,23 @@ class _AgentsPageState extends State<AgentsPage> {
     HerdrStatus.unknown => ('—', scheme.onSurfaceVariant),
   };
 }
+
+String _liveAgentLabel(
+  BuildContext context,
+  AppLocalizations l10n,
+  HerdrAgent agent,
+) => l10n.agentSemantics(
+  agent.workspace.isEmpty ? 'herdr' : agent.workspace,
+  agent.kind,
+  _statusOf(context, agent.status).$1,
+);
+
+String _demoAgentLabel(AppLocalizations l10n, AgentItem agent) =>
+    l10n.agentSemantics(agent.project, agent.name, switch (agent.state) {
+      AgentState.working => l10n.working,
+      AgentState.idle => l10n.idle,
+      AgentState.done => l10n.done,
+    });
 
 /// Name, status, task and pane of one live agent.
 class _LiveAgentRow extends StatelessWidget {
@@ -354,6 +379,12 @@ class _DemoAgentRow extends StatelessWidget {
       AgentState.idle => (l10n.idle, scheme.onSurfaceVariant),
       AgentState.done => (l10n.done, const Color(0xFF3BB273)),
     };
+    final task = switch (agent.demoTask) {
+      DemoTask.grafanaAlerts => l10n.demoTaskGrafana,
+      DemoTask.releaseWorkflow => l10n.demoTaskRelease,
+      DemoTask.headscaleBump => l10n.demoTaskHeadscale,
+      null => agent.task,
+    };
     return PressRegion(
       onTap: () {},
       child: Padding(
@@ -391,11 +422,11 @@ class _DemoAgentRow extends StatelessWidget {
                       StatusPill(label: label, tint: tint),
                     ],
                   ),
-                  if (agent.task.isNotEmpty)
+                  if (task.isNotEmpty)
                     Padding(
                       padding: const EdgeInsets.only(top: 3),
                       child: Text(
-                        agent.task,
+                        task,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: context.listSubtitleStyle,

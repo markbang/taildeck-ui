@@ -51,11 +51,15 @@ class PageBody extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: AppTextStyle.largeTitle.of(context, emphasized: true),
+                      Semantics(
+                        header: true,
+                        child: Text(
+                          title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppTextStyle.largeTitle
+                              .of(context, emphasized: true),
+                        ),
                       ),
                       if (subtitle != null)
                         Padding(
@@ -70,7 +74,7 @@ class PageBody extends StatelessWidget {
                     ],
                   ),
                 ),
-                if (trailing != null) trailing!,
+                ?trailing,
               ],
             ),
             const SizedBox(height: 16),
@@ -178,9 +182,36 @@ class SectionLabel extends StatelessWidget {
                   .copyWith(color: context.colorScheme.onSurfaceVariant),
             ),
           ),
-          if (trailing != null) trailing!,
+          ?trailing,
         ],
       ),
+    );
+  }
+}
+
+/// One screen-reader node for a pressable row: [label] replaces the texts
+/// inside, so the row reads as a single item.
+class RowSemantics extends StatelessWidget {
+  const RowSemantics({
+    super.key,
+    required this.label,
+    this.onTap,
+    required this.child,
+  });
+
+  final String label;
+  final VoidCallback? onTap;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      container: true,
+      button: onTap != null,
+      label: label,
+      onTap: onTap,
+      excludeSemantics: true,
+      child: child,
     );
   }
 }
@@ -354,23 +385,32 @@ class ServiceTile extends StatelessWidget {
     return PressRegion(
       onTap: onPressed ?? () {},
       child: ListRow(
-        leading: Container(
-          width: 38,
-          height: 38,
-          alignment: Alignment.center,
-          decoration: ShapeDecoration(
-            color: service.tint.withValues(alpha: muted ? 0.08 : 0.16),
-            shape: AppShape.all(10),
-          ),
-          child: Text(
-            name.characters.first.toUpperCase(),
-            style: AppTextStyle.headline
-                .of(context, emphasized: true)
-                .copyWith(color: service.tint),
+        leading: ExcludeSemantics(
+          child: Container(
+            width: 38,
+            height: 38,
+            alignment: Alignment.center,
+            decoration: ShapeDecoration(
+              color: service.tint.withValues(alpha: muted ? 0.08 : 0.16),
+              shape: AppShape.all(10),
+            ),
+            child: Text(
+              name.characters.first.toUpperCase(),
+              style: AppTextStyle.headline
+                  .of(context, emphasized: true)
+                  .copyWith(color: service.tint),
+            ),
           ),
         ),
-        title: Text(name, style: context.listTitleStyle),
-        subtitle: Text(service.address, style: context.listCaptionStyle),
+        title: Semantics(
+          label: AppLocalizations.of(context)
+              .serviceSemantics(name, service.node, service.port),
+          excludeSemantics: true,
+          child: Text(name, style: context.listTitleStyle),
+        ),
+        subtitle: ExcludeSemantics(
+          child: Text(service.address, style: context.listCaptionStyle),
+        ),
         trailing:
             trailing ??
             GlyphIcon(
@@ -405,6 +445,8 @@ class ActionPill extends StatelessWidget {
       onTap: onPressed,
       shape: AppShape.full,
       child: Container(
+        constraints: const BoxConstraints(minHeight: 44),
+        alignment: Alignment.center,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
         decoration: ShapeDecoration(
           color: selected ? scheme.primary : scheme.surfaceContainerHigh,

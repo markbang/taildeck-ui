@@ -32,6 +32,12 @@ class AppLocalizations implements UiLocalizations {
     return _zh ? '中继 · $region' : 'Relay · $region';
   }
 
+  String get onlineSpoken => _zh ? '在线' : 'online';
+  String get offlineSpoken => _zh ? '离线' : 'offline';
+  String get directSpoken => _zh ? '直连' : 'direct';
+  String relaySpoken(String? region) =>
+      _zh ? relay(region) : (region == null ? 'relay' : 'relay · $region');
+
   /// Relative within a day, a short date beyond it. Both locales, no `intl`
   /// dependency: the only patterns are "5 min ago" and "Nov 5, 2026".
   String lastSeen(DateTime value, DateTime now) =>
@@ -44,6 +50,38 @@ class AppLocalizations implements UiLocalizations {
   String lastSeenSemantics(String ip, DateTime value, DateTime now) => _zh
       ? '$ip，上次在线 ${lastSeenSpoken(value, now)}'
       : '$ip, last seen ${lastSeenSpoken(value, now)}';
+
+  /// A node row read out as one item: name, reachability, address, path.
+  String nodeSemantics(
+    String name, {
+    required bool online,
+    required String ip,
+    required bool direct,
+    String? relay,
+    String? lastSeen,
+  }) {
+    final parts = [
+      name,
+      online ? onlineSpoken : offlineSpoken,
+      ip,
+      if (online) direct ? directSpoken : relaySpoken(relay),
+      if (lastSeen != null && lastSeen.isNotEmpty)
+        _zh ? '上次在线 $lastSeen' : 'last seen $lastSeen',
+    ];
+    return parts.join(_zh ? '，' : ', ');
+  }
+
+  String serviceSemantics(String name, String node, int port) =>
+      _zh ? '$name，$node，端口 $port' : '$name, $node, port $port';
+
+  String agentSemantics(String project, String harness, String state) =>
+      _zh ? '$project，$harness，$state' : '$project, $harness, $state';
+
+  String get a11yTailnetConnected => _zh ? 'tailnet 已连接' : 'Tailnet connected';
+  String get a11yTailnetOffline => _zh ? 'tailnet 已断开' : 'Tailnet disconnected';
+  String get a11yTailnetStarting => _zh ? '正在启动节点' : 'Node starting';
+  String a11yNodeOnline(String name) => _zh ? '$name 已上线' : '$name is online';
+  String a11yNodeOffline(String name) => _zh ? '$name 已离线' : '$name is offline';
 
   String shortDate(DateTime value) => _zh
       ? '${value.year}年${value.month}月${value.day}日'
@@ -78,6 +116,7 @@ class AppLocalizations implements UiLocalizations {
     'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
   ];
 
+  @override
   String get back => _zh ? '返回' : 'Back';
   String get ssh => 'SSH';
   String get sshUser => _zh ? '用户' : 'User';
@@ -202,6 +241,17 @@ class AppLocalizations implements UiLocalizations {
       _zh ? '代理已启动，但首条消息发送失败：$error' : 'Agent started, but the first prompt failed: $error';
   String agentActionFailed(String error) =>
       _zh ? '操作失败：$error' : 'Failed: $error';
+  String get agentTool => _zh ? '工具' : 'tool';
+  String get demoTaskGrafana =>
+      _zh ? '调整 Grafana 告警' : 'Tune Grafana alerts';
+  String get demoTaskRelease =>
+      _zh ? '添加发布流程' : 'Add release workflow';
+  String get demoTaskHeadscale =>
+      _zh ? '升级 headscale 到 0.27' : 'Bump headscale to 0.27';
+  String get terminalOutput => _zh ? '终端输出' : 'Terminal output';
+  String get terminalReadOnly => _zh
+      ? '终端输出为只读，在下方输入命令。'
+      : 'Read-only terminal output. Type a command below.';
 
   String get appearance => _zh ? '外观' : 'Appearance';
   String get theme => _zh ? '主题' : 'Theme';
@@ -222,6 +272,9 @@ class AppLocalizations implements UiLocalizations {
   String get fade => _zh ? '淡入' : 'Fade';
   String get slideHint => _zh ? '页面左右滑动' : 'Slide between pages';
   String get fadeHint => _zh ? '原地交叉淡入' : 'Cross-fade in place';
+  String get motionHint => _zh
+      ? '系统开启「减少动态效果」时，切换与弹层会即时完成。'
+      : 'With the system reduce-motion setting on, switches and sheets complete at once.';
   String get session => _zh ? '会话' : 'Session';
   String get signOut => _zh ? '退出登录' : 'Sign out of the tailnet';
   String get about => _zh ? '关于' : 'About';
@@ -298,6 +351,7 @@ class AppLocalizations implements UiLocalizations {
   String get waitingBody => _zh
       ? '浏览器标签页应该已经打开。完成登录后回到这里，本页会自动更新。'
       : 'A browser tab should have opened. Sign in, then come back — this screen updates on its own.';
+  @override
   String get cancel => _zh ? '取消' : 'Cancel';
   String get startingNode => _zh ? '正在启动节点…' : 'Starting the node…';
   String get backendUnavailable => _zh
@@ -313,6 +367,7 @@ class AppLocalizations implements UiLocalizations {
   String connectedTo(String node) =>
       _zh ? '已连接到 $node · Tailscale SSH · 18 ms' : 'Connected to $node · Tailscale SSH · 18 ms';
   String get typeCommand => _zh ? '输入命令' : 'Type a command';
+  @override
   String get close => _zh ? '关闭' : 'Close';
   String get connected => _zh ? '已连接' : 'Connected';
   String get notConnected => _zh ? '未连接' : 'Not connected';

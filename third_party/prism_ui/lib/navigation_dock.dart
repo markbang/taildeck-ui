@@ -184,7 +184,14 @@ class _Spring extends ChangeNotifier implements ValueListenable<double> {
         spring.mass;
   }
 
+  /// Set while the platform asks for reduced motion; a target lands at once.
+  bool still = false;
+
   void springTo(double target, SpringDescription spring) {
+    if (still) {
+      jumpTo(target);
+      return;
+    }
     _simulation = SpringSimulation(
       spring,
       _value,
@@ -533,6 +540,16 @@ class _ElasticPressState extends State<ElasticPress>
   void initState() {
     super.initState();
     _lift.addListener(_settle);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final still = context.disableAnimations;
+    _lift.still = still;
+    _hover.still = still;
+    _pullX.still = still;
+    _pullY.still = still;
   }
 
   @override
@@ -906,6 +923,7 @@ class _FloatingNavigationBarState extends State<FloatingNavigationBar>
   late final Listenable _motion = Listenable.merge([_lens, _lift, _jelly]);
   late final Listenable _hoverMotion = Listenable.merge([_hover, _hoverShow]);
   final List<_Spring> _parallax = [];
+  bool _still = false;
   bool _lifted = false;
   int? _pointer;
   int? _pressedIndex;
@@ -938,6 +956,26 @@ class _FloatingNavigationBarState extends State<FloatingNavigationBar>
     _glowSpread.addListener(_shine);
     _hoverAt.addListener(_leanContent);
     _syncParallax();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _still = context.disableAnimations;
+    for (final spring in [
+      _lens,
+      _lift,
+      _hover,
+      _hoverShow,
+      _swell,
+      _stretch,
+      _jelly,
+      _glow,
+      _glowSpread,
+      ..._parallax,
+    ]) {
+      spring.still = _still;
+    }
   }
 
   @override
@@ -999,7 +1037,7 @@ class _FloatingNavigationBarState extends State<FloatingNavigationBar>
       _parallax.removeLast().dispose();
     }
     while (_parallax.length < count) {
-      _parallax.add(_Spring(this, 0));
+      _parallax.add(_Spring(this, 0)..still = _still);
     }
   }
 
