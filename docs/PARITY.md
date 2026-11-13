@@ -48,7 +48,7 @@ https://markbang.github.io/taildeck-ui/ runs on mock data; no row below counts t
 | Accessibility | Compose semantics | Screen-reader labels, Esc dismissal, reduce motion, text scale clamped to 0.9–1.3 | Done | Landed in #15; screenshots for reduce motion and scale |
 | Linux desktop | — | Bundle with both native libraries, run on Xvfb in CI | Done | Added beyond the Kotlin app |
 | Windows / macOS | — | Unsigned packages built on a tag or manual run, native DLL/dylib wired | Unverified | Never launched |
-| iOS | — | `c-archive` links into the Runner | Partial | Unsigned build produced; the Go/terminal archives are copied but the Runner does not yet link `td_*` symbols, so the iOS app runs on mock data until the link issue is fixed |
+| iOS | — | `c-archive` links into the Runner | Unverified | Unsigned package builds; the Runner target force-loads both archives and references `td_start` / `td_term_create`, so a missing archive fails the link. The next macOS CI build has to prove the symbols in the binary |
 
 ## Not parity, on purpose
 
