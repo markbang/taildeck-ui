@@ -21,6 +21,7 @@ NDK):
 |---|---|---|
 | linux/amd64 | `linux/lib/libtaildeck_bridge.so` | copied into the bundle's `lib/` by `linux/CMakeLists.txt`, opened next to the executable |
 | android/arm64 | `android/app/src/main/jniLibs/arm64-v8a/` | `DynamicLibrary.open('libtaildeck_bridge.so')` |
+| android/x86_64 | `android/app/src/main/jniLibs/x86_64/` | same, for emulators (`tool/build_native.sh android-x86_64`) |
 | windows/x64 | `windows/lib/taildeck_bridge.dll` | installed next to the runner exe by `windows/CMakeLists.txt` |
 | macos (universal) | `macos/Frameworks/libtaildeck_bridge.dylib` | copied into `Taildeck.app/Contents/Frameworks/` by the Runner's "Copy native libs" phase |
 | ios/arm64 | `ios/Frameworks/libtaildeck_bridge.a` | linked into the Runner through `ios/Flutter/NativeBridge.xcconfig` |

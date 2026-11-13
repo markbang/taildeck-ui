@@ -4,7 +4,8 @@
 #
 #   tool/build_term.sh                     # linux/amd64 + android/arm64
 #   tool/build_term.sh linux
-#   tool/build_term.sh android
+#   tool/build_term.sh android         # arm64-v8a
+#   tool/build_term.sh android-x86_64  # x86_64 (emulators)
 #   tool/build_term.sh windows             # x86_64-windows-gnu via Zig
 #   tool/build_term.sh macos               # universal dylib (needs Xcode)
 #   tool/build_term.sh ios                 # arm64 static lib (needs Xcode)
@@ -26,11 +27,10 @@ TARGETS=("$@")
 if [ ${#TARGETS[@]} -eq 0 ]; then
   TARGETS=(linux android)
 elif [ "${TARGETS[0]}" = "all" ]; then
-  TARGETS=(linux android windows macos ios)
+  TARGETS=(linux android android-x86_64 windows macos ios)
 fi
 
 LINUX_OUT="$ROOT/linux/lib/libtaildeck_term.so"
-ANDROID_OUT="$ROOT/android/app/src/main/jniLibs/arm64-v8a/libtaildeck_term.so"
 WINDOWS_OUT="$ROOT/windows/lib/taildeck_term.dll"
 MACOS_DIR="$ROOT/macos/Frameworks"
 IOS_DIR="$ROOT/ios/Frameworks"
@@ -73,27 +73,31 @@ find_ndk() {
   fi
 }
 
-build_android() {
-  local ndk bin cc lib
+build_android_abi() {
+  local abi=$1 ccarch=$2 ndk bin cc lib out
   ndk="$(find_ndk)"
   if [ -z "$ndk" ]; then
-    echo "android/arm64: skipped, no NDK (set ANDROID_NDK_HOME or install into \$ANDROID_SDK_ROOT/ndk)"
+    echo "android/$abi: skipped, no NDK (set ANDROID_NDK_HOME or install into \$ANDROID_SDK_ROOT/ndk)"
     return 0
   fi
   bin="$ndk/toolchains/llvm/prebuilt/linux-x86_64/bin"
   # API 24 matches the app's minSdk; fall back to 26 when the NDK lacks it.
-  cc="$bin/aarch64-linux-android24-clang"
-  [ -x "$cc" ] || cc="$bin/aarch64-linux-android26-clang"
+  cc="$bin/${ccarch}-linux-android24-clang"
+  [ -x "$cc" ] || cc="$bin/${ccarch}-linux-android26-clang"
   if [ ! -x "$cc" ]; then
-    echo "android/arm64: skipped, $cc missing"
+    echo "android/$abi: skipped, $cc missing"
     return 0
   fi
-  lib="$(ghostty_lib arm64-v8a)"
-  echo "android/arm64 (NDK $(basename "$ndk")): $ANDROID_OUT"
-  mkdir -p "$(dirname "$ANDROID_OUT")"
+  lib="$(ghostty_lib "$abi")"
+  out="$ROOT/android/app/src/main/jniLibs/$abi/libtaildeck_term.so"
+  echo "android/$abi (NDK $(basename "$ndk")): $out"
+  mkdir -p "$(dirname "$out")"
   "$cc" "${CFLAGS[@]}" -I"$GHOSTTY_OUT/include" native/term/term_ffi.c "$lib" \
-    -o "$ANDROID_OUT" -lm
+    -o "$out" -lm
 }
+
+build_android() { build_android_abi arm64-v8a aarch64; }
+build_android_x86_64() { build_android_abi x86_64 x86_64; }
 
 build_windows() {
   if [ -z "$ZIG" ]; then
@@ -169,9 +173,10 @@ for target in "${TARGETS[@]}"; do
   case "$target" in
     linux) build_linux ;;
     android) build_android ;;
+    android-x86_64) build_android_x86_64 ;;
     windows) build_windows ;;
     macos) build_macos ;;
     ios) build_ios ;;
-    *) die "unknown target '$target' (want all, linux, android, windows, macos or ios)" ;;
+    *) die "unknown target '$target' (want all, linux, android, android-x86_64, windows, macos or ios)" ;;
   esac
 done
