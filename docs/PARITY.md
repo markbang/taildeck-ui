@@ -31,9 +31,9 @@ https://markbang.github.io/taildeck-ui/ runs on mock data; no row below counts t
 | Host-key trust | TOFU, forget trusted hosts | Same, `td_forget_host_keys` | Unverified | No host was ever trusted here |
 | Services | Add, edit, delete, grouped by node | `services.json`, add/edit/delete with node, scheme, port, path | Done | Screenshotted; persisted through the native storage layer |
 | Port scan | 32 common ports through the node | `td_probe`, same port list | Unverified | Wired to the node; the Web preview says it needs a native build |
-| Open a service | In-app WebView or default browser via the gateway | Default browser through `127.0.0.1:18680` | Unverified | `gatewayUrl` and `url_launcher` are wired; the gateway was never exercised |
+| Open a service | In-app WebView or default browser via the gateway | Follows Settings: in-app WebView on Android/iOS, default browser elsewhere, both through `127.0.0.1:18680` | Unverified | The shared `gatewayUrl` and routing are wired and the fallback is screenshotted; the gateway was never exercised |
 | 18680 gateway | Loopback forward proxy, per-service origins | Same Go gateway from `bridge/` | Unverified | Reused unchanged, but needs a running node to test |
-| In-app WebView | Proxy-override WebView, tailnet hosts through the gateway | — | Not yet | Links open in the system browser |
+| In-app WebView | Proxy-override WebView, tailnet hosts through the gateway | `webview_flutter` loading the gateway URL, with back/reload, progress and retry | Partial | Android and iOS only; desktop and web keep the system browser and say so inline. Never run on a device; downloads, file pickers and HTTP auth are not wired |
 | Agents list | herdr panes by workspace, states, errors | Real `agent.list` over SSH, workspace sections, state pills, connection card | Partial | Implemented and error states verified; live panes untested |
 | Agent chat | Transcript, prompt, restart, model switch, more history | Transcript or screen text, prompt, restart, `/model` and effort picker, paging | Partial | Same gap: no live herdr; see the rows below for what is missing |
 | Notifications | Allow / deny / reply from a notification | — | Not yet | No notification channel or action receiver |
