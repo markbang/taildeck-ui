@@ -112,8 +112,14 @@ class _SelfCard extends StatelessWidget {
                                 .of(context, emphasized: true),
                           ),
                           const Spacer(),
+                          GlyphIcon(
+                            Glyphs2.arrowDown,
+                            size: 11,
+                            color: scheme.onSurfaceVariant,
+                          ),
+                          const SizedBox(width: 2),
                           Text(
-                            '↓ ${peers[i].rx}',
+                            peers[i].rx,
                             style: AppTextStyle.caption1
                                 .of(context)
                                 .copyWith(color: scheme.onSurfaceVariant),

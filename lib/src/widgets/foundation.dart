@@ -250,15 +250,15 @@ class TrafficLabel extends StatelessWidget {
     final scheme = context.colorScheme;
     final style = AppTextStyle.caption1
         .of(context)
-        .copyWith(color: scheme.onSurfaceVariant, fontFeatures: const []);
+        .copyWith(color: scheme.onSurfaceVariant);
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text('↓', style: style),
+        GlyphIcon(Glyphs2.arrowDown, size: 11, color: scheme.onSurfaceVariant),
         const SizedBox(width: 2),
         Text(node.rx, style: style),
         const SizedBox(width: 8),
-        Text('↑', style: style),
+        GlyphIcon(Glyphs2.arrowUp, size: 11, color: scheme.onSurfaceVariant),
         const SizedBox(width: 2),
         Text(node.tx, style: style),
       ],
