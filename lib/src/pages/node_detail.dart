@@ -9,7 +9,9 @@ import '../data.dart';
 import '../l10n.dart';
 import '../glyphs.dart';
 import '../native/bridge.dart';
+import '../service_open.dart';
 import '../services.dart';
+import '../webview/web_page.dart';
 import '../widgets/foundation.dart';
 import 'service_sheet.dart';
 
@@ -54,6 +56,23 @@ class _NodeDetailPageState extends State<NodeDetailPage> {
   bool _scanning = false;
   List<int>? _ports;
   String _scanError = '';
+  String _notice = '';
+
+  Future<void> _openService(Service service) async {
+    final l10n = AppLocalizations.of(context);
+    final fallback = BackendScope.of(context).openInApp && !inAppWebViewSupported;
+    final result = await openService(context, service);
+    if (!mounted) return;
+    setState(() {
+      _notice = switch (result) {
+        ServiceOpen.needsGateway =>
+          fallback ? l10n.inAppDesktopOnlyNoGateway : l10n.serviceNeedsGateway,
+        ServiceOpen.openFailed => l10n.serviceOpenFailed,
+        ServiceOpen.fallbackToBrowser => l10n.inAppDesktopOnly,
+        _ => '',
+      };
+    });
+  }
 
   Future<void> _runPing() async {
     if (_pinging) return;
@@ -134,6 +153,7 @@ class _NodeDetailPageState extends State<NodeDetailPage> {
     final node = widget.node;
     final scheme = context.colorScheme;
     final l10n = AppLocalizations.of(context);
+    final services = ServicesScope.of(context).forNode(node.name);
     final mono = AppTextStyle.body.of(context).copyWith(
       fontFamily: 'DejaVuSansMono',
       fontSize: 14.5,
@@ -175,6 +195,10 @@ class _NodeDetailPageState extends State<NodeDetailPage> {
             ),
           ],
         ),
+        if (_notice.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          InlineNotice(text: _notice, tint: scheme.onSurfaceVariant),
+        ],
         if (_pinging || _ping != null) ...[
           const SizedBox(height: 10),
           _PingLabel(pinging: _pinging, result: _ping),
@@ -186,6 +210,26 @@ class _NodeDetailPageState extends State<NodeDetailPage> {
             ports: _ports,
             error: _scanError,
             onAdd: (port) => unawaited(_addScanned(port)),
+          ),
+        ],
+        if (services.isNotEmpty) ...[
+          const SizedBox(height: 14),
+          SectionLabel(l10n.tabServices),
+          GroupCard(
+            dividerInset: 62,
+            children: [
+              for (final service in services)
+                ServiceTile(
+                  service,
+                  muted: !node.online,
+                  onPressed: () => unawaited(_openService(service)),
+                  trailing: GlyphIcon(
+                    Glyphs2.globe,
+                    size: 18,
+                    color: scheme.onSurfaceVariant.opacity50,
+                  ),
+                ),
+            ],
           ),
         ],
         const SizedBox(height: 14),

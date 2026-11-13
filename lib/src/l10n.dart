@@ -320,9 +320,20 @@ class AppLocalizations implements UiLocalizations {
   String get servicesOpen => _zh ? '服务打开方式' : 'Open services in';
   String get inBrowser => _zh ? '浏览器' : 'Browser';
   String get inApp => _zh ? '应用内' : 'In app';
-  String get inAppComingSoon => _zh
-      ? '应用内网页尚未实现，服务仍会用系统浏览器打开。'
-      : 'The in-app browser is not built yet, so services still open in your browser.';
+  String get inAppHint => _zh ? '服务会在应用内的网页中打开。' : 'Services open in an in-app page.';
+  String get inAppDesktopOnly => _zh
+      ? '应用内网页仅支持 Android 和 iOS，这里会用系统浏览器打开。'
+      : 'In-app pages are Android and iOS only, so this opens in your browser.';
+  String get inAppDesktopOnlyNoGateway => _zh
+      ? '应用内网页仅支持 Android 和 iOS；这里会用浏览器打开，但网关未运行。'
+      : 'In-app pages are Android and iOS only; this would open in your browser, but the gateway is not running.';
+  String get reload => _zh ? '重新加载' : 'Reload';
+  String get openInBrowser => _zh ? '在浏览器中打开' : 'Open in browser';
+  String get retry => _zh ? '重试' : 'Retry';
+  String get webPageFailed => _zh ? '页面无法加载' : 'Page could not load';
+  String get webPageFailedBody => _zh
+      ? '检查节点和网关是否在线，然后重试。'
+      : 'Check that the node and gateway are online, then retry.';
   String get logs => _zh ? '日志' : 'Logs';
   String get logsEmpty => _zh ? '还没有日志。' : 'No logs yet.';
   String get logsCopied => _zh ? '日志已复制' : 'Logs copied';
