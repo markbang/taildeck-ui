@@ -35,10 +35,18 @@ class _TerminalPageState extends State<TerminalPage> {
   final _scroll = ScrollController();
   late final List<_Line> _lines = [
     _Line('Connected to ${widget.node.name} · Tailscale SSH · 18 ms', _Kind.ok),
-    _Line('Linux devbox 6.8.0-45-generic #45-Ubuntu SMP x86_64', _Kind.output),
+    _Line('Linux devbox 6.8.0-45-generic #45-Ubuntu SMP PREEMPT_DYNAMIC x86_64', _Kind.output),
     _Line('Last login: Thu Nov 13 16:02:11 2026 from 100.101.4.2', _Kind.muted),
-    _Line('uptime', _Kind.command),
-    _Line('16:47:03 up 12 days, 4:21, 2 users, load average: 0.14, 0.09, 0.06', _Kind.output),
+    const _Line('uptime', _Kind.command),
+    const _Line('16:47:03 up 12 days, 4:21, 2 users, load average: 0.14, 0.09, 0.06', _Kind.output),
+    const _Line('tailscale status', _Kind.command),
+    const _Line('100.71.200.9   devbox     markbang@   linux    -', _Kind.output),
+    const _Line('100.101.4.2    pixel-9    markbang@   android  offline', _Kind.output),
+    const _Line('100.88.12.7    nas        markbang@   linux    -', _Kind.output),
+    const _Line('docker ps', _Kind.command),
+    const _Line('CONTAINER ID   IMAGE                  STATUS        NAMES', _Kind.output),
+    const _Line('3f9c1a2b7d10   grafana:11.3.0         Up 12 days    grafana', _Kind.output),
+    const _Line('8a71d0c4e512   codercom/code-server   Up 12 days    code', _Kind.output),
   ];
 
   @override
