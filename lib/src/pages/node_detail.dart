@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/widgets.dart';
 import 'package:prism_ui/icons/icons.dart';
 import 'package:prism_ui/prism_ui.dart';
@@ -6,7 +8,10 @@ import '../backend.dart';
 import '../data.dart';
 import '../l10n.dart';
 import '../glyphs.dart';
+import '../native/bridge.dart';
+import '../services.dart';
 import '../widgets/foundation.dart';
+import 'service_sheet.dart';
 
 class NodeDetailPage extends StatefulWidget {
   const NodeDetailPage({
@@ -29,6 +34,9 @@ class NodeDetailPage extends StatefulWidget {
 class _NodeDetailPageState extends State<NodeDetailPage> {
   bool _pinging = false;
   PingResult? _ping;
+  bool _scanning = false;
+  List<int>? _ports;
+  String _scanError = '';
 
   Future<void> _runPing() async {
     if (_pinging) return;
@@ -44,6 +52,64 @@ class _NodeDetailPageState extends State<NodeDetailPage> {
       _pinging = false;
       _ping = result;
     });
+  }
+
+  Future<void> _scan() async {
+    if (_scanning) return;
+    final l10n = AppLocalizations.of(context);
+    final backend = BackendScope.of(context);
+    if (!widget.node.online) {
+      setState(() {
+        _ports = null;
+        _scanError = l10n.scanOffline;
+      });
+      return;
+    }
+    if (!backend.available) {
+      setState(() {
+        _ports = null;
+        _scanError = l10n.scanNeedsBackend;
+      });
+      return;
+    }
+    if (!backend.signedIn) {
+      setState(() {
+        _ports = null;
+        _scanError = l10n.nodeNotRunning;
+      });
+      return;
+    }
+    setState(() {
+      _scanning = true;
+      _ports = null;
+      _scanError = '';
+    });
+    try {
+      final ports = await backend.probe(widget.node.name, commonPorts);
+      if (!mounted) return;
+      setState(() {
+        _scanning = false;
+        _ports = ports;
+      });
+    } on BridgeException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _scanning = false;
+        _scanError = l10n.scanFailed(error.message);
+      });
+    }
+  }
+
+  Future<void> _addScanned(int port) async {
+    final store = ServicesScope.of(context);
+    final service = await showServiceSheet(
+      context,
+      nodes: [widget.node],
+      initialNode: widget.node.name,
+      initialPort: port,
+    );
+    if (service == null) return;
+    await store.upsert(service);
   }
 
   @override
@@ -84,11 +150,25 @@ class _NodeDetailPageState extends State<NodeDetailPage> {
               glyph: Glyphs2.ping,
               onPressed: _runPing,
             ),
+            ActionPill(
+              label: l10n.scanPorts,
+              glyph: Glyphs2.radar,
+              onPressed: _scan,
+            ),
           ],
         ),
         if (_pinging || _ping != null) ...[
           const SizedBox(height: 10),
           _PingLabel(pinging: _pinging, result: _ping),
+        ],
+        if (_scanning || _ports != null || _scanError.isNotEmpty) ...[
+          const SizedBox(height: 14),
+          _ScanResult(
+            scanning: _scanning,
+            ports: _ports,
+            error: _scanError,
+            onAdd: (port) => unawaited(_addScanned(port)),
+          ),
         ],
         const SizedBox(height: 14),
         PressRegion(
@@ -189,6 +269,84 @@ class _NodeDetailPageState extends State<NodeDetailPage> {
                 child: Text(node.expiry, style: context.listTitleStyle),
               ),
             _DetailRow(label: l10n.traffic, child: TrafficLabel(node: node)),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _ScanResult extends StatelessWidget {
+  const _ScanResult({
+    required this.scanning,
+    required this.ports,
+    required this.error,
+    required this.onAdd,
+  });
+
+  final bool scanning;
+  final List<int>? ports;
+  final String error;
+  final ValueChanged<int> onAdd;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final scheme = context.colorScheme;
+    final ports = this.ports;
+    if (scanning) {
+      return Row(
+        children: [
+          const SizedBox(width: 4),
+          const ActivityIndicator(size: 16),
+          const SizedBox(width: 10),
+          Text(
+            l10n.scanning,
+            style: AppTextStyle.footnote
+                .of(context)
+                .copyWith(color: scheme.onSurfaceVariant),
+          ),
+        ],
+      );
+    }
+    if (error.isNotEmpty) return InlineNotice(text: error);
+    if (ports == null || ports.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.only(left: 4),
+        child: Text(
+          l10n.scanNone,
+          style: AppTextStyle.footnote
+              .of(context)
+              .copyWith(color: scheme.onSurfaceVariant),
+        ),
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SectionLabel(l10n.scanFound(ports.length)),
+        GroupCard(
+          dividerInset: 0,
+          children: [
+            for (final port in ports)
+              ListRow(
+                padding: const EdgeInsets.fromLTRB(16, 4, 8, 4),
+                title: Text(
+                  '$port',
+                  style: AppTextStyle.body
+                      .of(context, emphasized: true)
+                      .copyWith(fontFamily: 'DejaVuSansMono'),
+                ),
+                subtitle: Text(
+                  httpsPorts.contains(port) ? 'https' : 'http',
+                  style: context.listCaptionStyle,
+                ),
+                trailing: IconButton(
+                  onPressed: () => onAdd(port),
+                  icon: const GlyphIcon(Glyphs2.plus),
+                  tooltip: l10n.addService,
+                ),
+              ),
           ],
         ),
       ],

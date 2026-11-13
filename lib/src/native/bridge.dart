@@ -79,6 +79,10 @@ abstract class NativeBridge {
   String logs();
   int gatewayPort();
   Map<String, dynamic> ping(String ip);
+
+  /// Ports from the comma-separated [ports] that accept a TCP connection on
+  /// [host], dialed through the tailnet node.
+  List<int> probe(String host, String ports);
   void dispose();
 
   /// Opens an interactive PTY shell over the tailnet and returns its id.

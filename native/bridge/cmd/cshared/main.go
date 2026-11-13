@@ -144,6 +144,15 @@ func td_ping(ip *C.char) *C.char {
 	return okJSON(raw)
 }
 
+//export td_probe
+func td_probe(host *C.char, portsCSV *C.char) *C.char {
+	raw, err := tsbridge.Probe(C.GoString(host), C.GoString(portsCSV))
+	if err != nil {
+		return fail(err)
+	}
+	return ok(map[string]any{"ports": json.RawMessage(raw)})
+}
+
 //export td_set_event_cb
 func td_set_event_cb(cb C.td_event_fn, ctx C.uintptr_t) {
 	cbMu.Lock()

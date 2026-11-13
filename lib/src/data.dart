@@ -122,31 +122,6 @@ const peers = <NodeItem>[
   ),
 ];
 
-class ServiceItem {
-  const ServiceItem({
-    required this.name,
-    required this.node,
-    required this.port,
-    required this.tint,
-    this.glyph,
-  });
-
-  final String name;
-  final String node;
-  final int port;
-  final Color tint;
-  final String? glyph;
-}
-
-const services = <ServiceItem>[
-  ServiceItem(name: 'Grafana', node: 'devbox', port: 3000, tint: Color(0xFFF08C2E), glyph: 'G'),
-  ServiceItem(name: 'code-server', node: 'devbox', port: 8080, tint: Color(0xFF4E8CFF), glyph: 'C'),
-  ServiceItem(name: 'Synology DSM', node: 'nas', port: 5001, tint: Color(0xFF5C6BC0), glyph: 'S'),
-  ServiceItem(name: 'Jellyfin', node: 'nas', port: 8096, tint: Color(0xFFA855F7), glyph: 'J'),
-  ServiceItem(name: 'Home Assistant', node: 'pi-k3s', port: 8123, tint: Color(0xFF38BDF8), glyph: 'H'),
-  ServiceItem(name: 'Sunshine', node: 'win-gaming', port: 47990, tint: Color(0xFF64748B), glyph: 'S'),
-];
-
 enum AgentState { working, idle, done }
 
 class AgentItem {

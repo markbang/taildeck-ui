@@ -82,6 +82,13 @@ abstract final class Glyphs2 {
     GlyphPolyline([GlyphVertex(4.6, 12), GlyphVertex(19.4, 12)], role: GlyphRole.line),
   ]);
 
+  static const radar = Glyph([
+    GlyphCircle(12, 12, 8.6, role: GlyphRole.line),
+    GlyphCircle(12, 12, 4.2, role: GlyphRole.line),
+    GlyphCircle(12, 12, 0.9, role: GlyphRole.line, solid: true),
+    GlyphPolyline([GlyphVertex(12, 12), GlyphVertex(18.4, 7.2)], role: GlyphRole.line),
+  ]);
+
   static const arrowDown = Glyph([
     GlyphPolyline([GlyphVertex(12, 5), GlyphVertex(12, 19)], role: GlyphRole.line),
     GlyphPolyline([GlyphVertex(6.4, 13.4), GlyphVertex(12, 19.4, 0.8), GlyphVertex(17.6, 13.4)], role: GlyphRole.line),

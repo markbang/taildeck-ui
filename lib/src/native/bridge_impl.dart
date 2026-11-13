@@ -57,6 +57,7 @@ class FfiBridge implements NativeBridge {
       _status = lib.lookupFunction<_StrFnNative, _StrFn>('td_status'),
       _logs = lib.lookupFunction<_StrFnNative, _StrFn>('td_logs'),
       _ping = lib.lookupFunction<_StrArgNative, _StrArg>('td_ping'),
+      _probe = lib.lookupFunction<_TwoStrNative, _TwoStr>('td_probe'),
       _gatewayPort = lib.lookupFunction<_IntFnNative, _IntFn>(
         'td_gateway_port',
       ),
@@ -83,6 +84,7 @@ class FfiBridge implements NativeBridge {
   final _StrFn _status;
   final _StrFn _logs;
   final _StrArg _ping;
+  final _TwoStr _probe;
   final _IntFn _gatewayPort;
   final _SetCb _setEventCb;
   final _StrArg _sshDial;
@@ -142,6 +144,15 @@ class FfiBridge implements NativeBridge {
 
   @override
   Map<String, dynamic> ping(String ip) => _callArg(_ping, ip);
+
+  @override
+  List<int> probe(String host, String ports) {
+    final reply = _callTwo(_probe, host, ports);
+    return [
+      for (final port in reply['ports'] as List? ?? const [])
+        if (port is num) port.toInt(),
+    ];
+  }
 
   @override
   Map<String, dynamic> sshDial({
