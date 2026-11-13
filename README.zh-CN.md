@@ -36,8 +36,10 @@ Flutter 界面；原生边界（tsnet 节点、终端、网关）的方案见
 - **路径徽标** —— `Direct`（闪电）与 `Relay · tok` 合成一个紧凑标签，取代原来的小圆点
 - **节点详情** —— 操作胶囊（SSH / Web / Ping）、Agents 摘要卡片，然后是一张分组信息卡
 - **服务** —— 按节点分组，分区标题里带该节点自己的路径状态
-- **Agents** —— 按项目分区，状态胶囊（Working / Idle / Done），显示任务和 `project · window` 信息；
-  “New agent” 弹出一个表单，含 harness、项目选择和任务输入，列表就地更新
+- **Agents（herdr）** —— Android/Linux 上代理列表、状态和会话记录来自节点上的真实 herdr 服务，走与终端相同的
+  SSH 连接：按工作区分区，状态胶囊（运行中 / 待确认 / 空闲 / 已完成），显示 pane 标题和 `kind · pane`；
+  连接卡片会说明 `HERDR_NOT_INSTALLED` / `HERDR_NOT_RUNNING`；聊天页显示会话记录、输入框、重启和 `/model` 切换。
+  网页预览仍用演示列表；连接后 “新建代理” 会真正启动代理（`workspace.create` + `agent.start`）
 - **导航与 FlClash 一致** —— 同一套 prism_ui 外壳：`PageView` + `KeepScope`（切页时保留滚动位置并滑动切换），
   侧边栏放在带分隔线的 chrome 表面上的 `AnimatedVisibility.sidebar` 里，浮动 `NavigationDock` 使用
   `BarItemPresence.held` + `AnimatedVisibility.bottomNavigation`，另可在设置里切换到停靠式 `NavigationBar`；
@@ -73,7 +75,8 @@ lib/src/
 `/?theme=light`、`/?nav=docked`（停靠式底栏替代浮动底栏）、`/?anim=fade`、
 `/?login=1`（登录）、`/?login=waiting`（等待设备批准）、`/?preview=1`（无节点也能看已登录界面）、
 `/?ssh=devbox`（终端）、`/?lang=zh`、
-`/?ssh=demo`（原生 libghostty-vt 演示会话）。桌面版没有 URL，用 `TAILDECK_QUERY=ssh=demo` 传同样的参数。
+`/?ssh=demo`（原生 libghostty-vt 演示会话）、`/?chat=w1:p1`（原生构建下某个 pane 的聊天页；没有 herdr 连接时
+显示真实的错误状态）。桌面版没有 URL，用 `TAILDECK_QUERY=ssh=demo` 传同样的参数。
 
 ## 运行
 
@@ -82,6 +85,21 @@ source tool/env.sh          # 国内镜像 + Flutter 3.47.9
 flutter pub get
 flutter run -d web-server --web-port 8099
 ```
+
+## herdr 代理
+
+Agents 标签页连接节点上的 [herdr](https://github.com/markbang/herdr)：用节点的 SSH 凭据（Tailscale SSH、设置里的
+密钥或密码）登录，接入 herdr socket，并在 herdr 报告变化时重新读取 `agent.list`。连接目标保存在 `config.json`，
+密码不会写入。
+
+```bash
+tool/build_native.sh          # Go ABI：td_herdr_connect / _call / _transcript / _restart / _models / _close
+dart run tool/ffi_smoke.dart  # 导出符号与错误信封，不需要网络
+```
+
+与 Kotlin 版相比尚未实现：按节点保存的 SSH 配置（这里只有一个 herdr 目标）、通知里的允许/拒绝与回复、代理忙时的
+消息队列、子代理会话、图片附件、斜杠命令补全。这里没有可用的 tailnet 和运行中的 herdr，真实的 pane 列表和流式
+更新未经验证。
 
 ## 原生终端
 

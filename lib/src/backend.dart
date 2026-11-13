@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter/widgets.dart';
 
 import 'data.dart';
+import 'herdr.dart';
 import 'native/bridge.dart';
 import 'native/ssh.dart';
 import 'native/storage.dart';
@@ -27,8 +28,10 @@ class PingResult {
 /// stays on mock data.
 class TaildeckBackend extends ChangeNotifier {
   TaildeckBackend({NativeBridge? bridge, BackendStorage? storage})
-    : _bridge = bridge ?? openNativeBridge(),
-      _storage = storage ?? openBackendStorage();
+    : this._(bridge ?? openNativeBridge(), storage ?? openBackendStorage());
+
+  TaildeckBackend._(this._bridge, this._storage)
+    : _herdr = _bridge == null ? null : HerdrController(_bridge);
 
   static const defaultHostname = 'taildeck';
   static const defaultGatewayPort = 18680;
@@ -37,6 +40,7 @@ class TaildeckBackend extends ChangeNotifier {
 
   final NativeBridge? _bridge;
   final BackendStorage? _storage;
+  final HerdrController? _herdr;
   StreamSubscription<BridgeEvent>? _events;
   Timer? _refreshTimer;
 
@@ -59,6 +63,12 @@ class TaildeckBackend extends ChangeNotifier {
   List<SshIdentity> _identities = const [];
   bool _identitiesLoaded = false;
   bool _openInApp = false;
+  bool _herdrAutoTried = false;
+  String _herdrNode = '';
+  String _herdrUser = 'root';
+  int _herdrPort = 22;
+  String _herdrAuth = 'tailscale';
+  String _herdrIdentity = '';
 
   bool get available => _bridge != null && _storage != null;
   BackendState get state => _state;
@@ -77,6 +87,19 @@ class TaildeckBackend extends ChangeNotifier {
 
   /// Service links open in the browser until an in-app browser lands.
   bool get openInApp => _openInApp;
+
+  /// herdr link, agent list and pane calls; null without a native backend.
+  HerdrController? get herdr => _herdr;
+
+  /// What the Agents page prefills the connection form with.
+  ({String node, String user, int port, String auth, String identity})
+  get herdrTarget => (
+    node: _herdrNode,
+    user: _herdrUser,
+    port: _herdrPort,
+    auth: _herdrAuth,
+    identity: _herdrIdentity,
+  );
 
   /// The node key is accepted; the tunnel is up.
   bool get signedIn => _state == BackendState.running;
@@ -99,6 +122,11 @@ class TaildeckBackend extends ChangeNotifier {
       _controlURL = config.controlURL;
       _persistedSignIn = config.signedIn;
       _openInApp = config.openInApp;
+      _herdrNode = config.herdrNode;
+      _herdrUser = config.herdrUser;
+      _herdrPort = config.herdrPort;
+      _herdrAuth = config.herdrAuth;
+      _herdrIdentity = config.herdrIdentity;
       // The tsnet state dir keeps the node key, so a previous session can
       // reconnect without a new key.
       if (config.signedIn) await _start('');
@@ -333,6 +361,48 @@ class TaildeckBackend extends ChangeNotifier {
     return SshSession(bridge, id);
   }
 
+  /// Attaches to herdr on [node] with the same SSH credentials as [auth]
+  /// (`tailscale`, `key` or `password`). The target is kept for the next launch.
+  Future<void> connectHerdr({
+    required String node,
+    required String user,
+    int port = 22,
+    String auth = 'tailscale',
+    String identityId = builtinKeyId,
+    String password = '',
+  }) async {
+    final herdr = _herdr;
+    if (herdr == null) {
+      throw const BridgeException('native backend is unavailable');
+    }
+    if (!signedIn) {
+      throw const BridgeException('the tailnet node is not running');
+    }
+    var keyPath = '';
+    var passphrase = '';
+    if (auth == 'key') {
+      final key = await sshKeyFor(identityId);
+      keyPath = key.path;
+      passphrase = key.passphrase;
+    }
+    await herdr.connect(
+      node: node,
+      port: port,
+      user: user,
+      password: auth == 'password' ? password : '',
+      keyPath: keyPath,
+      passphrase: passphrase,
+    );
+    if (herdr.ready) {
+      _herdrNode = node;
+      _herdrUser = user;
+      _herdrPort = port;
+      _herdrAuth = auth;
+      _herdrIdentity = auth == 'key' ? identityId : '';
+      await _persist();
+    }
+  }
+
   /// Forgets trusted host keys, so the next connection trusts them again.
   Future<void> forgetSshHostKeys() async {
     final bridge = _bridge;
@@ -374,6 +444,8 @@ class TaildeckBackend extends ChangeNotifier {
     _self = null;
     _peers = const [];
     _tailnet = '';
+    _herdrAutoTried = false;
+    unawaited(_herdr?.disconnect() ?? Future<void>.value());
     await _persist(signedIn: false);
     notifyListeners();
   }
@@ -396,6 +468,7 @@ class TaildeckBackend extends ChangeNotifier {
         // Shutting down anyway.
       }
     }
+    _herdr?.dispose();
     _bridge?.dispose();
     super.dispose();
   }
@@ -472,6 +545,9 @@ class TaildeckBackend extends ChangeNotifier {
       case BridgeEventKind.sshData || BridgeEventKind.sshClosed:
         // Session frames reach their own stream, not the backend.
         return;
+      case BridgeEventKind.herdr:
+        _herdr?.onEvent(event);
+        return;
     }
   }
 
@@ -502,7 +578,29 @@ class TaildeckBackend extends ChangeNotifier {
     if (_state == BackendState.running) {
       _waitingForLogin = false;
       if (!_persistedSignIn) _persist(signedIn: true);
+      _autoConnectHerdr();
     }
+  }
+
+  /// Reconnects to the herdr target of the last session, once per launch.
+  void _autoConnectHerdr() {
+    final herdr = _herdr;
+    if (herdr == null || _herdrAutoTried || _herdrNode.isEmpty) return;
+    if (herdr.ready || herdr.link == HerdrLink.connecting) return;
+    _herdrAutoTried = true;
+    unawaited(() async {
+      try {
+        await connectHerdr(
+          node: _herdrNode,
+          user: _herdrUser,
+          port: _herdrPort,
+          auth: _herdrAuth,
+          identityId: _herdrIdentity.isEmpty ? builtinKeyId : _herdrIdentity,
+        );
+      } on Object {
+        // The Agents page shows the link state and the reason.
+      }
+    }());
   }
 
   Future<void> _persist({bool? signedIn}) async {
@@ -516,6 +614,11 @@ class TaildeckBackend extends ChangeNotifier {
           controlURL: _controlURL,
           signedIn: persist,
           openInApp: _openInApp,
+          herdrNode: _herdrNode,
+          herdrUser: _herdrUser,
+          herdrPort: _herdrPort,
+          herdrAuth: _herdrAuth,
+          herdrIdentity: _herdrIdentity,
         ),
       );
     } on Object catch (error) {

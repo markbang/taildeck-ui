@@ -96,6 +96,67 @@ class AppLocalizations implements UiLocalizations {
   String get taskHint => _zh ? '可选，一句话描述' : 'Optional, one line';
   String get create => _zh ? '创建' : 'Create';
 
+  String get blocked => _zh ? '待确认' : 'Blocked';
+  String get herdrConnectTitle => _zh ? '连接 herdr' : 'Connect herdr';
+  String get herdrConnectBody => _zh
+      ? 'herdr 在节点上通过 SSH 提供代理列表、会话记录和发送消息。'
+      : 'herdr serves agents, transcripts and prompts over SSH on the node.';
+  String get herdrNotInstalled => _zh
+      ? '这个节点上没有安装 herdr。'
+      : 'herdr is not installed on this node.';
+  String get herdrNotRunning => _zh
+      ? '节点上已安装 herdr，但没有服务在运行。'
+      : 'herdr is installed on the node, but no server is running.';
+  String get herdrNotConnected => _zh ? '尚未连接 herdr。' : 'Not connected to herdr.';
+  String get herdrDropped => _zh ? 'herdr 连接已断开。' : 'The herdr connection closed.';
+  String get herdrNoAgents => _zh
+      ? '这个节点上还没有代理，点右上角 + 启动一个。'
+      : 'No agents on this node yet — start one with +.';
+  String get herdrNeedsBackend => _zh
+      ? 'herdr 需要桌面或 Android 构建；网页预览显示的是演示数据。'
+      : 'herdr needs the desktop or Android build; the web preview shows demo data.';
+  String get herdrNeedsNode => _zh
+      ? '节点未运行，先登录 tailnet 再连接 herdr。'
+      : 'The node is not running; sign in to the tailnet before connecting to herdr.';
+  String get reconnect => _zh ? '重新连接' : 'Reconnect';
+  String get disconnect => _zh ? '断开连接' : 'Disconnect';
+
+  String get agentAddress => _zh ? '会话' : 'Session';
+  String get agentDir => _zh ? '目录' : 'Directory';
+  String get agentDirHint => _zh ? '可选，默认 home' : 'Optional, home by default';
+  String get agentWorkspace => _zh ? '工作区' : 'Workspace';
+  String get agentNewWorkspace => _zh ? '新工作区' : 'New workspace';
+  String get agentName => _zh ? '名称' : 'Name';
+  String get agentNameInvalid => _zh
+      ? '名称需以小写字母开头，仅含 a-z 0-9 _ -'
+      : 'Start with a lowercase letter; a-z 0-9 _ - only';
+  String get agentNameTaken => _zh ? '这个名称已被占用' : 'That name is taken';
+  String get agentScreenMode => _zh
+      ? '这个代理没有可读的会话记录，下面是当前屏幕。'
+      : 'This agent keeps no readable transcript — showing its screen.';
+  String get agentTruncated => _zh
+      ? '只显示最近的消息，可以读取更早的记录。'
+      : 'Only recent messages are shown; earlier ones can be loaded.';
+  String get agentLoadEarlier => _zh ? '读取更早记录' : 'Load earlier';
+  String get agentNoMessages => _zh ? '还没有消息。' : 'No messages yet.';
+  String get agentPromptHint => _zh ? '发消息给代理…' : 'Message the agent…';
+  String get agentSend => _zh ? '发送' : 'Send';
+  String get agentRestart => _zh ? '重启代理' : 'Restart agent';
+  String get agentRestartBody => _zh
+      ? '退出当前进程并按同一会话重新启动，参数会保留。'
+      : 'Quits the agent and reopens the same session with its flags.';
+  String get agentRestarting => _zh ? '正在重启…' : 'Restarting…';
+  String get agentRestarted => _zh ? '已重启' : 'Restarted';
+  String agentRestartFailed(String error) =>
+      _zh ? '重启失败：$error' : 'Restart failed: $error';
+  String get agentModel => _zh ? '模型' : 'Model';
+  String get agentModelEmpty => _zh ? '这个代理没有报告可切换的模型。' : 'This agent reports no models to switch to.';
+  String agentCreated(String name) => _zh ? '已创建 $name' : 'Created $name';
+  String agentPromptFailed(String error) =>
+      _zh ? '代理已启动，但首条消息发送失败：$error' : 'Agent started, but the first prompt failed: $error';
+  String agentActionFailed(String error) =>
+      _zh ? '操作失败：$error' : 'Failed: $error';
+
   String get appearance => _zh ? '外观' : 'Appearance';
   String get theme => _zh ? '主题' : 'Theme';
   String get system => _zh ? '跟随系统' : 'System';

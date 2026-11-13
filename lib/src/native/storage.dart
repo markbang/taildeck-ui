@@ -6,6 +6,11 @@ class StoredConfig {
     this.controlURL = '',
     this.signedIn = false,
     this.openInApp = false,
+    this.herdrNode = '',
+    this.herdrUser = 'root',
+    this.herdrPort = 22,
+    this.herdrAuth = 'tailscale',
+    this.herdrIdentity = '',
   });
 
   factory StoredConfig.fromJson(Map<String, dynamic> json) => StoredConfig(
@@ -13,6 +18,11 @@ class StoredConfig {
     controlURL: json['controlURL'] as String? ?? '',
     signedIn: json['signedIn'] as bool? ?? false,
     openInApp: json['openInApp'] as bool? ?? false,
+    herdrNode: json['herdrNode'] as String? ?? '',
+    herdrUser: json['herdrUser'] as String? ?? 'root',
+    herdrPort: (json['herdrPort'] as num?)?.toInt() ?? 22,
+    herdrAuth: json['herdrAuth'] as String? ?? 'tailscale',
+    herdrIdentity: json['herdrIdentity'] as String? ?? '',
   );
 
   final String hostname;
@@ -25,11 +35,24 @@ class StoredConfig {
   /// the choice is kept so that setting survives.
   final bool openInApp;
 
+  /// Node, user and auth the Agents page reconnects to herdr with. The
+  /// password itself is never written.
+  final String herdrNode;
+  final String herdrUser;
+  final int herdrPort;
+  final String herdrAuth;
+  final String herdrIdentity;
+
   Map<String, dynamic> toJson() => {
     'hostname': hostname,
     'controlURL': controlURL,
     'signedIn': signedIn,
     'openInApp': openInApp,
+    'herdrNode': herdrNode,
+    'herdrUser': herdrUser,
+    'herdrPort': herdrPort,
+    'herdrAuth': herdrAuth,
+    'herdrIdentity': herdrIdentity,
   };
 }
 

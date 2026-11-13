@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:ffi';
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
@@ -19,12 +20,43 @@ NativeBridge? openBridgePlatform() {
   for (final path in candidates) {
     if (path.contains('/') && !File(path).existsSync()) continue;
     try {
-      return FfiBridge(DynamicLibrary.open(path));
+      return FfiBridge(DynamicLibrary.open(path), path);
     } on Object {
       continue;
     }
   }
   return null;
+}
+
+/// Runs one herdr call in a short-lived isolate: herdr calls reach the network
+/// and may block for seconds, which must not freeze the UI isolate. The Go
+/// library keeps the connection in process state, so any handle reaches it.
+String _runHerdrIsolate(String libPath, String symbol, List<String> args) {
+  final lib = DynamicLibrary.open(libPath);
+  final free = lib.lookupFunction<_FreeNative, _Free>('td_free');
+  final allocated = [
+    for (final arg in args) arg.toNativeUtf8(allocator: calloc).cast<Int8>(),
+  ];
+  Pointer<Int8> result;
+  try {
+    result = switch (args.length) {
+      0 => lib.lookupFunction<_StrFnNative, _StrFn>(symbol)(),
+      1 => lib.lookupFunction<_StrArgNative, _StrArg>(symbol)(allocated[0]),
+      2 => lib.lookupFunction<_TwoStrNative, _TwoStr>(symbol)(
+        allocated[0],
+        allocated[1],
+      ),
+      _ => throw ArgumentError('herdr call takes at most two arguments'),
+    };
+  } finally {
+    for (final pointer in allocated) {
+      calloc.free(pointer);
+    }
+  }
+  if (result.address == 0) throw 'bridge returned null';
+  final text = result.cast<Utf8>().toDartString();
+  free(result);
+  return text;
 }
 
 typedef _StrFnNative = Pointer<Int8> Function();
@@ -48,7 +80,7 @@ typedef _TwoStrNative = Pointer<Int8> Function(Pointer<Int8>, Pointer<Int8>);
 typedef _TwoStr = Pointer<Int8> Function(Pointer<Int8>, Pointer<Int8>);
 
 class FfiBridge implements NativeBridge {
-  FfiBridge(DynamicLibrary lib)
+  FfiBridge(DynamicLibrary lib, this._path)
     : _start = lib.lookupFunction<_StrArgNative, _StrArg>('td_start'),
       _stop = lib.lookupFunction<_StrFnNative, _StrFn>('td_stop'),
       _logout = lib.lookupFunction<_StrFnNative, _StrFn>('td_logout'),
@@ -94,6 +126,7 @@ class FfiBridge implements NativeBridge {
   final _TwoStr _keyEnsure;
   final _StrArg _forgetHostKeys;
   final _Free _free;
+  final String _path;
   late final NativeCallable<_EventFn> _callback;
   late final StreamController<BridgeEvent> _events =
       StreamController<BridgeEvent>.broadcast();
@@ -226,6 +259,78 @@ class FfiBridge implements NativeBridge {
   void forgetHostKeys(String dir) => _callArg(_forgetHostKeys, dir);
 
   @override
+  Future<Map<String, dynamic>> herdrConnect({
+    required String host,
+    int port = 22,
+    String user = 'root',
+    String password = '',
+    String keyPath = '',
+    String passphrase = '',
+    String certPath = '',
+  }) async {
+    final raw = await _herdr('td_herdr_connect', [
+      jsonEncode({
+        'host': host,
+        'port': port,
+        'user': user,
+        'password': password,
+        'keyPath': keyPath,
+        'passphrase': passphrase,
+        'certPath': certPath,
+      }),
+    ]);
+    return _decode(raw);
+  }
+
+  @override
+  Future<String> herdrCall(String method, [String paramsJSON = '{}']) async {
+    final reply = _decode(
+      await _herdr('td_herdr_call', [method, paramsJSON]),
+    );
+    return reply['result'] as String? ?? '';
+  }
+
+  @override
+  Future<String> herdrTranscript(String pane) async {
+    final reply = _decode(await _herdr('td_herdr_transcript', [pane]));
+    return reply['result'] as String? ?? '';
+  }
+
+  @override
+  Future<bool> herdrTranscriptMore(String pane) async {
+    final reply = _decode(await _herdr('td_herdr_transcript_more', [pane]));
+    return reply['more'] == true;
+  }
+
+  @override
+  Future<String> herdrRestart(String pane, {String thenPrompt = ''}) async {
+    final reply = _decode(
+      await _herdr('td_herdr_restart', [pane, thenPrompt]),
+    );
+    return reply['name'] as String? ?? '';
+  }
+
+  @override
+  Future<String> herdrModels(String kind, String pane) async {
+    final reply = _decode(await _herdr('td_herdr_models', [kind, pane]));
+    return reply['result'] as String? ?? '';
+  }
+
+  @override
+  Future<void> herdrClose() async {
+    try {
+      _decode(await _herdr('td_herdr_close', []));
+    } on BridgeException {
+      // Closing a connection that is already gone is not an error here.
+    }
+  }
+
+  Future<String> _herdr(String symbol, List<String> args) {
+    final path = _path;
+    return Isolate.run(() => _runHerdrIsolate(path, symbol, args));
+  }
+
+  @override
   void dispose() {
     for (final controller in _ssh.values) {
       if (!controller.isClosed) controller.close();
@@ -254,6 +359,7 @@ class FfiBridge implements NativeBridge {
       3 => BridgeEventKind.log,
       4 => BridgeEventKind.sshData,
       5 => BridgeEventKind.sshClosed,
+      6 => BridgeEventKind.herdr,
       _ => null,
     };
     if (eventKind == null || text.isEmpty) return;
