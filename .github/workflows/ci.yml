@@ -38,7 +38,10 @@ jobs:
           cat /tmp/http.log
           exit 1
       - name: Screenshot with headless Chrome
-        run: bash tool/shots.sh shots http://127.0.0.1:8099/taildeck-ui/
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y imagemagick
+          bash tool/shots.sh shots http://127.0.0.1:8099/taildeck-ui/
       - name: Job summary
         if: always()
         run: |
