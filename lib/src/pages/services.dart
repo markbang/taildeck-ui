@@ -3,13 +3,14 @@ import 'dart:async';
 import 'package:flutter/widgets.dart';
 import 'package:prism_ui/icons/icons.dart';
 import 'package:prism_ui/prism_ui.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../backend.dart';
 import '../data.dart';
 import '../l10n.dart';
 import '../glyphs.dart';
+import '../service_open.dart';
 import '../services.dart';
+import '../webview/web_page.dart';
 import '../widgets/foundation.dart';
 import 'service_sheet.dart';
 
@@ -63,18 +64,19 @@ class _ServicesPageState extends State<ServicesPage> {
   }
 
   Future<void> _openService(Service service) async {
-    final backend = BackendScope.of(context);
     final l10n = AppLocalizations.of(context);
-    final url = gatewayUrl(service, backend.gatewayPort);
-    if (url == null) {
-      setState(() => _notice = l10n.serviceNeedsGateway);
-      return;
-    }
-    final opened = await launchUrl(
-      Uri.parse(url),
-      mode: LaunchMode.externalApplication,
-    );
-    if (!opened && mounted) setState(() => _notice = l10n.serviceOpenFailed);
+    final fallback = BackendScope.of(context).openInApp && !inAppWebViewSupported;
+    final result = await openService(context, service);
+    if (!mounted) return;
+    setState(() {
+      _notice = switch (result) {
+        ServiceOpen.needsGateway =>
+          fallback ? l10n.inAppDesktopOnlyNoGateway : l10n.serviceNeedsGateway,
+        ServiceOpen.openFailed => l10n.serviceOpenFailed,
+        ServiceOpen.fallbackToBrowser => l10n.inAppDesktopOnly,
+        _ => '',
+      };
+    });
   }
 
   @override

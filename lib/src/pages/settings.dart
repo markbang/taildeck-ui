@@ -14,6 +14,7 @@ import '../l10n.dart';
 import '../shell.dart';
 import '../ssh_identities.dart';
 import '../theme.dart';
+import '../webview/web_page.dart';
 import '../widgets/foundation.dart';
 import 'key_sheet.dart';
 import 'logs.dart';
@@ -292,7 +293,10 @@ class _SettingsPageState extends State<SettingsPage> {
                   ),
                   if (backend.openInApp) ...[
                     const SizedBox(height: 8),
-                    Text(l10n.inAppComingSoon, style: context.listCaptionStyle),
+                    Text(
+                      inAppWebViewSupported ? l10n.inAppHint : l10n.inAppDesktopOnly,
+                      style: context.listCaptionStyle,
+                    ),
                   ],
                 ],
               ),

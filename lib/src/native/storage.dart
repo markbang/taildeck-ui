@@ -31,8 +31,7 @@ class StoredConfig {
   /// True when the node key in the tsnet state dir was authenticated.
   final bool signedIn;
 
-  /// Service links open in the system browser until an in-app browser lands;
-  /// the choice is kept so that setting survives.
+  /// Whether services open in the in-app WebView (Android/iOS) or the browser.
   final bool openInApp;
 
   /// Node, user and auth the Agents page reconnects to herdr with. The

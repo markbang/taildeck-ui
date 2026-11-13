@@ -96,7 +96,7 @@ class TaildeckBackend extends ChangeNotifier {
   String get tailnet => _tailnet.isEmpty ? _hostname : _tailnet;
   List<String> get logs => List.unmodifiable(_logs);
 
-  /// Service links open in the browser until an in-app browser lands.
+  /// Services open in the in-app WebView on Android/iOS, the browser elsewhere.
   bool get openInApp => _openInApp;
 
   /// herdr link, agent list and pane calls; null without a native backend.

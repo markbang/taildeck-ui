@@ -3,10 +3,12 @@
          PlatformBridge reads the default network from ConnectivityManager. -->
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <!-- Service pages load over http:// via the loopback gateway. -->
     <application
         android:label="taildeck_ui"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:usesCleartextTraffic="true">
         <activity
             android:name=".MainActivity"
             android:exported="true"
