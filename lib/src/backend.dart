@@ -29,7 +29,7 @@ class TaildeckBackend extends ChangeNotifier {
       _storage = storage ?? openBackendStorage();
 
   static const defaultHostname = 'taildeck';
-  static const gatewayPort = 18680;
+  static const defaultGatewayPort = 18680;
   static const _refreshInterval = Duration(seconds: 5);
   static const _logLimit = 200;
 
@@ -49,6 +49,7 @@ class TaildeckBackend extends ChangeNotifier {
   bool _persistedSignIn = false;
   NodeItem? _self;
   List<NodeItem> _peers = const [];
+  int _gatewayPort = 0;
   String _tailnet = '';
   final List<String> _logs = [];
   String? _keyPath;
@@ -62,6 +63,10 @@ class TaildeckBackend extends ChangeNotifier {
   String get controlURL => _controlURL;
   NodeItem? get self => _self;
   List<NodeItem> get peers => _peers;
+  List<NodeItem> get nodes => [?_self, ..._peers];
+
+  /// Loopback gateway port from `td_start`; 0 while the node is not running.
+  int get gatewayPort => _gatewayPort;
   String get tailnet => _tailnet.isEmpty ? _hostname : _tailnet;
   List<String> get logs => List.unmodifiable(_logs);
 
@@ -138,6 +143,17 @@ class TaildeckBackend extends ChangeNotifier {
     } on BridgeException catch (error) {
       return PingResult(error: error.message);
     }
+  }
+
+  /// Probes [ports] on [host] through the node; the reply lists the open ones.
+  Future<List<int>> probe(String host, List<int> ports) async {
+    final bridge = _bridge;
+    if (bridge == null || !_started) {
+      throw const BridgeException('the tailnet node is not running');
+    }
+    final open = bridge.probe(host, ports.join(','));
+    open.sort();
+    return open;
   }
 
   /// Public half of the built-in ed25519 key; created on first use.
@@ -249,9 +265,10 @@ class TaildeckBackend extends ChangeNotifier {
         hostname: _hostname,
         controlURL: _controlURL,
         authKey: authKey,
-        gatewayPort: gatewayPort,
+        gatewayPort: defaultGatewayPort,
       );
       _started = true;
+      _gatewayPort = (reply['gatewayPort'] as num?)?.toInt() ?? 0;
       _rawState = 'Starting';
       _state = BackendState.starting;
       _error = '';
@@ -277,6 +294,7 @@ class TaildeckBackend extends ChangeNotifier {
       }
     }
     _started = false;
+    _gatewayPort = 0;
     _rawState = '';
     _state = BackendState.stopped;
     _authUrl = '';

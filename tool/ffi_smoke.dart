@@ -72,6 +72,7 @@ Future<void> main(List<String> args) async {
     'td_set_event_cb',
   );
   final ping = lib.lookupFunction<_StrArgFn, _StrArgFn>('td_ping');
+  final probe = lib.lookupFunction<_TwoStrFnNative, _TwoStrFn>('td_probe');
   final sshDial = lib.lookupFunction<_StrArgFn, _StrArgFn>('td_ssh_dial');
   final sshWrite = lib.lookupFunction<_WriteFnNative, _WriteFn>('td_ssh_write');
   final sshResize = lib.lookupFunction<_ResizeFnNative, _ResizeFn>('td_ssh_resize');
@@ -132,6 +133,15 @@ Future<void> main(List<String> args) async {
     'start with host platform, no hooks: ${callArg(start, '{"dir":"/tmp/td-smoke","platform":"host"}')}',
   );
   out.add('ping without engine: ${callArg(ping, '100.64.0.1')}');
+  out.add('probe without engine: ${callTwo(probe, '100.64.0.1', '80,443')}');
+
+  // Probing before start has no node to dial through: a clean envelope.
+  final beforeProbe = decode(callTwo(probe, '100.64.0.1', '80,443'));
+  check(beforeProbe['ok'] == false, 'td_probe without a node fails');
+  check(
+    (beforeProbe['error'] as String? ?? '').contains('not started'),
+    'td_probe error names the missing node: ${beforeProbe['error']}',
+  );
 
   // SSH before the node exists: a clean envelope, never a crash or a hang.
   final beforeSSH = decode(callArg(sshDial, '{"host":"100.64.0.1","user":"root"}'));

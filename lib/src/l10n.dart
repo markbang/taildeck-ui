@@ -53,6 +53,36 @@ class AppLocalizations implements UiLocalizations {
   String get traffic => _zh ? '流量' : 'Traffic';
 
   String get addService => _zh ? '添加服务' : 'Add service';
+  String get editService => _zh ? '编辑服务' : 'Edit service';
+  String get deleteService => _zh ? '删除服务' : 'Delete service';
+  String deleteServiceBody(String name) =>
+      _zh ? '将删除「$name」，此操作不可撤销。' : 'Delete “$name”? This cannot be undone.';
+  String get serviceNode => _zh ? '节点' : 'Node';
+  String get serviceName => _zh ? '名称' : 'Name';
+  String get serviceNameHint => _zh ? '默认使用端口号' : 'Defaults to the port';
+  String get serviceScheme => _zh ? '协议' : 'Scheme';
+  String get servicePort => _zh ? '端口' : 'Port';
+  String get servicePortInvalid => _zh ? '端口必须在 1–65535 之间' : 'Port must be 1–65535';
+  String get servicePath => _zh ? '路径' : 'Path';
+  String get servicePathHint => _zh ? '/ 为可选' : '/ is optional';
+  String get save => _zh ? '保存' : 'Save';
+  String get edit => _zh ? '编辑' : 'Edit';
+  String get delete => _zh ? '删除' : 'Delete';
+  String get noServicesAll => _zh ? '还没有服务，点右上角 + 添加。' : 'No services yet — add one with +.';
+  String get serviceNeedsGateway => _zh
+      ? '网关未运行，无法在浏览器中打开。先登录 tailnet。'
+      : 'The gateway is not running, so this cannot open in a browser. Sign in to the tailnet first.';
+  String get serviceOpenFailed => _zh ? '无法打开浏览器' : 'Could not open the browser';
+  String get scanPorts => _zh ? '扫描常用端口' : 'Scan common ports';
+  String get scanning => _zh ? '正在扫描…' : 'Scanning…';
+  String scanFound(int count) => _zh ? '发现 $count 个开放端口' : '$count open ports found';
+  String get scanNone => _zh ? '没有发现开放的常用端口' : 'No common ports responded';
+  String get scanOffline => _zh ? '节点离线，无法扫描。' : 'The node is offline, so it cannot be scanned.';
+  String get scanNeedsBackend => _zh
+      ? '扫描需要桌面或 Android 构建，网页预览没有原生后端。'
+      : 'Scanning needs the desktop or Android build; the web preview has no native backend.';
+  String get nodeNotRunning => _zh ? '节点未运行，先登录 tailnet。' : 'The node is not running; sign in to the tailnet first.';
+  String scanFailed(String error) => _zh ? '扫描失败：$error' : 'Scan failed: $error';
 
   String get needsYou => _zh ? '待你处理' : 'Needs you';
   String get working => _zh ? '运行中' : 'Working';

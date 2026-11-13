@@ -5,6 +5,7 @@ import 'package:prism_ui/prism_ui.dart';
 import '../data.dart';
 import '../l10n.dart';
 import '../glyphs.dart';
+import '../services.dart';
 
 class PageBody extends StatelessWidget {
   const PageBody({
@@ -333,14 +334,23 @@ class _ConnectorPainter extends CustomPainter {
 }
 
 class ServiceTile extends StatelessWidget {
-  const ServiceTile(this.service, {super.key, this.onPressed});
+  const ServiceTile(
+    this.service, {
+    super.key,
+    this.onPressed,
+    this.trailing,
+    this.muted = false,
+  });
 
-  final ServiceItem service;
+  final Service service;
   final VoidCallback? onPressed;
+  final Widget? trailing;
+  final bool muted;
 
   @override
   Widget build(BuildContext context) {
     final scheme = context.colorScheme;
+    final name = service.name.isEmpty ? service.address : service.name;
     return PressRegion(
       onTap: onPressed ?? () {},
       child: ListRow(
@@ -349,26 +359,25 @@ class ServiceTile extends StatelessWidget {
           height: 38,
           alignment: Alignment.center,
           decoration: ShapeDecoration(
-            color: service.tint.withValues(alpha: 0.16),
+            color: service.tint.withValues(alpha: muted ? 0.08 : 0.16),
             shape: AppShape.all(10),
           ),
           child: Text(
-            service.glyph ?? service.name.characters.first,
+            name.characters.first.toUpperCase(),
             style: AppTextStyle.headline
                 .of(context, emphasized: true)
                 .copyWith(color: service.tint),
           ),
         ),
-        title: Text(service.name, style: context.listTitleStyle),
-        subtitle: Text(
-          '${service.node}:${service.port}',
-          style: context.listCaptionStyle,
-        ),
-        trailing: GlyphIcon(
-          Glyphs.more,
-          size: 18,
-          color: scheme.onSurfaceVariant.opacity50,
-        ),
+        title: Text(name, style: context.listTitleStyle),
+        subtitle: Text(service.address, style: context.listCaptionStyle),
+        trailing:
+            trailing ??
+            GlyphIcon(
+              Glyphs.more,
+              size: 18,
+              color: scheme.onSurfaceVariant.opacity50,
+            ),
       ),
     );
   }

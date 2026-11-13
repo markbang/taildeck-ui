@@ -32,6 +32,9 @@ class _IoStorage implements BackendStorage {
   Future<File> _configFile() async =>
       File('${(await _rootDir()).path}/config.json');
 
+  Future<File> _servicesFile() async =>
+      File('${(await _rootDir()).path}/services.json');
+
   @override
   Future<StoredConfig> readConfig() async {
     final file = await _configFile();
@@ -50,5 +53,19 @@ class _IoStorage implements BackendStorage {
     final file = await _configFile();
     await file.parent.create(recursive: true);
     await file.writeAsString(jsonEncode(config.toJson()));
+  }
+
+  @override
+  Future<String?> readServicesJson() async {
+    final file = await _servicesFile();
+    if (!await file.exists()) return null;
+    return file.readAsString();
+  }
+
+  @override
+  Future<void> writeServicesJson(String json) async {
+    final file = await _servicesFile();
+    await file.parent.create(recursive: true);
+    await file.writeAsString(json);
   }
 }

@@ -34,6 +34,10 @@ abstract class BackendStorage {
   Future<String> sshDir();
   Future<StoredConfig> readConfig();
   Future<void> writeConfig(StoredConfig config);
+
+  /// Raw `services.json`, or null when the file does not exist.
+  Future<String?> readServicesJson();
+  Future<void> writeServicesJson(String json);
 }
 
 /// Null on web, where the app stays on mock data.
