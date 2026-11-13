@@ -1,9 +1,11 @@
 import 'package:flutter/widgets.dart';
 import 'package:prism_ui/prism_ui.dart';
 
+import 'preview_env.dart';
+
 class TaildeckTheme extends ChangeNotifier {
   TaildeckTheme() {
-    mode = switch (Uri.base.queryParameters['theme']?.toLowerCase()) {
+    mode = switch (previewParam('theme')?.toLowerCase()) {
       'light' => ThemeMode.light,
       'dark' => ThemeMode.dark,
       _ => ThemeMode.dark,
@@ -14,7 +16,7 @@ class TaildeckTheme extends ChangeNotifier {
   ThemeMode mode = ThemeMode.dark;
 
   /// Null follows the device locale.
-  Locale? locale = switch (Uri.base.queryParameters['lang']) {
+  Locale? locale = switch (previewParam('lang')) {
     'en' => const Locale('en'),
     'zh' => const Locale('zh'),
     _ => null,

@@ -71,7 +71,8 @@ lib/src/
 
 预览参数：`/?tab=1`（服务）、`/?tab=2`（agents）、`/?tab=3`（设置）、`/?node=devbox`（节点详情）、
 `/?theme=light`、`/?nav=docked`（停靠式底栏替代浮动底栏）、`/?anim=fade`、
-`/?login=1`（登录）、`/?login=waiting`（等待设备批准）、`/?ssh=devbox`（终端）、`/?lang=zh`。
+`/?login=1`（登录）、`/?login=waiting`（等待设备批准）、`/?ssh=devbox`（终端）、`/?lang=zh`、
+`/?ssh=demo`（原生 libghostty-vt 演示会话）。桌面版没有 URL，用 `TAILDECK_QUERY=ssh=demo` 传同样的参数。
 
 ## 运行
 
@@ -79,6 +80,14 @@ lib/src/
 source tool/env.sh          # 国内镜像 + Flutter 3.47.9
 flutter pub get
 flutter run -d web-server --web-port 8099
+```
+
+## 原生终端
+
+```bash
+tool/build_term.sh              # libghostty-vt + C shim：linux/lib/ 与 Android jniLibs/
+dart run tool/term_smoke.dart   # 对真实 80x24 终端跑 FFI 冒烟测试
+flutter build linux --release   # 把 linux/lib/libtaildeck_term.so 装进可执行文件旁的 lib/
 ```
 
 ## 字体
