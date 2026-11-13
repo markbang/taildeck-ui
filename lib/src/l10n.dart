@@ -22,6 +22,7 @@ class AppLocalizations implements UiLocalizations {
 
   String get searchNodes => _zh ? '搜索节点' : 'Search nodes';
   String thisDevice(String ip) => _zh ? '本机 · $ip' : 'This device · $ip';
+  String get thisDeviceSection => _zh ? '本机' : 'This device';
   String get online => _zh ? '在线' : 'Online';
   String get offline => _zh ? '离线' : 'Offline';
   String get onlineLower => _zh ? '在线' : 'Online';
@@ -118,6 +119,62 @@ class AppLocalizations implements UiLocalizations {
   String get signOut => _zh ? '退出登录' : 'Sign out of the tailnet';
   String get about => _zh ? '关于' : 'About';
 
+  String get tailnetSection => 'Tailnet';
+  String get account => _zh ? '账号' : 'Account';
+  String get tailnetName => _zh ? '网络' : 'Tailnet';
+  String get hostname => _zh ? '主机名' : 'Hostname';
+  String get status => _zh ? '状态' : 'Status';
+  String get notSignedIn => _zh ? '未登录' : 'Not signed in';
+  String get sshIdentities => _zh ? 'SSH 身份' : 'SSH identities';
+  String get builtinKey => _zh ? '内置密钥' : 'Built-in key';
+  String get copyPublicKey => _zh ? '复制公钥' : 'Copy public key';
+  String get publicKeyCopied => _zh ? '公钥已复制' : 'Public key copied';
+  String get importKey => _zh ? '导入密钥' : 'Import key';
+  String get keyName => _zh ? '名称' : 'Name';
+  String get keyNameHint => _zh ? '例如 work、github' : 'e.g. work, github';
+  String get privateKey => _zh ? '私钥' : 'Private key';
+  String get privateKeyHint => _zh
+      ? '粘贴 -----BEGIN OPENSSH PRIVATE KEY----- 内容'
+      : 'Paste the -----BEGIN OPENSSH PRIVATE KEY----- block';
+  String get privateKeyRequired => _zh ? '请粘贴私钥' : 'Paste a private key';
+  String get passphrase => _zh ? '口令' : 'Passphrase';
+  String get passphraseOptional => _zh
+      ? '可选，只在本地用于解密'
+      : 'Optional; used locally to decrypt the key';
+  String get keyNameTaken => _zh ? '这个名称已经用过' : 'That name is already used';
+  String get keyImportInvalid => _zh ? '名称不能为空' : 'Name cannot be empty';
+  String get keyImportFailed => _zh ? '无法保存密钥' : 'Could not save the key';
+  String get keyImported => _zh ? '密钥已导入' : 'Key imported';
+  String get keyDeleted => _zh ? '密钥已删除' : 'Key deleted';
+  String deleteKeyConfirm(String name) => _zh
+      ? '删除「$name」？私钥文件也会一并删除。'
+      : 'Delete “$name”? Its private key file is removed too.';
+  String get publicKeyUnavailable => _zh
+      ? '无法读取公钥，连接时由服务器验证'
+      : 'Public key unreadable; the server checks it on connect';
+  String get forgetHostKeys => _zh ? '忘记已知主机' : 'Forget known hosts';
+  String get forgetHostKeysHint => _zh
+      ? '下次连接会重新信任主机密钥。'
+      : 'The next connection trusts host keys again.';
+  String get hostKeysCleared => _zh ? '已清除已知主机密钥' : 'Known host keys cleared';
+  String get servicesOpen => _zh ? '服务打开方式' : 'Open services in';
+  String get inBrowser => _zh ? '浏览器' : 'Browser';
+  String get inApp => _zh ? '应用内' : 'In app';
+  String get inAppComingSoon => _zh
+      ? '应用内网页尚未实现，服务仍会用系统浏览器打开。'
+      : 'The in-app browser is not built yet, so services still open in your browser.';
+  String get logs => _zh ? '日志' : 'Logs';
+  String get logsEmpty => _zh ? '还没有日志。' : 'No logs yet.';
+  String get logsCopied => _zh ? '日志已复制' : 'Logs copied';
+  String get refresh => _zh ? '刷新' : 'Refresh';
+  String get signOutTitle => _zh ? '退出登录？' : 'Sign out?';
+  String get signOutBody => _zh
+      ? '会删除本机的节点密钥，下次打开需要重新登录。'
+      : 'The node key on this device is removed; the next launch starts at the login screen.';
+  String get signOutAction => _zh ? '退出登录' : 'Sign out';
+  String version(String value) => _zh ? '版本 $value' : 'Version $value';
+  String get repository => _zh ? '项目主页' : 'Repository';
+
   String get tagline =>
       _zh ? '你的 tailnet，不占 VPN 通道。' : 'Your tailnet, without the VPN slot.';
   String get continueInBrowser => _zh ? '在浏览器中继续' : 'Continue in browser';
@@ -161,7 +218,8 @@ class AppLocalizations implements UiLocalizations {
   String disconnectedReason(String reason) =>
       _zh ? '连接已断开：$reason' : 'Disconnected: $reason';
   String get sshPasswordHint => _zh ? '服务器密码' : 'Server password';
-  String get sshKeyTitle => _zh ? '内置密钥' : 'Built-in key';
+  String get sshKeyTitle => _zh ? '公钥' : 'Public key';
+  String get sshIdentity => _zh ? '身份' : 'Identity';
   String get sshKeyHint => _zh
       ? '把这段公钥加到服务器的 ~/.ssh/authorized_keys。'
       : 'Add this public key to ~/.ssh/authorized_keys on the server.';

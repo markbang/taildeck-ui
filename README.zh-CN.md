@@ -65,13 +65,14 @@ lib/src/
   glyphs.dart    描边图标（节点、agents、终端、中继、太阳……）
   data.dart      示例 tailnet：本机、对端、服务、agents
   l10n.dart      覆盖 prism_ui 自身字符串的 UiLocalizations
-  pages/         login · nodes · node_detail · services · agents · settings · terminal
+  pages/         login · nodes · node_detail · services · agents · settings · logs · terminal
   widgets/       PageBody、GroupCard、NodeBadge、PathBadge、StatusPill、Connector、ServiceTile、ActionPill
 ```
 
 预览参数：`/?tab=1`（服务）、`/?tab=2`（agents）、`/?tab=3`（设置）、`/?node=devbox`（节点详情）、
 `/?theme=light`、`/?nav=docked`（停靠式底栏替代浮动底栏）、`/?anim=fade`、
-`/?login=1`（登录）、`/?login=waiting`（等待设备批准）、`/?ssh=devbox`（终端）、`/?lang=zh`、
+`/?login=1`（登录）、`/?login=waiting`（等待设备批准）、`/?preview=1`（无节点也能看已登录界面）、
+`/?ssh=devbox`（终端）、`/?lang=zh`、
 `/?ssh=demo`（原生 libghostty-vt 演示会话）。桌面版没有 URL，用 `TAILDECK_QUERY=ssh=demo` 传同样的参数。
 
 ## 运行

@@ -126,4 +126,51 @@ abstract final class Glyphs2 {
     GlyphBox(7, 3.4, 17, 20.6, 3, role: GlyphRole.line),
     GlyphPolyline([GlyphVertex(10.6, 17.6), GlyphVertex(13.4, 17.6)], role: GlyphRole.line),
   ]);
+
+  static const key = Glyph([
+    GlyphCircle(8.4, 8.4, 4.4, role: GlyphRole.line),
+    GlyphPolyline([GlyphVertex(11.6, 11.6), GlyphVertex(20, 20)], role: GlyphRole.line),
+    GlyphPolyline([GlyphVertex(16.2, 16.2), GlyphVertex(18.4, 14)], role: GlyphRole.line),
+  ]);
+
+  static const trash = Glyph([
+    GlyphPolyline([GlyphVertex(4.6, 7.2), GlyphVertex(19.4, 7.2)], role: GlyphRole.line),
+    GlyphPolyline([GlyphVertex(9.6, 4.4), GlyphVertex(14.4, 4.4)], role: GlyphRole.line),
+    GlyphPolyline([
+      GlyphVertex(6.6, 7.2),
+      GlyphVertex(7.6, 20),
+      GlyphVertex(16.4, 20),
+      GlyphVertex(17.4, 7.2),
+    ], role: GlyphRole.line),
+  ]);
+
+  static const refresh = Glyph([
+    GlyphArc(12, 12, 7, -0.6, 4.4, role: GlyphRole.line),
+    GlyphPolyline([GlyphVertex(17.4, 4.6), GlyphVertex(18.4, 9.4), GlyphVertex(13.8, 10.6)], role: GlyphRole.line),
+  ]);
+
+  static const logout = Glyph([
+    GlyphPolyline([
+      GlyphVertex(13.6, 4.4),
+      GlyphVertex(5.4, 4.4),
+      GlyphVertex(5.4, 19.6),
+      GlyphVertex(13.6, 19.6),
+    ], role: GlyphRole.line),
+    GlyphPolyline([GlyphVertex(11, 12), GlyphVertex(20.2, 12)], role: GlyphRole.line),
+    GlyphPolyline([GlyphVertex(16.6, 8.4), GlyphVertex(20.4, 12, 0.8), GlyphVertex(16.6, 15.6)], role: GlyphRole.line),
+  ]);
+
+  static const doc = Glyph([
+    GlyphPolyline([
+      GlyphVertex(6, 3.8),
+      GlyphVertex(14.4, 3.8),
+      GlyphVertex(18.6, 8),
+      GlyphVertex(18.6, 20.2),
+      GlyphVertex(6, 20.2),
+      GlyphVertex(6, 3.8, 0.8),
+    ], role: GlyphRole.line),
+    GlyphPolyline([GlyphVertex(14, 4.2), GlyphVertex(14, 8.4), GlyphVertex(18.2, 8.4)], role: GlyphRole.line),
+    GlyphPolyline([GlyphVertex(9.2, 12.6), GlyphVertex(15.4, 12.6)], role: GlyphRole.line),
+    GlyphPolyline([GlyphVertex(9.2, 16.2), GlyphVertex(15.4, 16.2)], role: GlyphRole.line),
+  ]);
 }

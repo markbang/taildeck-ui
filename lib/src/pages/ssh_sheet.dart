@@ -9,6 +9,7 @@ import '../data.dart';
 import '../l10n.dart';
 import '../native/bridge.dart';
 import '../native/ssh.dart';
+import '../ssh_identities.dart';
 
 typedef SshChoice = ({String user, int port, SshSession? session});
 
@@ -39,7 +40,8 @@ class _SshSheetState extends State<_SshSheet> {
   int _port = 22;
   _Auth _auth = _Auth.tailscale;
   final _password = TextEditingController();
-  String _publicKey = '';
+  List<SshIdentity> _identities = const [];
+  String _identityId = builtinKeyId;
   String _keyError = '';
   bool _busy = false;
   String _error = '';
@@ -47,16 +49,29 @@ class _SshSheetState extends State<_SshSheet> {
   @override
   void initState() {
     super.initState();
-    if (widget.backend.available) unawaited(_loadKey(widget.backend));
+    if (widget.backend.available) unawaited(_loadKeys(widget.backend));
   }
 
-  Future<void> _loadKey(TaildeckBackend backend) async {
+  Future<void> _loadKeys(TaildeckBackend backend) async {
     try {
-      final pub = await backend.sshPublicKey();
-      if (mounted) setState(() => _publicKey = pub);
+      final keys = await backend.sshIdentities();
+      if (!mounted) return;
+      setState(() {
+        _identities = keys;
+        if (keys.isNotEmpty && !keys.any((key) => key.id == _identityId)) {
+          _identityId = keys.first.id;
+        }
+      });
     } on Object catch (error) {
       if (mounted) setState(() => _keyError = _message(error));
     }
+  }
+
+  SshIdentity? get _identity {
+    for (final key in _identities) {
+      if (key.id == _identityId) return key;
+    }
+    return null;
   }
 
   static String _message(Object error) =>
@@ -86,6 +101,7 @@ class _SshSheetState extends State<_SshSheet> {
         user: _user,
         port: _port,
         password: _auth == _Auth.password ? _password.text : '',
+        identityId: _identityId,
       );
       if (!mounted) {
         session.close();
@@ -214,15 +230,61 @@ class _SshSheetState extends State<_SshSheet> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      if (_identities.length > 1) ...[
+                        PopupAnchor(
+                          targetBuilder: (open) => PressRegion(
+                            onTap: open,
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 4),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      l10n.sshIdentity,
+                                      style: context.listTitleStyle,
+                                    ),
+                                  ),
+                                  Text(
+                                    _identity?.name ?? _identityId,
+                                    style: AppTextStyle.body.of(context).copyWith(
+                                      color: scheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  GlyphIcon(
+                                    Glyphs.chevronDown,
+                                    size: 14,
+                                    color: scheme.onSurfaceVariant.opacity50,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          popupBuilder: (context) => PopupMenu(
+                            items: [
+                              for (final key in _identities)
+                                PopupMenuItem(
+                                  label: key.builtin ? l10n.builtinKey : key.name,
+                                  checked: key.id == _identityId,
+                                  onPressed: () =>
+                                      setState(() => _identityId = key.id),
+                                ),
+                            ],
+                          ),
+                        ),
+                        const Divider(height: 16, thickness: 0.5),
+                      ],
                       Text(
                         l10n.sshKeyTitle,
                         style: AppTextStyle.body.of(context, emphasized: true),
                       ),
                       const SizedBox(height: 6),
                       SelectableText(
-                        _publicKey.isEmpty
-                            ? (_keyError.isEmpty ? '…' : _keyError)
-                            : _publicKey,
+                        switch (_identity?.publicKey) {
+                          final String key when key.isNotEmpty => key,
+                          _ when _keyError.isNotEmpty => _keyError,
+                          _ => '…',
+                        },
                         style: AppTextStyle.footnote
                             .of(context)
                             .copyWith(
