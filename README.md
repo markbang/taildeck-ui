@@ -9,6 +9,7 @@ built on [prism_ui](https://github.com/chen08209/prism_ui) — the iOS-style des
 |---|---|
 | ![Node detail](docs/screenshots/node.png) | ![Services](docs/screenshots/services.png) |
 | ![Agents](docs/screenshots/agents.png) | ![Desktop](docs/screenshots/nodes-desktop.png) |
+| ![Login](docs/screenshots/login.png) | ![SSH terminal](docs/screenshots/terminal.png) |
 
 ## What changed
 
@@ -26,6 +27,8 @@ prism_ui's surfaces and stroke-icon engine:
   `NavigationDock` in `BarItemPresence.held` + `AnimatedVisibility.bottomNavigation`, and a docked `NavigationBar`
   variant you can switch to in Settings, and a Slide / Fade tab animation (fade cancels the slide and
   cross-fades in place, using prism_ui's `fadeTabDuration` / `fadeTabCurve`)
+- **Login** — browser sign-in with a waiting state, auth key entry, optional control server field
+- **SSH terminal** — full-bleed mono session with a working input line (`ls`, `uname`, `tailscale`, `docker ps` … are simulated), bundled DejaVu Sans Mono
 - **Responsive** — sidebar above 720 dp, glass dock below, both from prism_ui
 
 ## Structure
@@ -38,12 +41,13 @@ lib/src/
   glyphs.dart    stroke icons (nodes, agents, terminal, relay, sun …)
   data.dart      sample tailnet: self, peers, services, agents
   l10n.dart      UiLocalizations for prism_ui's own strings
-  pages/         nodes · node_detail · services · agents · settings
+  pages/         login · nodes · node_detail · services · agents · settings · terminal
   widgets/       PageBody, GroupCard, NodeBadge, PathBadge, StatusPill, Connector, ServiceTile, ActionPill
 ```
 
 Preview params: `/?tab=1` (services), `/?tab=2` (agents), `/?tab=3` (settings), `/?node=devbox` (node detail),
-`/?theme=light`, `/?nav=docked` (docked bottom bar instead of the floating dock), `/?anim=fade`.
+`/?theme=light`, `/?nav=docked` (docked bottom bar instead of the floating dock), `/?anim=fade`,
+`/?login=1` (sign-in), `/?login=waiting` (device approval pending), `/?ssh=devbox` (terminal).
 
 ## Run
 
@@ -55,8 +59,8 @@ flutter run -d web-server --web-port 8099
 
 ## Status
 
-This is a **UI layer**, not a port of the Android app. Everything is sample data in `data.dart`; there is no
-tsnet, SSH terminal, WebView gateway or keystore. Wiring it up would mean swapping `data.dart` for your
+This is a **UI layer**, not a port of the Android app. Everything is sample data in `data.dart`; the terminal
+echoes a few simulated commands and there is no tsnet, WebView gateway or keystore. Wiring it up would mean swapping `data.dart` for your
 existing Kotlin bridge (or a `tsnet`-backed FFI plugin) and keeping these pages as the view.
 
 ## Licenses

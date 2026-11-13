@@ -8,7 +8,9 @@ import 'pages/agents.dart';
 import 'pages/node_detail.dart';
 import 'pages/nodes.dart';
 import 'pages/services.dart';
+import 'pages/login.dart';
 import 'pages/settings.dart';
+import 'pages/terminal.dart';
 import 'theme.dart';
 
 enum TabAnimation { slide, fade }
@@ -32,8 +34,22 @@ class _TaildeckShellState extends State<TaildeckShell>
   TabAnimation _animation =
       Uri.base.queryParameters['anim'] == 'fade' ? TabAnimation.fade : TabAnimation.slide;
   bool _sidebarExpanded = true;
+  bool _signedIn = switch (Uri.base.queryParameters['login']) {
+    null || '0' => true,
+    _ => false,
+  };
+  NodeItem? _sshNode = _querySsh();
 
   late final PageController _pageController = PageController(initialPage: _tab);
+
+  static NodeItem? _querySsh() {
+    final name = Uri.base.queryParameters['ssh'];
+    if (name == null) return null;
+    for (final node in [selfNode, ...peers]) {
+      if (node.name == name) return node;
+    }
+    return null;
+  }
 
   static NodeItem? _queryNode() {
     final name = Uri.base.queryParameters['node'];
@@ -73,6 +89,18 @@ class _TaildeckShellState extends State<TaildeckShell>
   Widget build(BuildContext context) {
     final scheme = context.colorScheme;
     final mobile = ViewScope.isMobileOf(context);
+    if (!_signedIn) {
+      return LoginPage(
+        onSignedIn: () => setState(() => _signedIn = true),
+      );
+    }
+    final sshNode = _sshNode;
+    if (sshNode != null) {
+      return TerminalPage(
+        node: sshNode,
+        onClose: () => setState(() => _sshNode = null),
+      );
+    }
     final items = <({Glyph glyph, String label})>[
       (glyph: Glyphs2.nodes, label: 'Nodes'),
       (glyph: Glyphs2.grid, label: 'Services'),
@@ -208,6 +236,11 @@ class _TaildeckShellState extends State<TaildeckShell>
               setState(() => _floating = value),
           tabAnimation: _animation,
           onTabAnimationChanged: (value) => setState(() => _animation = value),
+          onSignOut: () => setState(() {
+            _signedIn = false;
+            _tab = 0;
+            _node = null;
+          }),
           onToggleTheme: widget.theme.toggle,
         );
       default:
@@ -222,6 +255,7 @@ class _TaildeckShellState extends State<TaildeckShell>
           node: node,
           onBack: () => setState(() => _node = null),
           onOpenAgents: () => _toPage(2),
+          onOpenSsh: () => setState(() => _sshNode = node),
         );
     }
   }

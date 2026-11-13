@@ -12,18 +12,21 @@ class NodeDetailPage extends StatelessWidget {
     required this.node,
     required this.onBack,
     required this.onOpenAgents,
+    required this.onOpenSsh,
   });
 
   final NodeItem node;
   final VoidCallback onBack;
   final VoidCallback onOpenAgents;
+  final VoidCallback onOpenSsh;
 
   @override
   Widget build(BuildContext context) {
     final scheme = context.colorScheme;
     final mono = AppTextStyle.body.of(context).copyWith(
-      fontFamily: 'monospace',
-      fontFamilyFallback: const ['monospace'],
+      fontFamily: 'DejaVuSansMono',
+      fontSize: 14.5,
+      height: 1.5,
     );
     return PageBody(
       title: node.name,
@@ -45,7 +48,7 @@ class NodeDetailPage extends StatelessWidget {
               label: 'SSH',
               glyph: Glyphs2.terminal,
               selected: true,
-              onPressed: () {},
+              onPressed: onOpenSsh,
             ),
             ActionPill(label: 'Web', glyph: Glyphs2.globe, onPressed: () {}),
             ActionPill(label: 'Ping', glyph: Glyphs2.ping, onPressed: () {}),

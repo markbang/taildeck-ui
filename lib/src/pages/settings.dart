@@ -16,6 +16,7 @@ class SettingsPage extends StatelessWidget {
     required this.onToggleTheme,
     required this.tabAnimation,
     required this.onTabAnimationChanged,
+    required this.onSignOut,
   });
 
   final TaildeckTheme theme;
@@ -23,6 +24,7 @@ class SettingsPage extends StatelessWidget {
   final ValueChanged<bool> onFloatingNavigationChanged;
   final TabAnimation tabAnimation;
   final ValueChanged<TabAnimation> onTabAnimationChanged;
+  final VoidCallback onSignOut;
   final VoidCallback onToggleTheme;
 
   @override
@@ -101,6 +103,34 @@ class SettingsPage extends StatelessWidget {
                     onChanged: onTabAnimationChanged,
                   ),
                 ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 20),
+        SectionLabel('Session'),
+        GroupCard(
+          dividerInset: 16,
+          children: [
+            PressRegion(
+              onTap: onSignOut,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Sign out of the tailnet',
+                        style: context.listTitleStyle.copyWith(color: context.colorScheme.error),
+                      ),
+                    ),
+                    GlyphIcon(
+                      Glyphs.chevronForward,
+                      size: 16,
+                      color: context.colorScheme.error.opacity50,
+                    ),
+                  ],
+                ),
               ),
             ),
           ],
