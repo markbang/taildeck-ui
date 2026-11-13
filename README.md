@@ -66,13 +66,14 @@ lib/src/
   glyphs.dart    stroke icons (nodes, agents, terminal, relay, sun …)
   data.dart      sample tailnet: self, peers, services, agents
   l10n.dart      UiLocalizations for prism_ui's own strings
-  pages/         login · nodes · node_detail · services · agents · settings · terminal
+  pages/         login · nodes · node_detail · services · agents · settings · logs · terminal
   widgets/       PageBody, GroupCard, NodeBadge, PathBadge, StatusPill, Connector, ServiceTile, ActionPill
 ```
 
 Preview params: `/?tab=1` (services), `/?tab=2` (agents), `/?tab=3` (settings), `/?node=devbox` (node detail),
 `/?theme=light`, `/?nav=docked` (docked bottom bar instead of the floating dock), `/?anim=fade`,
-`/?login=1` (sign-in), `/?login=waiting` (device approval pending), `/?ssh=devbox` (terminal), `/?lang=zh`,
+`/?login=1` (sign-in), `/?login=waiting` (device approval pending), `/?preview=1` (signed-in shell without a
+node), `/?ssh=devbox` (terminal), `/?lang=zh`,
 `/?ssh=demo` (native libghostty-vt demo session). The desktop bundle has no URL, so pass the same parameters as
 `TAILDECK_QUERY=ssh=demo`.
 

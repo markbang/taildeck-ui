@@ -46,6 +46,9 @@ class _TaildeckShellState extends State<TaildeckShell>
     null || '0' => true,
     _ => false,
   };
+  // `?preview=1`: show the signed-in shell without a live node, so pages that
+  // need a tailnet (settings, logs) can be reviewed on a desk.
+  final bool _previewShell = previewParam('preview') == '1';
   NodeItem? _sshNode = _querySsh();
   bool _sshDemo = previewParam('ssh') == 'demo';
   String _sshUser = 'root';
@@ -112,7 +115,9 @@ class _TaildeckShellState extends State<TaildeckShell>
     final scheme = context.colorScheme;
     final mobile = ViewScope.isMobileOf(context);
     final backend = BackendScope.of(context);
-    final signedIn = backend.available ? backend.signedIn : _previewSignedIn;
+    final signedIn = _previewShell
+        ? _previewSignedIn
+        : (backend.available ? backend.signedIn : _previewSignedIn);
     if (!signedIn) {
       return LoginPage(
         onSignedIn: () => setState(() => _previewSignedIn = true),

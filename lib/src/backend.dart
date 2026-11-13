@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/widgets.dart';
 
@@ -6,6 +7,7 @@ import 'data.dart';
 import 'native/bridge.dart';
 import 'native/ssh.dart';
 import 'native/storage.dart';
+import 'ssh_identities.dart';
 
 enum BackendState { unavailable, stopped, starting, needsLogin, running, error }
 
@@ -53,7 +55,10 @@ class TaildeckBackend extends ChangeNotifier {
   String _tailnet = '';
   final List<String> _logs = [];
   String? _keyPath;
-  String? _publicKey;
+  String _builtinPublicKey = '';
+  List<SshIdentity> _identities = const [];
+  bool _identitiesLoaded = false;
+  bool _openInApp = false;
 
   bool get available => _bridge != null && _storage != null;
   BackendState get state => _state;
@@ -69,6 +74,9 @@ class TaildeckBackend extends ChangeNotifier {
   int get gatewayPort => _gatewayPort;
   String get tailnet => _tailnet.isEmpty ? _hostname : _tailnet;
   List<String> get logs => List.unmodifiable(_logs);
+
+  /// Service links open in the browser until an in-app browser lands.
+  bool get openInApp => _openInApp;
 
   /// The node key is accepted; the tunnel is up.
   bool get signedIn => _state == BackendState.running;
@@ -90,6 +98,7 @@ class TaildeckBackend extends ChangeNotifier {
       _hostname = config.hostname;
       _controlURL = config.controlURL;
       _persistedSignIn = config.signedIn;
+      _openInApp = config.openInApp;
       // The tsnet state dir keeps the node key, so a previous session can
       // reconnect without a new key.
       if (config.signedIn) await _start('');
@@ -157,20 +166,140 @@ class TaildeckBackend extends ChangeNotifier {
   }
 
   /// Public half of the built-in ed25519 key; created on first use.
-  Future<String> sshPublicKey() async {
+  Future<String> ensureBuiltinKey() async {
     final bridge = _bridge;
     final storage = _storage;
     if (bridge == null || storage == null) {
       throw const BridgeException('native backend is unavailable');
     }
-    final cached = _publicKey;
-    if (cached != null) return cached;
+    if (_builtinPublicKey.isNotEmpty) return _builtinPublicKey;
     final dir = await storage.sshDir();
     final path = '$dir/id_ed25519';
-    final pub = bridge.ensureKey(path, comment: 'taildeck@$_hostname');
+    _builtinPublicKey = bridge.ensureKey(path, comment: 'taildeck@$_hostname');
     _keyPath = path;
-    _publicKey = pub;
-    return pub;
+    return _builtinPublicKey;
+  }
+
+  /// Built-in key first, then imported keys. Creates the built-in key so its
+  /// public line can be shown and copied.
+  Future<List<SshIdentity>> sshIdentities() async {
+    if (_bridge == null || _storage == null) return const [];
+    await _loadIdentities();
+    var publicKey = _builtinPublicKey;
+    if (publicKey.isEmpty) {
+      try {
+        publicKey = await ensureBuiltinKey();
+      } on BridgeException {
+        // The row stays listed; the settings page reports the failure.
+      }
+    }
+    return [
+      SshIdentity(
+        id: builtinKeyId,
+        name: 'Taildeck',
+        publicKey: publicKey,
+        builtin: true,
+      ),
+      ..._identities,
+    ];
+  }
+
+  /// Writes `ssh/<id>.key` and remembers its passphrase.
+  Future<SshIdentity> importSshKey({
+    required String name,
+    required String pem,
+    String passphrase = '',
+  }) async {
+    final storage = _storage;
+    if (_bridge == null || storage == null) {
+      throw const SshKeyException(SshKeyError.unavailable);
+    }
+    final trimmed = name.trim();
+    final id = sshKeyId(trimmed);
+    if (trimmed.isEmpty || !isUsableKeyId(id)) {
+      throw const SshKeyException(SshKeyError.nameInvalid);
+    }
+    await _loadIdentities();
+    if (_identities.any((key) => key.id == id)) {
+      throw const SshKeyException(SshKeyError.nameTaken);
+    }
+    final normalized = normalizePrivateKey(pem) ?? '${pem.trim()}\n';
+    final identity = SshIdentity(
+      id: id,
+      name: trimmed,
+      publicKey: sshPublicKeyOf(normalized) ?? '',
+      passphrase: passphrase.trim(),
+    );
+    try {
+      await storage.writeSshKey(id, normalized);
+      await _saveIdentities([..._identities, identity]);
+    } on Object {
+      throw const SshKeyException(SshKeyError.io);
+    }
+    return identity;
+  }
+
+  /// Deletes an imported key and its file; the built-in key stays.
+  Future<void> deleteSshKey(SshIdentity identity) async {
+    if (identity.builtin) return;
+    final storage = _storage;
+    if (storage == null) {
+      throw const SshKeyException(SshKeyError.unavailable);
+    }
+    try {
+      await storage.deleteSshKey(identity.id);
+      await _saveIdentities([
+        for (final key in _identities)
+          if (key.id != identity.id) key,
+      ]);
+    } on Object {
+      throw const SshKeyException(SshKeyError.io);
+    }
+  }
+
+  /// Path and passphrase to hand to `td_ssh_dial` for [id].
+  Future<({String path, String passphrase})> sshKeyFor(String id) async {
+    final storage = _storage;
+    if (storage == null) {
+      throw const BridgeException('native backend is unavailable');
+    }
+    if (id.isEmpty || id == builtinKeyId) {
+      await ensureBuiltinKey();
+      return (path: _keyPath ?? '', passphrase: '');
+    }
+    await _loadIdentities();
+    for (final key in _identities) {
+      if (key.id == id) {
+        return (path: await storage.sshKeyPath(id), passphrase: key.passphrase);
+      }
+    }
+    throw BridgeException('SSH key "$id" not found');
+  }
+
+  Future<void> _loadIdentities() async {
+    if (_identitiesLoaded) return;
+    _identitiesLoaded = true;
+    final storage = _storage;
+    if (storage == null) return;
+    try {
+      final raw = await storage.readIdentitiesJson();
+      if (raw == null || raw.trim().isEmpty) return;
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return;
+      _identities = [
+        for (final item in decoded)
+          if (item is Map<String, dynamic>) SshIdentity.fromJson(item),
+      ];
+    } on Object catch (error) {
+      debugPrint('taildeck: could not read ssh identities: $error');
+    }
+  }
+
+  Future<void> _saveIdentities(List<SshIdentity> list) async {
+    _identities = list;
+    await _storage?.writeIdentitiesJson(
+      jsonEncode([for (final key in list) key.toJson()]),
+    );
   }
 
   /// Opens a PTY shell on [host] over the tailnet. Dialing continues in the
@@ -180,6 +309,7 @@ class TaildeckBackend extends ChangeNotifier {
     required String user,
     int port = 22,
     String password = '',
+    String identityId = builtinKeyId,
     int cols = 80,
     int rows = 24,
   }) async {
@@ -187,13 +317,14 @@ class TaildeckBackend extends ChangeNotifier {
     if (bridge == null) {
       throw const BridgeException('native backend is unavailable');
     }
-    await sshPublicKey();
+    final key = await sshKeyFor(identityId);
     final reply = bridge.sshDial(
       host: host,
       port: port,
       user: user,
       password: password,
-      keyPath: _keyPath ?? '',
+      keyPath: key.path,
+      passphrase: key.passphrase,
       cols: cols,
       rows: rows,
     );
@@ -206,8 +337,28 @@ class TaildeckBackend extends ChangeNotifier {
   Future<void> forgetSshHostKeys() async {
     final bridge = _bridge;
     final storage = _storage;
-    if (bridge == null || storage == null) return;
+    if (bridge == null || storage == null) {
+      throw const BridgeException('native backend is unavailable');
+    }
     bridge.forgetHostKeys(await storage.stateDir());
+  }
+
+  /// `td_logs()` on native; the event buffer when there is no bridge.
+  String logsText() {
+    final bridge = _bridge;
+    if (bridge == null) return _logs.join('\n');
+    try {
+      return bridge.logs();
+    } on BridgeException {
+      return _logs.join('\n');
+    }
+  }
+
+  Future<void> setOpenInApp(bool value) async {
+    if (value == _openInApp) return;
+    _openInApp = value;
+    notifyListeners();
+    await _persist();
   }
 
   /// Sign-out drops the node key; the next launch starts at the login screen.
@@ -364,6 +515,7 @@ class TaildeckBackend extends ChangeNotifier {
           hostname: _hostname,
           controlURL: _controlURL,
           signedIn: persist,
+          openInApp: _openInApp,
         ),
       );
     } on Object catch (error) {
