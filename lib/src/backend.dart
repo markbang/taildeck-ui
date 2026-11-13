@@ -4,6 +4,7 @@ import 'package:flutter/widgets.dart';
 
 import 'data.dart';
 import 'native/bridge.dart';
+import 'native/ssh.dart';
 import 'native/storage.dart';
 
 enum BackendState { unavailable, stopped, starting, needsLogin, running, error }
@@ -50,6 +51,8 @@ class TaildeckBackend extends ChangeNotifier {
   List<NodeItem> _peers = const [];
   String _tailnet = '';
   final List<String> _logs = [];
+  String? _keyPath;
+  String? _publicKey;
 
   bool get available => _bridge != null && _storage != null;
   BackendState get state => _state;
@@ -135,6 +138,60 @@ class TaildeckBackend extends ChangeNotifier {
     } on BridgeException catch (error) {
       return PingResult(error: error.message);
     }
+  }
+
+  /// Public half of the built-in ed25519 key; created on first use.
+  Future<String> sshPublicKey() async {
+    final bridge = _bridge;
+    final storage = _storage;
+    if (bridge == null || storage == null) {
+      throw const BridgeException('native backend is unavailable');
+    }
+    final cached = _publicKey;
+    if (cached != null) return cached;
+    final dir = await storage.sshDir();
+    final path = '$dir/id_ed25519';
+    final pub = bridge.ensureKey(path, comment: 'taildeck@$_hostname');
+    _keyPath = path;
+    _publicKey = pub;
+    return pub;
+  }
+
+  /// Opens a PTY shell on [host] over the tailnet. Dialing continues in the
+  /// background; output and the close reason arrive on [SshSession.output].
+  Future<SshSession> openSshSession({
+    required String host,
+    required String user,
+    int port = 22,
+    String password = '',
+    int cols = 80,
+    int rows = 24,
+  }) async {
+    final bridge = _bridge;
+    if (bridge == null) {
+      throw const BridgeException('native backend is unavailable');
+    }
+    await sshPublicKey();
+    final reply = bridge.sshDial(
+      host: host,
+      port: port,
+      user: user,
+      password: password,
+      keyPath: _keyPath ?? '',
+      cols: cols,
+      rows: rows,
+    );
+    final id = (reply['id'] as num?)?.toInt();
+    if (id == null) throw const BridgeException('ssh_dial returned no id');
+    return SshSession(bridge, id);
+  }
+
+  /// Forgets trusted host keys, so the next connection trusts them again.
+  Future<void> forgetSshHostKeys() async {
+    final bridge = _bridge;
+    final storage = _storage;
+    if (bridge == null || storage == null) return;
+    bridge.forgetHostKeys(await storage.stateDir());
   }
 
   /// Sign-out drops the node key; the next launch starts at the login screen.
@@ -243,6 +300,9 @@ class TaildeckBackend extends ChangeNotifier {
         if (line.isEmpty) return;
         _logs.add(line);
         if (_logs.length > _logLimit) _logs.removeRange(0, _logs.length - _logLimit);
+      case BridgeEventKind.sshData || BridgeEventKind.sshClosed:
+        // Session frames reach their own stream, not the backend.
+        return;
     }
   }
 

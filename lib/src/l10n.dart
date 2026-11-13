@@ -124,8 +124,20 @@ class AppLocalizations implements UiLocalizations {
   String get notConnected => _zh ? '未连接' : 'Not connected';
   String get demo => _zh ? '演示' : 'Demo';
   String get sshPending => _zh
-      ? 'SSH 会话将在下一里程碑接入，这里是 libghostty-vt 渲染的真实终端。'
-      : 'SSH session arrives in the next milestone — this is the real libghostty-vt terminal.';
+      ? '此平台没有 SSH 后端，这里是 libghostty-vt 演示终端。'
+      : 'No SSH backend on this platform — this is a libghostty-vt demo terminal.';
+  String get connecting => _zh ? '连接中…' : 'Connecting…';
+  String get disconnected => _zh ? '已断开' : 'Disconnected';
+  String disconnectedReason(String reason) =>
+      _zh ? '连接已断开：$reason' : 'Disconnected: $reason';
+  String get sshPasswordHint => _zh ? '服务器密码' : 'Server password';
+  String get sshKeyTitle => _zh ? '内置密钥' : 'Built-in key';
+  String get sshKeyHint => _zh
+      ? '把这段公钥加到服务器的 ~/.ssh/authorized_keys。'
+      : 'Add this public key to ~/.ssh/authorized_keys on the server.';
+  String get sshNoBackend => _zh
+      ? '原生后端不可用，SSH 需要桌面或 Android 构建。'
+      : 'SSH needs the desktop or Android build; the native backend is missing.';
 
   @override
   String get clearSearch => _zh ? '清除搜索' : 'Clear search';

@@ -1,4 +1,4 @@
-// Loads native/bridge/build/libtaildeck_bridge.so and exercises the C ABI.
+// Loads linux/lib/libtaildeck_bridge.so (tool/build_native.sh) and exercises the C ABI.
 // No network: it only proves the exported symbols, JSON envelopes and
 // string ownership (every char* is freed with td_free).
 //
@@ -14,10 +14,30 @@ typedef _IntFn = Int32 Function();
 typedef _FreeFn = Void Function(Pointer<Int8>);
 typedef _EventFn = Void Function(Int32, Pointer<Int8>, IntPtr);
 typedef _SetCbFn = Void Function(Pointer<NativeFunction<_EventFn>>, IntPtr);
+typedef _WriteFnNative = Pointer<Int8> Function(Int32, Pointer<Uint8>, Int32);
+typedef _WriteFn = Pointer<Int8> Function(int, Pointer<Uint8>, int);
+typedef _IntArgFnNative = Pointer<Int8> Function(Int32);
+typedef _IntArgFn = Pointer<Int8> Function(int);
+typedef _ResizeFnNative = Pointer<Int8> Function(Int32, Int32, Int32);
+typedef _ResizeFn = Pointer<Int8> Function(int, int, int);
+typedef _TwoStrFnNative = Pointer<Int8> Function(Pointer<Int8>, Pointer<Int8>);
+typedef _TwoStrFn = Pointer<Int8> Function(Pointer<Int8>, Pointer<Int8>);
 
 final _libc = DynamicLibrary.process();
-final _calloc = _libc.lookupFunction<Pointer<Void> Function(IntPtr, IntPtr), Pointer<Void> Function(int, int)>('calloc');
-final _free = _libc.lookupFunction<Void Function(Pointer<Void>), void Function(Pointer<Void>)>('free');
+final _calloc = _libc
+    .lookupFunction<Pointer<Void> Function(IntPtr, IntPtr), Pointer<Void> Function(int, int)>(
+      'calloc',
+    );
+final _free = _libc.lookupFunction<Void Function(Pointer<Void>), void Function(Pointer<Void>)>(
+  'free',
+);
+
+var _failures = 0;
+
+void check(bool ok, String what) {
+  stdout.writeln('${ok ? 'ok  ' : 'FAIL'}  $what');
+  if (!ok) _failures++;
+}
 
 Pointer<Int8> cstr(String s) {
   final bytes = utf8.encode(s);
@@ -39,7 +59,7 @@ String readC(Pointer<Int8> p) {
 }
 
 Future<void> main(List<String> args) async {
-  final path = args.isNotEmpty ? args.first : 'native/bridge/build/libtaildeck_bridge.so';
+  final path = args.isNotEmpty ? args.first : 'linux/lib/libtaildeck_bridge.so';
   final lib = DynamicLibrary.open(path);
 
   final status = lib.lookupFunction<_StrFn, _StrFn>('td_status');
@@ -48,8 +68,16 @@ Future<void> main(List<String> args) async {
   final start = lib.lookupFunction<_StrArgFn, _StrArgFn>('td_start');
   final free = lib.lookupFunction<_FreeFn, void Function(Pointer<Int8>)>('td_free');
   final port = lib.lookupFunction<_IntFn, int Function()>('td_gateway_port');
-  final setCb = lib.lookupFunction<_SetCbFn, void Function(Pointer<NativeFunction<_EventFn>>, int)>('td_set_event_cb');
+  final setCb = lib.lookupFunction<_SetCbFn, void Function(Pointer<NativeFunction<_EventFn>>, int)>(
+    'td_set_event_cb',
+  );
   final ping = lib.lookupFunction<_StrArgFn, _StrArgFn>('td_ping');
+  final sshDial = lib.lookupFunction<_StrArgFn, _StrArgFn>('td_ssh_dial');
+  final sshWrite = lib.lookupFunction<_WriteFnNative, _WriteFn>('td_ssh_write');
+  final sshResize = lib.lookupFunction<_ResizeFnNative, _ResizeFn>('td_ssh_resize');
+  final sshClose = lib.lookupFunction<_IntArgFnNative, _IntArgFn>('td_ssh_close');
+  final keyEnsure = lib.lookupFunction<_TwoStrFnNative, _TwoStrFn>('td_key_ensure');
+  final forgetHostKeys = lib.lookupFunction<_StrArgFn, _StrArgFn>('td_forget_host_keys');
 
   String call(Pointer<Int8> Function() fn) {
     final p = fn();
@@ -68,6 +96,19 @@ Future<void> main(List<String> args) async {
     }
   }
 
+  String callTwo(Pointer<Int8> Function(Pointer<Int8>, Pointer<Int8>) fn, String a, String b) {
+    final pa = cstr(a);
+    final pb = cstr(b);
+    try {
+      return call(() => fn(pa, pb));
+    } finally {
+      _free(pa.cast());
+      _free(pb.cast());
+    }
+  }
+
+  Map<String, dynamic> decode(String text) => jsonDecode(text) as Map<String, dynamic>;
+
   // Events arrive on Go threads, so the listener posts them to this isolate;
   // the payload stays valid until we free it, which is why Go hands it over.
   final events = <Map<String, dynamic>>[];
@@ -84,17 +125,70 @@ Future<void> main(List<String> args) async {
   out.add('gateway port: ${port()}');
   out.add('stop when stopped: ${call(stop)}');
   out.add('start without dir: ${callArg(start, '{"hostname":"smoke"}')}');
-  out.add('start with bad platform: ${callArg(start, '{"dir":"/tmp/td-smoke","platform":"bogus"}')}');
-  out.add('start with host platform, no hooks: ${callArg(start, '{"dir":"/tmp/td-smoke","platform":"host"}')}');
+  out.add(
+    'start with bad platform: ${callArg(start, '{"dir":"/tmp/td-smoke","platform":"bogus"}')}',
+  );
+  out.add(
+    'start with host platform, no hooks: ${callArg(start, '{"dir":"/tmp/td-smoke","platform":"host"}')}',
+  );
   out.add('ping without engine: ${callArg(ping, '100.64.0.1')}');
+
+  // SSH before the node exists: a clean envelope, never a crash or a hang.
+  final beforeSSH = decode(callArg(sshDial, '{"host":"100.64.0.1","user":"root"}'));
+  check(beforeSSH['ok'] == false, 'ssh_dial without a node fails');
+  check(
+    (beforeSSH['error'] as String? ?? '').contains('not running'),
+    'ssh_dial error names the missing node: ${beforeSSH['error']}',
+  );
+  out.add('ssh_dial empty config: ${callArg(sshDial, '')}');
+  out.add('ssh_dial without host: ${callArg(sshDial, '{"user":"root"}')}');
+  check(
+    decode(callArg(sshDial, '{"host":"x","port":70000}'))['ok'] == false,
+    'ssh_dial rejects a bad port',
+  );
+  final unknownWrite = decode(
+    (() {
+      final p = _calloc(1, 1).cast<Uint8>();
+      try {
+        return call(() => sshWrite(99, p, 0));
+      } finally {
+        _free(p.cast());
+      }
+    })(),
+  );
+  check(unknownWrite['ok'] == false, 'ssh_write on an unknown id fails: ${unknownWrite['error']}');
+  check(
+    decode(call(() => sshResize(99, 80, 24)))['ok'] == false,
+    'ssh_resize on an unknown id fails',
+  );
+  check(decode(call(() => sshClose(99)))['ok'] == true, 'ssh_close on an unknown id is a no-op');
+
+  // Built-in key: created once, reused, and the public half is returned.
+  final keyDir = Directory.systemTemp.createTempSync('td-key');
+  final keyPath = '${keyDir.path}/ssh/id_ed25519';
+  final key1 = decode(callTwo(keyEnsure, keyPath, 'taildeck@smoke'));
+  check(key1['ok'] == true, 'td_key_ensure creates a key: ${key1['error'] ?? ''}');
+  check(
+    (key1['public'] as String? ?? '').startsWith('ssh-ed25519 '),
+    'key has an ed25519 public line',
+  );
+  check(File(keyPath).existsSync(), 'key file exists on disk');
+  final key2 = decode(callTwo(keyEnsure, keyPath, 'taildeck@smoke'));
+  check(key2['public'] == key1['public'], 'td_key_ensure reuses the existing key');
+  check(decode(callTwo(keyEnsure, '', ''))['ok'] == false, 'td_key_ensure without a path fails');
+  check(
+    decode(callArg(forgetHostKeys, keyDir.path))['ok'] == true,
+    'td_forget_host_keys on an empty dir is ok',
+  );
+  keyDir.deleteSync(recursive: true);
+
   // Local start against a refused control URL: no tailnet traffic, but the
   // node, gateway port and state events run for real.
   final dir = Directory.systemTemp.createTempSync('td-smoke');
-  final started = callArg(start, jsonEncode({
-    'dir': dir.path,
-    'hostname': 'td-smoke',
-    'controlURL': 'http://127.0.0.1:1',
-  }));
+  final started = callArg(
+    start,
+    jsonEncode({'dir': dir.path, 'hostname': 'td-smoke', 'controlURL': 'http://127.0.0.1:1'}),
+  );
   out.add('start: $started');
   out.add('gateway port after start: ${port()}');
   await Future<void>.delayed(const Duration(milliseconds: 800));
@@ -103,10 +197,26 @@ Future<void> main(List<String> args) async {
   out.add('event kinds: ${events.map((e) => e['kind']).toSet().toList()..sort()}');
   final st = jsonDecode(call(status)) as Map<String, dynamic>;
   out.add('status state: ${st['state']} (ok=${st['ok']})');
+
+  // The node is up but not signed in: SSH must say so instead of dialing.
+  final before = DateTime.now();
+  final unready = decode(callArg(sshDial, '{"host":"devbox","user":"root"}'));
+  final elapsed = DateTime.now().difference(before).inMilliseconds;
+  final unreadyError = unready['error'] as String? ?? '';
+  check(unready['ok'] == false, 'ssh_dial with an unauthenticated node fails in ${elapsed}ms');
+  check(
+    unreadyError.contains('not logged in') || unreadyError.contains('not running'),
+    'ssh_dial explains the state: $unreadyError',
+  );
+  check(!events.any((e) => e['kind'] == 4 || e['kind'] == 5), 'no SSH session events were emitted');
+
   out.add('stop: ${call(stop)}');
-  out.add('status after stop: ${call(status)}');
 
   cb.close();
   dir.deleteSync(recursive: true);
   stdout.writeln(out.join('\n'));
+  if (_failures > 0) {
+    stdout.writeln('$_failures check(s) failed');
+    exitCode = 1;
+  }
 }

@@ -29,6 +29,9 @@ class StoredConfig {
 abstract class BackendStorage {
   /// tsnet state dir; created on demand.
   Future<String> stateDir();
+
+  /// App-private SSH dir (keys live here); created on demand.
+  Future<String> sshDir();
   Future<StoredConfig> readConfig();
   Future<void> writeConfig(StoredConfig config);
 }

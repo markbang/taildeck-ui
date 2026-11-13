@@ -22,6 +22,13 @@ class _IoStorage implements BackendStorage {
     return dir.path;
   }
 
+  @override
+  Future<String> sshDir() async {
+    final dir = Directory('${(await _rootDir()).path}/ssh');
+    await dir.create(recursive: true);
+    return dir.path;
+  }
+
   Future<File> _configFile() async =>
       File('${(await _rootDir()).path}/config.json');
 
