@@ -30,6 +30,14 @@ C ABI 是稳定的契约：启动、停止、状态、日志、ping 和网关端
 `td_free`，见 `native/README.md`），另有 SSH 会话调用和一个事件回调用于推送状态与日志。边界上不传 Go 类型
 或指针，所以升级 Go 或 Flutter 都不会弄坏另一边。
 
+### Android 平台钩子
+
+Android 11+ 屏蔽 Go 的 `net.Interfaces` 所用的 netlink，应用也没有 `resolv.conf`，因此 Android 上节点以
+`"platform": "host"` 启动。Kotlin 辅助类（`android/.../PlatformBridge.kt`）用 `ConnectivityManager`、
+`NetworkInterface` 和 `InetAddress` 提供网卡列表、默认网卡和 DNS 查询；JNI 转接层
+`native/bridge/cmd/cshared/platform_jni.c` 把它们交给 `td_set_platform_cb`，并把默认网络变化转发给
+`td_network_changed`。其他平台继续用 Go 标准库实现。
+
 ## 终端
 
 复用 `libghostty-vt`，外面套一层很薄的纯 C ABI 转接，通过 `dart:ffi` 调用：

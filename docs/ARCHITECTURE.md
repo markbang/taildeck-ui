@@ -32,6 +32,14 @@ The C ABI is the stable contract; JSON in and JSON out for start, stop, status, 
 (`td_start` … `td_free` in `native/README.md`), plus SSH session calls and a single event callback for state and
 log pushes. No Go types or pointers cross the boundary, so a Go or Flutter upgrade does not break the other side.
 
+### Android platform hooks
+
+Android 11+ blocks the netlink calls behind Go's `net.Interfaces`, and apps have no `resolv.conf`, so the node
+starts with `"platform": "host"` on Android. A Kotlin helper (`android/.../PlatformBridge.kt`) supplies
+interfaces, the default interface and DNS lookups from `ConnectivityManager`, `NetworkInterface` and `InetAddress`;
+the JNI shim `native/bridge/cmd/cshared/platform_jni.c` hands them to `td_set_platform_cb` and forwards default
+network changes to `td_network_changed`. Every other platform keeps the Go stdlib adapter.
+
 ## Terminal
 
 Reuse `libghostty-vt` behind a small plain C ABI shim, consumed through `dart:ffi`:
