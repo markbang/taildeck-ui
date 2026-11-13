@@ -1,0 +1,121 @@
+name: ci
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web:
+    name: web build and screenshots
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.9
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter analyze --no-fatal-infos
+      - run: flutter build web --release --base-href /taildeck-ui/ --no-web-resources-cdn
+      - name: Serve build/web at /taildeck-ui/
+        run: |
+          # The build uses --base-href /taildeck-ui/, so serve it under that path.
+          mkdir -p /tmp/serve
+          ln -s "$PWD/build/web" /tmp/serve/taildeck-ui
+          nohup python3 -m http.server 8099 --directory /tmp/serve > /tmp/http.log 2>&1 &
+          for _ in $(seq 1 30); do
+            curl -fsS http://127.0.0.1:8099/taildeck-ui/ > /dev/null && exit 0
+            sleep 1
+          done
+          cat /tmp/http.log
+          exit 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Playwright Chromium
+        run: |
+          python3 -m pip install playwright
+          python3 -m playwright install --with-deps chromium
+      - run: python3 tool/shots.py --out shots
+      - name: Job summary
+        if: always()
+        run: |
+          {
+            echo "### Web screenshots"
+            echo
+            echo '| file | bytes |'
+            echo '| --- | --- |'
+            for f in shots/*.png; do
+              [ -e "$f" ] && echo "| \`$f\` | $(stat -c%s "$f") |"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: web-screenshots
+          path: shots/
+          if-no-files-found: warn
+
+  android:
+    name: android debug apk
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.9
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter build apk --debug --target-platform android-arm64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-debug-apk
+          path: build/app/outputs/flutter-apk/app-debug.apk
+          if-no-files-found: error
+
+  linux:
+    name: linux build and screenshot
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install GTK and X dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev ninja-build clang cmake xvfb imagemagick liblzma-dev
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.9
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter build linux --release
+      - name: Run the bundle on Xvfb and screenshot
+        run: |
+          mkdir -p shots
+          xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
+            set -e
+            ./build/linux/x64/release/bundle/taildeck_ui &
+            app=$!
+            sleep 12
+            import -window root shots/linux.png
+            kill "$app" || true
+          '
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-screenshot
+          path: shots/linux.png
+          if-no-files-found: error
