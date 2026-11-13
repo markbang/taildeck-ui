@@ -117,6 +117,17 @@ else()
   message(STATUS "taildeck: linux/lib/libtaildeck_bridge.so missing, run tool/build_native.sh")
 endif()
 
+# libghostty-vt C shim built by tool/build_term.sh; dart:ffi loads it from
+# lib/ next to the executable.
+set(TAILDECK_TERM "${CMAKE_CURRENT_SOURCE_DIR}/lib/libtaildeck_term.so")
+if(EXISTS "${TAILDECK_TERM}")
+  install(FILES "${TAILDECK_TERM}"
+    DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
+    COMPONENT Runtime)
+else()
+  message(STATUS "taildeck: linux/lib/libtaildeck_term.so missing, run tool/build_term.sh")
+endif()
+
 # Copy the native assets provided by the build.dart from all packages.
 set(NATIVE_ASSETS_DIR "${PROJECT_BUILD_DIR}native_assets/linux/")
 install(DIRECTORY "${NATIVE_ASSETS_DIR}"
