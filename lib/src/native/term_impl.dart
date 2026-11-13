@@ -185,10 +185,19 @@ class _Lib {
 _Lib? _lib;
 bool _libTried = false;
 
-/// Same lookup order as the bridge: env override, then the bundle's lib/.
+/// iOS links the shim into the Runner; elsewhere this follows the bridge:
+/// env override, then the bundle's lib/.
 _Lib? _openLib() {
   if (_libTried) return _lib;
   _libTried = true;
+  if (Platform.isIOS) {
+    try {
+      _lib = _Lib(DynamicLibrary.process());
+    } on Object {
+      _lib = null;
+    }
+    return _lib;
+  }
   final override = Platform.environment['TAILDECK_TERM'];
   final candidates = <String>[
     if (override != null && override.isNotEmpty) override,

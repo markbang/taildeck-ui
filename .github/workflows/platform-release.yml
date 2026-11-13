@@ -287,6 +287,8 @@ jobs:
           for lib in macos/Frameworks/libtaildeck_bridge.dylib macos/Frameworks/libtaildeck_term.dylib; do
             test -s "$lib" || { echo "::error::$lib missing, the app would run without the backend"; exit 1; }
             lipo -info "$lib"
+            codesign -dv "$lib" 2>&1 | grep -q 'Signature=adhoc' \
+              || { echo "::error::$lib is not ad-hoc signed; Taildeck.app cannot be signed"; exit 1; }
           done
       - name: Build native libs (ios)
         if: matrix.name == 'ios'
@@ -296,6 +298,8 @@ jobs:
           for lib in ios/Frameworks/libtaildeck_bridge.a ios/Frameworks/libtaildeck_term.a; do
             test -s "$lib" || { echo "::error::$lib missing, the Runner would not link the backend"; exit 1; }
             echo "$lib $(stat -f%z "$lib") bytes"
+            grep -q "$(basename "$lib")" ios/Flutter/NativeBridge.xcconfig \
+              || { echo "::error::$(basename "$lib") missing from NativeBridge.xcconfig"; exit 1; }
           done
 
       - name: Build and zip (windows)

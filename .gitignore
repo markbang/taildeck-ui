@@ -60,5 +60,3 @@ native/term/build/
 /windows/lib/
 /macos/Frameworks/
 /ios/Frameworks/
-/ios/Flutter/NativeBridge.xcconfig
-/ios/Flutter/NativeTerm.xcconfig
