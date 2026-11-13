@@ -26,7 +26,7 @@ jobs:
           cache: true
       - run: flutter pub get
       - run: flutter analyze --no-fatal-infos
-      - run: flutter build web --release --base-href /taildeck-ui/
+      - run: flutter build web --release --base-href /taildeck-ui/ --no-web-resources-cdn
       - uses: actions/upload-pages-artifact@v3
         with:
           path: build/web

@@ -31,6 +31,7 @@ prism_ui's surfaces and stroke-icon engine:
   cross-fades in place, using prism_ui's `fadeTabDuration` / `fadeTabCurve`)
 - **Login** — browser sign-in with a waiting state, auth key entry, optional control server field
 - **SSH terminal** — full-bleed mono session with a working input line (`ls`, `uname`, `tailscale`, `docker ps` … are simulated), bundled DejaVu Sans Mono
+- **Self-contained fonts** — Roboto, DejaVu Sans Mono and a Noto Sans CJK subset (SC/TC/JP/KR) ship with the app, and the build uses `--no-web-resources-cdn`, so nothing is fetched from `fonts.gstatic.com` / `www.gstatic.com` at runtime (that CDN is unreliable from mainland China)
 - **Responsive** — sidebar above 720 dp, glass dock below, both from prism_ui
 
 ## Structure
@@ -58,6 +59,20 @@ source tool/env.sh          # 国内镜像 + Flutter 3.47.9
 flutter pub get
 flutter run -d web-server --web-port 8099
 ```
+
+## Fonts
+
+`assets/fonts` holds the UI font (Roboto), the terminal font (DejaVu Sans Mono) and
+`NotoSansCJK-subset.otf` (6 MB: CJK ideographs, kana, Hangul, CJK punctuation, fullwidth forms).
+Regenerate it narrower when you know your text:
+
+```bash
+pyftsubset /usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc --font-number=2 \
+  --unicodes="U+3000-303F,U+3040-30FF,U+4E00-9FFF,U+AC00-D7A3,U+FF00-FFEF" \
+  --output-file=assets/fonts/NotoSansCJK-subset.otf --layout-features='' --no-hinting
+```
+
+Drop `U+AC00-D7A3` to save ~1.1 MB if Korean is not needed.
 
 ## Status
 

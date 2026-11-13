@@ -124,6 +124,7 @@ class _TerminalPageState extends State<TerminalPage> {
     final wide = MediaQuery.sizeOf(context).width > 900;
     final mono = TextStyle(
       fontFamily: 'DejaVuSansMono',
+      fontFamilyFallback: const ['NotoSansCJK'],
       fontSize: wide ? 14.5 : 13.5,
       height: 1.6,
       color: _fg,

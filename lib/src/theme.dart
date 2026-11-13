@@ -22,6 +22,8 @@ class TaildeckTheme extends ChangeNotifier {
       brightness: brightness,
       style: ColorStyle.soft,
     ),
+    fontFamily: 'Roboto',
+    fontFamilyFallback: const ['NotoSansCJK'],
   );
 
   void setMode(ThemeMode value) {
