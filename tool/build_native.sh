@@ -3,7 +3,8 @@
 #
 #   tool/build_native.sh            # linux/amd64 + android/arm64
 #   tool/build_native.sh linux
-#   tool/build_native.sh android
+#   tool/build_native.sh android         # arm64-v8a
+#   tool/build_native.sh android-x86_64  # x86_64 (emulators)
 #   tool/build_native.sh windows    # x86_64-windows-gnu via mingw-w64
 #   tool/build_native.sh macos      # universal dylib (needs Xcode)
 #   tool/build_native.sh ios        # arm64 static lib (needs Xcode)
@@ -24,11 +25,10 @@ TARGETS=("$@")
 if [ ${#TARGETS[@]} -eq 0 ]; then
   TARGETS=(linux android)
 elif [ "${TARGETS[0]}" = "all" ]; then
-  TARGETS=(linux android windows macos ios)
+  TARGETS=(linux android android-x86_64 windows macos ios)
 fi
 
 LINUX_OUT="$ROOT/linux/lib/libtaildeck_bridge.so"
-ANDROID_OUT="$ROOT/android/app/src/main/jniLibs/arm64-v8a/libtaildeck_bridge.so"
 WINDOWS_OUT="$ROOT/windows/lib/taildeck_bridge.dll"
 MACOS_DIR="$ROOT/macos/Frameworks"
 IOS_DIR="$ROOT/ios/Frameworks"
@@ -66,28 +66,32 @@ find_ndk() {
   fi
 }
 
-build_android() {
-  local ndk bin cc
+build_android_abi() {
+  local abi=$1 goarch=$2 ccarch=$3 ndk bin cc out
   ndk="$(find_ndk)"
   if [ -z "$ndk" ]; then
-    echo "android/arm64: skipped, no NDK (set ANDROID_NDK_HOME or install into \$ANDROID_SDK_ROOT/ndk)"
+    echo "android/$abi: skipped, no NDK (set ANDROID_NDK_HOME or install into \$ANDROID_SDK_ROOT/ndk)"
     return 0
   fi
   bin="$ndk/toolchains/llvm/prebuilt/linux-x86_64/bin"
   # API 24 matches the app's minSdk; fall back to 26 when the NDK lacks it.
-  cc="$bin/aarch64-linux-android24-clang"
-  [ -x "$cc" ] || cc="$bin/aarch64-linux-android26-clang"
+  cc="$bin/${ccarch}-linux-android24-clang"
+  [ -x "$cc" ] || cc="$bin/${ccarch}-linux-android26-clang"
   if [ ! -x "$cc" ]; then
-    echo "android/arm64: skipped, $cc missing"
+    echo "android/$abi: skipped, $cc missing"
     return 0
   fi
-  echo "android/arm64 (NDK $(basename "$ndk")): $ANDROID_OUT"
-  mkdir -p "$(dirname "$ANDROID_OUT")"
-  (cd native/bridge && CGO_ENABLED=1 GOOS=android GOARCH=arm64 CC="$cc" \
+  out="$ROOT/android/app/src/main/jniLibs/$abi/libtaildeck_bridge.so"
+  echo "android/$abi (NDK $(basename "$ndk")): $out"
+  mkdir -p "$(dirname "$out")"
+  (cd native/bridge && CGO_ENABLED=1 GOOS=android GOARCH="$goarch" CC="$cc" \
     "$GO" build -buildmode=c-shared -trimpath \
     -tags "$ANDROID_TAGS" -ldflags "$ANDROID_LDFLAGS" \
-    -o "$ANDROID_OUT" ./cmd/cshared)
+    -o "$out" ./cmd/cshared)
 }
+
+build_android() { build_android_abi arm64-v8a arm64 aarch64; }
+build_android_x86_64() { build_android_abi x86_64 amd64 x86_64; }
 
 build_windows() {
   local cc
@@ -156,9 +160,10 @@ for target in "${TARGETS[@]}"; do
   case "$target" in
     linux) build_linux ;;
     android) build_android ;;
+    android-x86_64) build_android_x86_64 ;;
     windows) build_windows ;;
     macos) build_macos ;;
     ios) build_ios ;;
-    *) die "unknown target '$target' (want all, linux, android, windows, macos or ios)" ;;
+    *) die "unknown target '$target' (want all, linux, android, android-x86_64, windows, macos or ios)" ;;
   esac
 done

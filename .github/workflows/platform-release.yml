@@ -4,6 +4,10 @@ on:
   push:
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to build and attach the assets to (for example v0.2.0)
+        required: true
 
 permissions:
   contents: read
@@ -12,7 +16,215 @@ concurrency:
   group: platform-release-${{ github.ref }}
   cancel-in-progress: false
 
+env:
+  VERSION: ${{ inputs.tag || github.ref_name }}
+  GOPROXY: https://proxy.golang.org,direct
+  GOTOOLCHAIN: auto
+
 jobs:
+  android:
+    name: android apks
+    runs-on: ubuntu-latest
+    outputs:
+      signed: ${{ steps.signing.outputs.signed }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+      - uses: actions/setup-go@v6
+        with:
+          go-version: 1.27.x
+          cache-dependency-path: native/bridge/go.sum
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.1
+      - name: Pin the Android NDK
+        run: |
+          sdk="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+          ndk="$sdk/ndk/28.2.13676358"
+          if [ ! -d "$ndk" ]; then
+            sdkmanager_bin="$(ls "$sdk"/cmdline-tools/*/bin/sdkmanager | sort -V | tail -1)"
+            yes | "$sdkmanager_bin" --licenses > /dev/null 2>&1 || true
+            "$sdkmanager_bin" --install "ndk;28.2.13676358"
+          fi
+          test -d "$ndk"
+          echo "ANDROID_NDK_HOME=$ndk" >> "$GITHUB_ENV"
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.9
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Resolve the pinned ghostty rev
+        id: ghostty
+        run: echo "rev=$(sed -n 's/^GHOSTTY_REV=//p' native/term/build-ghostty.sh)" >> "$GITHUB_OUTPUT"
+      - name: Cache libghostty-vt
+        uses: actions/cache@v4
+        with:
+          path: native/term/build/ghostty
+          key: ghostty-vt-${{ steps.ghostty.outputs.rev }}-zig0.17.1-${{ runner.os }}-${{ runner.arch }}
+      - name: Build the native libs (arm64-v8a + x86_64)
+        run: |
+          set -o pipefail
+          tool/build_native.sh android android-x86_64 | tee /tmp/build_native.log
+          if grep -qi skipped /tmp/build_native.log; then
+            echo '::error::tool/build_native.sh skipped an Android ABI; the APK would fall back to the mock backend.'
+            exit 1
+          fi
+          for abi in android android-x86_64; do
+            tool/build_term.sh "$abi" | tee "/tmp/build_term_$abi.log"
+            if grep -qi skipped "/tmp/build_term_$abi.log"; then
+              echo "::error::tool/build_term.sh skipped $abi; the terminal would be unavailable."
+              exit 1
+            fi
+          done
+          for lib in \
+            android/app/src/main/jniLibs/arm64-v8a/libtaildeck_bridge.so \
+            android/app/src/main/jniLibs/arm64-v8a/libtaildeck_term.so \
+            android/app/src/main/jniLibs/x86_64/libtaildeck_bridge.so \
+            android/app/src/main/jniLibs/x86_64/libtaildeck_term.so; do
+            test -s "$lib" || { echo "::error::$lib missing"; exit 1; }
+            echo "$lib $(stat -c%s "$lib") bytes"
+          done
+      - name: Configure Android signing
+        id: signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "No ANDROID_KEYSTORE_BASE64 secret: the APKs will be debug-signed."
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "$KEYSTORE_BASE64" | base64 -d > android/app/release.keystore
+          # printf keeps '$' in a password literal.
+          {
+            echo "storeFile=release.keystore"
+            printf 'storePassword=%s\n' "$KEYSTORE_PASSWORD"
+            printf 'keyAlias=%s\n' "$KEY_ALIAS"
+            printf 'keyPassword=%s\n' "$KEY_PASSWORD"
+          } > android/key.properties
+          echo "signed=true" >> "$GITHUB_OUTPUT"
+      - name: Build release APKs
+        run: |
+          asset_suffix=""
+          if [ "${{ steps.signing.outputs.signed }}" != "true" ]; then
+            asset_suffix="-debug-signed"
+          fi
+          jni=android/app/src/main/jniLibs
+          # Flutter only filters the AOT engine per target platform, so the
+          # other ABI's jniLibs are moved aside to keep each APK single-ABI.
+          build_abi() {
+            local abi=$1 target=$2 asset=$3 dir
+            mkdir -p /tmp/jni-hidden
+            for dir in "$jni"/*/; do
+              case "$(basename "$dir")" in
+                "$abi") ;;
+                *) mv "$dir" /tmp/jni-hidden/ ;;
+              esac
+            done
+            flutter build apk --release --target-platform "$target"
+            cp build/app/outputs/flutter-apk/app-release.apk "$asset"
+            mv /tmp/jni-hidden/* "$jni"/
+          }
+          build_abi arm64-v8a android-arm64 \
+            "build/taildeck-android-arm64-${VERSION}${asset_suffix}.apk"
+          build_abi x86_64 android-x64 \
+            "build/taildeck-android-x64-${VERSION}${asset_suffix}.apk"
+          unzip -l "build/taildeck-android-arm64-${VERSION}${asset_suffix}.apk" > /tmp/apk-arm64.log
+          unzip -l "build/taildeck-android-x64-${VERSION}${asset_suffix}.apk" > /tmp/apk-x64.log
+          grep -q 'lib/arm64-v8a/libtaildeck_bridge.so' /tmp/apk-arm64.log || {
+            echo '::error::arm64 bridge missing from the APK'; exit 1; }
+          grep -q 'lib/arm64-v8a/libtaildeck_term.so' /tmp/apk-arm64.log || {
+            echo '::error::arm64 terminal missing from the APK'; exit 1; }
+          grep -q 'lib/x86_64/libtaildeck_bridge.so' /tmp/apk-x64.log || {
+            echo '::error::x86_64 bridge missing from the APK'; exit 1; }
+          grep -q 'lib/x86_64/libtaildeck_term.so' /tmp/apk-x64.log || {
+            echo '::error::x86_64 terminal missing from the APK'; exit 1; }
+          grep -q 'lib/x86_64/libtaildeck_bridge.so' /tmp/apk-arm64.log && {
+            echo '::error::arm64 APK ships the x86_64 native libs'; exit 1; }
+          grep -q 'lib/arm64-v8a/libtaildeck_bridge.so' /tmp/apk-x64.log && {
+            echo '::error::x64 APK ships the arm64 native libs'; exit 1; }
+          ls -l build/taildeck-android-*.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: build/taildeck-android-*.apk
+          if-no-files-found: error
+
+  linux:
+    name: linux bundle
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}
+      - name: Install GTK and build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev ninja-build clang cmake liblzma-dev
+      - uses: actions/setup-go@v6
+        with:
+          go-version: 1.27.x
+          cache-dependency-path: native/bridge/go.sum
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.1
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.9
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Resolve the pinned ghostty rev
+        id: ghostty
+        run: echo "rev=$(sed -n 's/^GHOSTTY_REV=//p' native/term/build-ghostty.sh)" >> "$GITHUB_OUTPUT"
+      - name: Cache libghostty-vt
+        uses: actions/cache@v4
+        with:
+          path: native/term/build/ghostty
+          key: ghostty-vt-${{ steps.ghostty.outputs.rev }}-zig0.17.1-${{ runner.os }}-${{ runner.arch }}
+      - name: Build the native libs
+        run: |
+          set -o pipefail
+          tool/build_native.sh linux | tee /tmp/build_native.log
+          if grep -qi skipped /tmp/build_native.log; then
+            echo '::error::tool/build_native.sh skipped linux; the app would fall back to the mock backend.'
+            exit 1
+          fi
+          tool/build_term.sh linux | tee /tmp/build_term.log
+          if grep -qi skipped /tmp/build_term.log; then
+            echo '::error::tool/build_term.sh skipped linux; the terminal would be unavailable.'
+            exit 1
+          fi
+          for lib in linux/lib/libtaildeck_bridge.so linux/lib/libtaildeck_term.so; do
+            test -s "$lib" || { echo "::error::$lib missing"; exit 1; }
+            echo "$lib $(stat -c%s "$lib") bytes"
+          done
+      - run: flutter build linux --release
+      - name: Package the bundle
+        run: |
+          bundle=build/linux/x64/release/bundle
+          for lib in libtaildeck_bridge.so libtaildeck_term.so; do
+            test -s "$bundle/lib/$lib" || { echo "::error::$lib missing from the bundle"; exit 1; }
+          done
+          tar -czf "build/taildeck-linux-x64-${VERSION}.tar.gz" \
+            -C build/linux/x64/release bundle
+          ls -l "build/taildeck-linux-x64-${VERSION}.tar.gz"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: build/taildeck-linux-x64-*.tar.gz
+          if-no-files-found: error
+
   package:
     name: ${{ matrix.name }} (unsigned)
     runs-on: ${{ matrix.os }}
@@ -22,21 +234,17 @@ jobs:
         include:
           - name: windows-x64
             os: windows-latest
-            artifact: taildeck-windows-x64
-            zip: build/taildeck-windows-x64.zip
+            artifact: windows-x64
           - name: macos
             os: macos-latest
-            artifact: taildeck-macos
-            zip: build/taildeck-macos.zip
+            artifact: macos
           - name: ios
             os: macos-latest
-            artifact: taildeck-ios
-            zip: build/taildeck-ios.zip
-    env:
-      GOPROXY: https://proxy.golang.org,direct
-      GOTOOLCHAIN: auto
+            artifact: ios
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}
       - uses: actions/setup-go@v6
         with:
           go-version: 1.27.x
@@ -99,14 +307,15 @@ jobs:
           foreach ($lib in @('taildeck_bridge.dll', 'taildeck_term.dll')) {
             if (-not (Test-Path "$release/$lib")) { throw "error:: $lib missing from $release" }
           }
-          Compress-Archive -Path "$release/*" -DestinationPath build/taildeck-windows-x64.zip
-          $zip = [IO.Compression.ZipFile]::OpenRead("$PWD/build/taildeck-windows-x64.zip")
+          $zip = "build/taildeck-windows-x64-$env:VERSION-unsigned.zip"
+          Compress-Archive -Path "$release/*" -DestinationPath $zip
+          $archive = [IO.Compression.ZipFile]::OpenRead("$PWD/$zip")
           try {
-            $names = $zip.Entries | ForEach-Object { $_.FullName }
+            $names = $archive.Entries | ForEach-Object { $_.FullName }
             foreach ($lib in @('taildeck_bridge.dll', 'taildeck_term.dll')) {
               if (-not ($names -contains $lib)) { throw "error:: $lib missing from the zip" }
             }
-          } finally { $zip.Dispose() }
+          } finally { $archive.Dispose() }
       - name: Build and zip (macos)
         if: matrix.name == 'macos'
         run: |
@@ -115,7 +324,8 @@ jobs:
           for lib in libtaildeck_bridge.dylib libtaildeck_term.dylib; do
             test -s "$app/Contents/Frameworks/$lib" || { echo "::error::$lib missing from $app"; exit 1; }
           done
-          ditto -c -k --sequesterRsrc --keepParent "$app" build/taildeck-macos.zip
+          ditto -c -k --sequesterRsrc --keepParent "$app" \
+            "build/taildeck-macos-${VERSION}-unsigned.zip"
       - name: Build and zip (ios)
         if: matrix.name == 'ios'
         run: |
@@ -126,9 +336,106 @@ jobs:
             nm -g build/ios/iphoneos/Runner.app/Runner | grep -q "${sym}\$" \
               || { echo "::error::$sym missing from the Runner binary"; exit 1; }
           done
-          ditto -c -k --sequesterRsrc --keepParent build/ios/iphoneos/Runner.app build/taildeck-ios.zip
+          ditto -c -k --sequesterRsrc --keepParent build/ios/iphoneos/Runner.app \
+            "build/taildeck-ios-${VERSION}-unsigned.zip"
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
-          path: ${{ matrix.zip }}
+          path: build/taildeck-${{ matrix.artifact }}-${{ env.VERSION }}-unsigned.zip
           if-no-files-found: error
+
+  release:
+    name: github release
+    needs: [android, linux, package]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check the tag exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/${{ github.repository }}/git/ref/tags/${VERSION}" > /dev/null || {
+            echo "::error::tag ${VERSION} does not exist"; exit 1; }
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Checksums
+        run: |
+          cd dist
+          for f in \
+            "taildeck-linux-x64-${VERSION}.tar.gz" \
+            "taildeck-windows-x64-${VERSION}-unsigned.zip" \
+            "taildeck-macos-${VERSION}-unsigned.zip" \
+            "taildeck-ios-${VERSION}-unsigned.zip"; do
+            test -s "$f" || { echo "::error::$f missing"; exit 1; }
+          done
+          ls taildeck-android-*.apk > /dev/null 2>&1 || {
+            echo "::error::no Android APK"; exit 1; }
+          sha256sum taildeck-* > SHA256SUMS
+          cat SHA256SUMS
+      - name: Compose release notes
+        env:
+          ANDROID_SIGNED: ${{ needs.android.outputs.signed }}
+        run: |
+          if [ "$ANDROID_SIGNED" = "true" ]; then
+            apk_suffix=""
+            apk_signing="release keystore"
+            apk_note_en="signed with the release keystore"
+            apk_note_zh="使用发布密钥签名"
+          else
+            apk_suffix="-debug-signed"
+            apk_signing="Android debug key"
+            apk_note_en="signed with the Android debug key: installable for testing, rejected by Google Play"
+            apk_note_zh="使用 Android 调试密钥签名，可安装测试，但无法上架 Google Play"
+          fi
+          cat > notes.md <<EOF
+          ## Taildeck ${VERSION}
+
+          First release of the Flutter client for Android, Linux, Windows, macOS and iOS.
+          The tsnet node and the libghostty-vt terminal ship as native libraries inside every package.
+
+          | Asset | Platform | Signing |
+          | --- | --- | --- |
+          | \`taildeck-android-arm64-${VERSION}${apk_suffix}.apk\` | Android 7+ (arm64) | ${apk_signing} |
+          | \`taildeck-android-x64-${VERSION}${apk_suffix}.apk\` | Android x86_64 (emulators) | ${apk_signing} |
+          | \`taildeck-linux-x64-${VERSION}.tar.gz\` | Linux x64 (extract, run \`bundle/taildeck_ui\`) | not signed |
+          | \`taildeck-windows-x64-${VERSION}-unsigned.zip\` | Windows x64 | unsigned |
+          | \`taildeck-macos-${VERSION}-unsigned.zip\` | macOS (universal) | unsigned |
+          | \`taildeck-ios-${VERSION}-unsigned.zip\` | iOS arm64 (unsigned Runner.app) | unsigned |
+
+          - Android APKs are ${apk_note_en}.
+          - Windows, macOS and iOS packages are unsigned: SmartScreen and Gatekeeper will warn, and iOS needs your own signing profile.
+          - \`SHA256SUMS\` lists the SHA-256 of every asset.
+          - Web UI preview: https://markbang.github.io/taildeck-ui/
+
+          ## 中文
+
+          Flutter 客户端的首个版本，覆盖 Android、Linux、Windows、macOS 与 iOS。
+          tsnet 节点与 libghostty-vt 终端以原生库形式打包在各平台安装包内。
+
+          | 文件 | 平台 | 签名 |
+          | --- | --- | --- |
+          | \`taildeck-android-arm64-${VERSION}${apk_suffix}.apk\` | Android 7+（arm64） | ${apk_signing} |
+          | \`taildeck-android-x64-${VERSION}${apk_suffix}.apk\` | Android x86_64（模拟器） | ${apk_signing} |
+          | \`taildeck-linux-x64-${VERSION}.tar.gz\` | Linux x64（解压后运行 \`bundle/taildeck_ui\`） | 未签名 |
+          | \`taildeck-windows-x64-${VERSION}-unsigned.zip\` | Windows x64 | 未签名 |
+          | \`taildeck-macos-${VERSION}-unsigned.zip\` | macOS（通用） | 未签名 |
+          | \`taildeck-ios-${VERSION}-unsigned.zip\` | iOS arm64（未签名 Runner.app） | 未签名 |
+
+          - Android APK ${apk_note_zh}。
+          - Windows、macOS、iOS 安装包未签名：SmartScreen 与 Gatekeeper 会告警，iOS 需自备签名。
+          - \`SHA256SUMS\` 包含所有文件的 SHA-256。
+          - Web 界面预览：https://markbang.github.io/taildeck-ui/
+          EOF
+          cat notes.md
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.VERSION }}
+          name: Taildeck ${{ env.VERSION }}
+          body_path: notes.md
+          files: |
+            dist/taildeck-*
+            dist/SHA256SUMS
+          fail_on_unmatched_files: true
