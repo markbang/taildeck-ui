@@ -47,7 +47,7 @@ Flutter 客户端对 [markbang/taildeck](https://github.com/markbang/taildeck)�
 | 无障碍 | Compose 语义 | 读屏标签、Esc 关闭、减少动态效果、文字缩放限制在 0.9–1.3 | 已完成 | #15 合入；有减少动态效果和缩放的截图 |
 | Linux 桌面 | — | 带两个原生库的产物，CI 在 Xvfb 里运行 | 已完成 | Kotlin 版之外新增 |
 | Windows / macOS | — | 打 tag 或手动触发时构建未签名包，DLL/dylib 已接好 | 未验证 | 从未启动 |
-| iOS | — | `c-archive` 链进 Runner | 部分 | Dart 侧还没有 iOS 加载器，仍回退到模拟数据 |
+| iOS | — | `c-archive` 链进 Runner | 部分 | 已产出未签名构建；Go/终端归档已拷贝，但 Runner 尚未链入 `td_*` 符号，链接问题修复前 iOS 应用仍使用模拟数据 |
 
 ## 有意不做成对齐的部分
 
