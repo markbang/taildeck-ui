@@ -10,6 +10,15 @@ import 'package:ffi/ffi.dart';
 import 'bridge.dart';
 
 NativeBridge? openBridgePlatform() {
+  if (Platform.isIOS) {
+    // Static archives are force-loaded into Runner, so the symbols live in the
+    // process image; there is no dylib path to open.
+    try {
+      return FfiBridge(DynamicLibrary.process(), '');
+    } on Object {
+      return null;
+    }
+  }
   final override = Platform.environment['TAILDECK_BRIDGE'];
   final candidates = <String>[
     if (override != null && override.isNotEmpty) override,
@@ -35,7 +44,9 @@ NativeBridge? openBridgePlatform() {
 /// and may block for seconds, which must not freeze the UI isolate. The Go
 /// library keeps the connection in process state, so any handle reaches it.
 String _runHerdrIsolate(String libPath, String symbol, List<String> args) {
-  final lib = DynamicLibrary.open(libPath);
+  final lib = libPath.isEmpty
+      ? DynamicLibrary.process()
+      : DynamicLibrary.open(libPath);
   final free = lib.lookupFunction<_FreeNative, _Free>('td_free');
   final allocated = [
     for (final arg in args) arg.toNativeUtf8(allocator: calloc).cast<Int8>(),

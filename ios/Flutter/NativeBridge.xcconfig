@@ -1,0 +1,5 @@
+// The Go bridge and the terminal are static archives force-loaded into the
+// Runner binary. tool/build_native.sh ios and tool/build_term.sh ios rewrite
+// this file after building; this default keeps local builds linked.
+LIBRARY_SEARCH_PATHS = $(inherited) "$(SRCROOT)/Frameworks"
+OTHER_LDFLAGS = $(inherited) -force_load "$(SRCROOT)/Frameworks/libtaildeck_bridge.a" -force_load "$(SRCROOT)/Frameworks/libtaildeck_term.a"

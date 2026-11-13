@@ -357,7 +357,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "set -e\nsrc=\"$SRCROOT/Frameworks\"\ndst=\"$BUILT_PRODUCTS_DIR/$FRAMEWORKS_FOLDER_PATH\"\nfor lib in libtaildeck_bridge.dylib libtaildeck_term.dylib; do\n  if [ -f \"$src/$lib\" ]; then\n    mkdir -p \"$dst\"\n    cp -f \"$src/$lib\" \"$dst/\"\n  fi\ndone\n";
+			shellScript = "set -e\nsrc=\"$SRCROOT/Frameworks\"\ndst=\"$BUILT_PRODUCTS_DIR/$FRAMEWORKS_FOLDER_PATH\"\nfor lib in libtaildeck_bridge.dylib libtaildeck_term.dylib; do\n  if [ -f \"$src/$lib\" ]; then\n    mkdir -p \"$dst\"\n    cp -f \"$src/$lib\" \"$dst/\"\n    if command -v codesign >/dev/null 2>&1; then\n      codesign --force --sign - \"$dst/$lib\"\n    fi\n  fi\ndone\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
