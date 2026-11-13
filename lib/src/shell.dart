@@ -6,6 +6,7 @@ import 'package:prism_ui/prism_ui.dart';
 
 import 'backend.dart';
 import 'data.dart';
+import 'preview_env.dart';
 import 'glyphs.dart';
 import 'l10n.dart';
 import 'pages/agents.dart';
@@ -33,25 +34,27 @@ class _TaildeckShellState extends State<TaildeckShell>
     with SingleTickerProviderStateMixin {
   static const _tabs = 4;
 
-  int _tab = (int.tryParse(Uri.base.queryParameters['tab'] ?? '') ?? 0).clamp(0, _tabs - 1);
+  int _tab = (int.tryParse(previewParam('tab') ?? '') ?? 0).clamp(0, _tabs - 1);
   NodeItem? _node = _queryNode();
-  bool _floating = Uri.base.queryParameters['nav'] != 'docked';
+  bool _floating = previewParam('nav') != 'docked';
   TabAnimation _animation =
-      Uri.base.queryParameters['anim'] == 'fade' ? TabAnimation.fade : TabAnimation.slide;
+      previewParam('anim') == 'fade' ? TabAnimation.fade : TabAnimation.slide;
   bool _sidebarExpanded = true;
   // Mock/preview sign-in; the native backend reports its own state.
-  bool _previewSignedIn = switch (Uri.base.queryParameters['login']) {
+  bool _previewSignedIn = switch (previewParam('login')) {
     null || '0' => true,
     _ => false,
   };
   NodeItem? _sshNode = _querySsh();
+  bool _sshDemo = previewParam('ssh') == 'demo';
   String _sshUser = 'root';
 
   late final PageController _pageController = PageController(initialPage: _tab);
 
   static NodeItem? _querySsh() {
-    final name = Uri.base.queryParameters['ssh'];
+    final name = previewParam('ssh');
     if (name == null) return null;
+    if (name == 'demo') return demoNode;
     for (final node in [selfNode, ...peers]) {
       if (node.name == name) return node;
     }
@@ -59,7 +62,7 @@ class _TaildeckShellState extends State<TaildeckShell>
   }
 
   static NodeItem? _queryNode() {
-    final name = Uri.base.queryParameters['node'];
+    final name = previewParam('node');
     if (name == null) return null;
     for (final node in [selfNode, ...peers]) {
       if (node.name == name) return node;
@@ -117,6 +120,7 @@ class _TaildeckShellState extends State<TaildeckShell>
       return TerminalPage(
         node: sshNode,
         user: _sshUser,
+        demo: _sshDemo,
         onClose: () => setState(() => _sshNode = null),
       );
     }
@@ -277,6 +281,7 @@ class _TaildeckShellState extends State<TaildeckShell>
             setState(() {
               _sshUser = choice.user;
               _sshNode = node;
+              _sshDemo = false;
             });
           },
         );

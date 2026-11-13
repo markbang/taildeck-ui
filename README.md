@@ -47,7 +47,10 @@ prism_ui's surfaces and stroke-icon engine:
 - **Login** — browser sign-in with a waiting state, auth key entry, optional control server field
 - **SSH sheet** — user / port / authentication pickers built on prism_ui's `PopupAnchor` + `PopupMenu`
   (checked items), presented as a form sheet; the choice flows into the terminal header
-- **SSH terminal** — full-bleed mono session with a working input line (`ls`, `uname`, `tailscale`, `docker ps` … are simulated), bundled DejaVu Sans Mono
+- **SSH terminal** — full-bleed mono session with a working input line (`ls`, `uname`, `tailscale`, `docker ps` … are simulated
+  on Web), bundled DejaVu Sans Mono. On Android and Linux the grid is painted from real
+  [libghostty-vt](https://github.com/ghostty-org/ghostty) snapshots over `dart:ffi`; the SSH session itself is
+  the next milestone, so `/?ssh=demo` shows a canned ANSI session (colors, bold/underline, wide CJK, scrollback)
 - **Bilingual** — English and Chinese, switchable in Settings (or `?lang=zh`); every screen, plus prism_ui's own
   strings through `UiLocalizations`
 - **Self-contained fonts** — Roboto, DejaVu Sans Mono and a Noto Sans CJK subset (SC/TC/JP/KR) ship with the app, and the build uses `--no-web-resources-cdn`, so nothing is fetched from `fonts.gstatic.com` / `www.gstatic.com` at runtime (that CDN is unreliable from mainland China)
@@ -69,7 +72,9 @@ lib/src/
 
 Preview params: `/?tab=1` (services), `/?tab=2` (agents), `/?tab=3` (settings), `/?node=devbox` (node detail),
 `/?theme=light`, `/?nav=docked` (docked bottom bar instead of the floating dock), `/?anim=fade`,
-`/?login=1` (sign-in), `/?login=waiting` (device approval pending), `/?ssh=devbox` (terminal), `/?lang=zh`.
+`/?login=1` (sign-in), `/?login=waiting` (device approval pending), `/?ssh=devbox` (terminal), `/?lang=zh`,
+`/?ssh=demo` (native libghostty-vt demo session). The desktop bundle has no URL, so pass the same parameters as
+`TAILDECK_QUERY=ssh=demo`.
 
 ## Run
 
@@ -77,6 +82,14 @@ Preview params: `/?tab=1` (services), `/?tab=2` (agents), `/?tab=3` (settings), 
 source tool/env.sh          # China mirrors + Flutter 3.47.9
 flutter pub get
 flutter run -d web-server --web-port 8099
+```
+
+## Native terminal
+
+```bash
+tool/build_term.sh          # libghostty-vt + the C shim: linux/lib/ and android jniLibs/
+dart run tool/term_smoke.dart   # FFI smoke test against a real 80x24 terminal
+flutter build linux --release   # bundles linux/lib/libtaildeck_term.so next to the executable
 ```
 
 ## Fonts

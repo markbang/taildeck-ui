@@ -1,9 +1,16 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
+import 'package:flutter/gestures.dart';
 import 'package:flutter/widgets.dart';
 import 'package:prism_ui/icons/icons.dart';
 import 'package:prism_ui/prism_ui.dart';
 
 import '../data.dart';
 import '../l10n.dart';
+import '../native/term.dart';
+import '../native/term_demo.dart';
+import 'term_view.dart';
 
 enum _Kind { command, output, muted, error, ok }
 
@@ -20,11 +27,15 @@ class TerminalPage extends StatefulWidget {
     required this.node,
     required this.onClose,
     this.user = 'root',
+    this.demo = false,
   });
 
   final NodeItem node;
   final VoidCallback onClose;
   final String user;
+
+  /// `?ssh=demo`: feed a canned ANSI session through the emulator.
+  final bool demo;
 
   @override
   State<TerminalPage> createState() => _TerminalPageState();
@@ -54,8 +65,39 @@ class _TerminalPageState extends State<TerminalPage> {
     const _Line('code-server:latest    Up 12 days', _Kind.output),
   ];
 
+  /// The libghostty-vt emulator; null on Web or when the library is missing.
+  TerminalSession? _session;
+  bool _bannerFed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final term = createNativeTerm(cols: 80, rows: 24, scrollback: 5000);
+    if (term == null) return;
+    _session = TerminalSession(term)..addListener(_onSessionChanged);
+    if (widget.demo) {
+      _session!.feed(demoSessionBytes());
+    }
+  }
+
+  /// Keeps the header's grid size in step with the emulator.
+  void _onSessionChanged() => setState(() {});
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_bannerFed || widget.demo) return;
+    _bannerFed = true;
+    final session = _session;
+    if (session == null) return;
+    final text = AppLocalizations.of(context).sshPending;
+    session.feed(Uint8List.fromList(utf8.encode('\x1b[2m$text\x1b[0m\r\n')));
+  }
+
   @override
   void dispose() {
+    _session?.removeListener(_onSessionChanged);
+    _session?.dispose();
     _input.dispose();
     _scroll.dispose();
     super.dispose();
@@ -64,6 +106,14 @@ class _TerminalPageState extends State<TerminalPage> {
   void _run(String raw) {
     final command = raw.trim();
     if (command.isEmpty) return;
+    final session = _session;
+    if (session != null) {
+      // Demo echoes locally; the SSH session lands in the next milestone.
+      if (widget.demo) {
+        session.feed(Uint8List.fromList(utf8.encode('$command\r\n')));
+      }
+      return;
+    }
     if (command == 'clear') {
       setState(_lines.clear);
       return;
@@ -128,6 +178,8 @@ class _TerminalPageState extends State<TerminalPage> {
   @override
   Widget build(BuildContext context) {
     final wide = MediaQuery.sizeOf(context).width > 900;
+    final l10n = AppLocalizations.of(context);
+    final session = _session;
     final mono = TextStyle(
       fontFamily: 'DejaVuSansMono',
       fontFamilyFallback: const ['NotoSansCJK'],
@@ -136,6 +188,15 @@ class _TerminalPageState extends State<TerminalPage> {
       color: _fg,
       decoration: TextDecoration.none,
     );
+    final (status, statusColor) = widget.demo
+        ? (l10n.demo, const Color(0xFFE3B341))
+        : session == null
+        ? (l10n.connected, _green)
+        : (l10n.notConnected, _dim);
+    final grid = session?.snapshot;
+    final subtitle = widget.demo
+        ? (grid == null ? 'libghostty-vt' : 'libghostty-vt · ${grid.cols}×${grid.rows}')
+        : '${widget.node.os} · ${widget.node.ip} · 18 ms';
     return Surface(
       color: _bgTop,
       child: DefaultTextStyle(
@@ -156,41 +217,14 @@ class _TerminalPageState extends State<TerminalPage> {
                   onClose: widget.onClose,
                   mono: mono,
                   user: widget.user,
+                  subtitle: subtitle,
+                  status: status,
+                  statusColor: statusColor,
                 ),
                 Expanded(
-                  child: ListView.builder(
-                    controller: _scroll,
-                    padding: EdgeInsets.fromLTRB(wide ? 24 : 18, 14, wide ? 24 : 18, 10),
-                    itemCount: _lines.length + 1,
-                    itemBuilder: (context, index) {
-                      if (index == 0) {
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 2),
-                          child: Text(
-                            AppLocalizations.of(context).connectedTo(widget.node.name),
-                            style: mono.copyWith(color: _green),
-                          ),
-                        );
-                      }
-                      final line = _lines[index - 1];
-                      final isCommand = line.kind == _Kind.command;
-                      final gap = isCommand ? 10.0 : 0.0;
-                      return Padding(
-                        padding: EdgeInsets.only(top: gap, bottom: 1),
-                        child: isCommand
-                            ? _PromptLine(
-                                command: line.text,
-                                mono: mono,
-                                user: widget.user,
-                                host: widget.node.name,
-                              )
-                            : Text(
-                                line.text,
-                                style: mono.copyWith(color: _colorOf(line.kind)),
-                              ),
-                      );
-                    },
-                  ),
+                  child: session == null
+                      ? _simulated(wide, mono)
+                      : _emulator(session, wide ? 14.0 : 13.0),
                 ),
                 _QuickBar(onRun: _run),
                 _InputBar(
@@ -206,6 +240,55 @@ class _TerminalPageState extends State<TerminalPage> {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _emulator(TerminalSession session, double fontSize) {
+    return Listener(
+      onPointerSignal: (event) {
+        if (event is! PointerScrollEvent) return;
+        final lines = (event.scrollDelta.dy / 20).round();
+        if (lines != 0) session.scroll(lines);
+      },
+      child: TerminalCanvas(session: session, fontSize: fontSize),
+    );
+  }
+
+  Widget _simulated(bool wide, TextStyle mono) {
+    // The demo node is not an SSH session, so it never claims to be connected.
+    final banner = !widget.demo;
+    return ListView.builder(
+      controller: _scroll,
+      padding: EdgeInsets.fromLTRB(wide ? 24 : 18, 14, wide ? 24 : 18, 10),
+      itemCount: _lines.length + (banner ? 1 : 0),
+      itemBuilder: (context, index) {
+        if (banner && index == 0) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 2),
+            child: Text(
+              AppLocalizations.of(context).connectedTo(widget.node.name),
+              style: mono.copyWith(color: _green),
+            ),
+          );
+        }
+        final line = _lines[index - (banner ? 1 : 0)];
+        final isCommand = line.kind == _Kind.command;
+        final gap = isCommand ? 10.0 : 0.0;
+        return Padding(
+          padding: EdgeInsets.only(top: gap, bottom: 1),
+          child: isCommand
+              ? _PromptLine(
+                  command: line.text,
+                  mono: mono,
+                  user: widget.user,
+                  host: widget.node.name,
+                )
+              : Text(
+                  line.text,
+                  style: mono.copyWith(color: _colorOf(line.kind)),
+                ),
+        );
+      },
     );
   }
 }
@@ -252,12 +335,18 @@ class _Header extends StatelessWidget {
     required this.onClose,
     required this.mono,
     required this.user,
+    required this.subtitle,
+    required this.status,
+    required this.statusColor,
   });
 
   final NodeItem node;
   final VoidCallback onClose;
   final TextStyle mono;
   final String user;
+  final String subtitle;
+  final String status;
+  final Color statusColor;
 
   @override
   Widget build(BuildContext context) {
@@ -280,12 +369,12 @@ class _Header extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  '${user}@${node.name}',
+                  '$user@${node.name}',
                   style: mono.copyWith(fontWeight: FontWeight.w700, fontSize: 14),
                 ),
                 const SizedBox(height: 1),
                 Text(
-                  '${node.os} · ${node.ip} · 18 ms',
+                  subtitle,
                   style: mono.copyWith(fontSize: 11, color: const Color(0xFF7C838D)),
                 ),
               ],
@@ -293,9 +382,9 @@ class _Header extends StatelessWidget {
           ),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-            decoration: const ShapeDecoration(
-              color: Color(0x1F57D7A0),
-              shape: StadiumBorder(),
+            decoration: ShapeDecoration(
+              color: statusColor.withValues(alpha: 0.12),
+              shape: const StadiumBorder(),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -303,15 +392,15 @@ class _Header extends StatelessWidget {
                 Container(
                   width: 6,
                   height: 6,
-                  decoration: const BoxDecoration(
-                    color: Color(0xFF57D7A0),
+                  decoration: BoxDecoration(
+                    color: statusColor,
                     shape: BoxShape.circle,
                   ),
                 ),
                 const SizedBox(width: 5),
                 Text(
-                  AppLocalizations.of(context).connected,
-                  style: mono.copyWith(fontSize: 10.5, color: const Color(0xFF57D7A0)),
+                  status,
+                  style: mono.copyWith(fontSize: 10.5, color: statusColor),
                 ),
               ],
             ),
@@ -387,7 +476,6 @@ class _InputBar extends StatelessWidget {
         decoration: ShapeDecoration(
           color: const Color(0xFF15181F),
           shape: AppShape.all(12),
-          // A hairline keeps the field readable over the gradient.
           shadows: const [],
         ),
         child: Row(
@@ -422,4 +510,3 @@ class _InputBar extends StatelessWidget {
     );
   }
 }
-

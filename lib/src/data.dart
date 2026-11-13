@@ -51,6 +51,9 @@ class NodeItem {
 
 const tailnet = 'markbang.github';
 
+/// `?ssh=demo`: the canned session that shows the emulator without a tailnet.
+const demoNode = NodeItem(name: 'demo', ip: 'local', os: 'Terminal', online: true);
+
 const selfNode = NodeItem(
   name: 'pixel-9',
   ip: '100.101.4.2',

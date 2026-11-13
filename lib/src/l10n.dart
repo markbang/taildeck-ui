@@ -121,6 +121,11 @@ class AppLocalizations implements UiLocalizations {
   String get typeCommand => _zh ? '输入命令' : 'Type a command';
   String get close => _zh ? '关闭' : 'Close';
   String get connected => _zh ? '已连接' : 'Connected';
+  String get notConnected => _zh ? '未连接' : 'Not connected';
+  String get demo => _zh ? '演示' : 'Demo';
+  String get sshPending => _zh
+      ? 'SSH 会话将在下一里程碑接入，这里是 libghostty-vt 渲染的真实终端。'
+      : 'SSH session arrives in the next milestone — this is the real libghostty-vt terminal.';
 
   @override
   String get clearSearch => _zh ? '清除搜索' : 'Clear search';

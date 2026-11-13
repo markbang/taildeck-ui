@@ -9,6 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../backend.dart';
 import '../glyphs.dart';
 import '../l10n.dart';
+import '../preview_env.dart';
 import '../widgets/foundation.dart';
 
 class LoginPage extends StatefulWidget {
@@ -25,7 +26,7 @@ enum _Stage { idle, waiting }
 
 class _LoginPageState extends State<LoginPage> {
   // Preview-only stage (web, or a run without the native library).
-  _Stage _previewStage = Uri.base.queryParameters['login'] == 'waiting'
+  _Stage _previewStage = previewParam('login') == 'waiting'
       ? _Stage.waiting
       : _Stage.idle;
   bool _authKey = false;
