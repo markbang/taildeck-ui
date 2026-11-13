@@ -1,3 +1,5 @@
+[English](README.md) · [中文](README.zh-CN.md)
+
 # Taildeck · Flutter + prism_ui redesign
 
 [![pages](https://github.com/markbang/taildeck-ui/actions/workflows/pages.yml/badge.svg)](https://github.com/markbang/taildeck-ui/actions/workflows/pages.yml)
@@ -15,6 +17,15 @@ built on [prism_ui](https://github.com/chen08209/prism_ui) — the iOS-style des
 | ![Node detail](docs/screenshots/node.png) | ![Services](docs/screenshots/services.png) |
 | ![Agents](docs/screenshots/agents.png) | ![Desktop](docs/screenshots/nodes-desktop.png) |
 | ![Login](docs/screenshots/login.png) | ![SSH terminal](docs/screenshots/terminal.png) |
+
+## Platforms
+
+The Web build at https://markbang.github.io/taildeck-ui/ is a **UI preview only**: it runs on mock data and has
+no native backend, so it cannot join a tailnet, open SSH sessions or run real agents.
+
+The native clients — Android, Linux, Windows, macOS and iOS — are in progress, Android and Linux first. One Flutter
+codebase drives all of them; the native boundary (tsnet node, terminal, gateway) is planned in
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and is not implemented yet.
 
 ## What changed
 
@@ -37,7 +48,7 @@ prism_ui's surfaces and stroke-icon engine:
 - **SSH sheet** — user / port / authentication pickers built on prism_ui's `PopupAnchor` + `PopupMenu`
   (checked items), presented as a form sheet; the choice flows into the terminal header
 - **SSH terminal** — full-bleed mono session with a working input line (`ls`, `uname`, `tailscale`, `docker ps` … are simulated), bundled DejaVu Sans Mono
-- **Bilingual** — English and 中文, switchable in Settings (or `?lang=zh`); every screen, plus prism_ui's own
+- **Bilingual** — English and Chinese, switchable in Settings (or `?lang=zh`); every screen, plus prism_ui's own
   strings through `UiLocalizations`
 - **Self-contained fonts** — Roboto, DejaVu Sans Mono and a Noto Sans CJK subset (SC/TC/JP/KR) ship with the app, and the build uses `--no-web-resources-cdn`, so nothing is fetched from `fonts.gstatic.com` / `www.gstatic.com` at runtime (that CDN is unreliable from mainland China)
 - **Responsive** — sidebar above 720 dp, glass dock below, both from prism_ui
@@ -63,7 +74,7 @@ Preview params: `/?tab=1` (services), `/?tab=2` (agents), `/?tab=3` (settings), 
 ## Run
 
 ```bash
-source tool/env.sh          # 国内镜像 + Flutter 3.47.9
+source tool/env.sh          # China mirrors + Flutter 3.47.9
 flutter pub get
 flutter run -d web-server --web-port 8099
 ```
@@ -84,9 +95,10 @@ Drop `U+AC00-D7A3` to save ~1.1 MB if Korean is not needed.
 
 ## Status
 
-This is a **UI layer**, not a port of the Android app. Everything is sample data in `data.dart`; the terminal
-echoes a few simulated commands and there is no tsnet, WebView gateway or keystore. Wiring it up would mean swapping `data.dart` for your
-existing Kotlin bridge (or a `tsnet`-backed FFI plugin) and keeping these pages as the view.
+This is a **UI layer**, not yet a port of the Android app. Everything is sample data in `data.dart`; the terminal
+echoes a few simulated commands and there is no tsnet, WebView gateway or keystore. The native boundary that replaces
+`data.dart` is planned in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): the Go `bridge/` module behind a C ABI, a
+`libghostty-vt` terminal, one Flutter UI for every platform.
 
 ## Licenses
 
