@@ -13,6 +13,19 @@ package API unchanged). `cmd/cshared` is the only new Go code.
 
 ## Build the bridge
 
+`tool/build_native.sh` runs the two builds below and puts each library where its
+host expects it (`linux` is skipped without a C compiler, `android` without an
+NDK):
+
+| Target | Output | Loaded by |
+|---|---|---|
+| linux/amd64 | `linux/lib/libtaildeck_bridge.so` | copied into the bundle's `lib/` by `linux/CMakeLists.txt`, opened next to the executable |
+| android/arm64 | `android/app/src/main/jniLibs/arm64-v8a/` | `DynamicLibrary.open('libtaildeck_bridge.so')` |
+
+Both outputs are git-ignored, so a fresh checkout has to build them before the
+app finds the node; `lib/src/native/bridge.dart` returns null without the
+library and the UI stays on mock data with an inline notice.
+
 Linux (this repo's dev box and CI):
 
 ```bash
@@ -31,6 +44,9 @@ CGO_ENABLED=1 GOOS=android GOARCH=arm64 \
   -tags badlinkname,tfogo_checklinkname0 -ldflags "-s -w -checklinkname=0" \
   -o build/android-arm64/libtaildeck_bridge.so ./cmd/cshared
 ```
+
+`tool/build_native.sh` prefers `aarch64-linux-android24-clang` to match the
+Flutter app's `minSdk`, and falls back to the 26 wrapper.
 
 iOS is not wired yet: it needs `-buildmode=c-archive` (Fat/arm64) on macOS
 with Xcode, so it cannot be produced from Linux.

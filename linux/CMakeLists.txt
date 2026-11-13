@@ -106,6 +106,17 @@ foreach(bundled_library ${PLUGIN_BUNDLED_LIBRARIES})
     COMPONENT Runtime)
 endforeach(bundled_library)
 
+# Go tsnet bridge built by tool/build_native.sh; dart:ffi loads it from lib/
+# next to the executable.
+set(TAILDECK_BRIDGE "${CMAKE_CURRENT_SOURCE_DIR}/lib/libtaildeck_bridge.so")
+if(EXISTS "${TAILDECK_BRIDGE}")
+  install(FILES "${TAILDECK_BRIDGE}"
+    DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
+    COMPONENT Runtime)
+else()
+  message(STATUS "taildeck: linux/lib/libtaildeck_bridge.so missing, run tool/build_native.sh")
+endif()
+
 # Copy the native assets provided by the build.dart from all packages.
 set(NATIVE_ASSETS_DIR "${PROJECT_BUILD_DIR}native_assets/linux/")
 install(DIRECTORY "${NATIVE_ASSETS_DIR}"

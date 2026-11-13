@@ -53,3 +53,7 @@ native/term/build/
 
 # CI screenshot output
 /shots/
+
+# Native bridge builds (tool/build_native.sh)
+/linux/lib/
+/android/app/src/main/jniLibs/
