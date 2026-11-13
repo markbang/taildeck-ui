@@ -30,9 +30,9 @@ Flutter 客户端对 [markbang/taildeck](https://github.com/markbang/taildeck)�
 | 主机密钥信任 | TOFU，可清除已信任主机 | 相同，`td_forget_host_keys` | 未验证 | 这里从未信任过任何主机 |
 | 服务 | 添加、编辑、删除，按节点分组 | `services.json`，按节点、协议、端口、路径添加/编辑/删除 | 已完成 | 已截图；通过原生存储层持久化 |
 | 端口扫描 | 经节点扫描 32 个常用端口 | `td_probe`，同一份端口表 | 未验证 | 已接到节点；网页预览会提示需要原生构建 |
-| 打开服务 | 应用内 WebView 或经网关用默认浏览器 | 经 `127.0.0.1:18680` 用默认浏览器打开 | 未验证 | `gatewayUrl` 与 `url_launcher` 已接好；网关从未实际跑通 |
+| 打开服务 | 应用内 WebView 或经网关用默认浏览器 | Android/iOS 用应用内 WebView，其他平台用默认浏览器，均经 `127.0.0.1:18680` | 未验证 | 路由与浏览器回退已接好；网关从未实际跑通，WebView 也没在真机上打开过 |
 | 18680 网关 | 本地回环正向代理，每个服务独立源 | 复用 `bridge/` 里的同一 Go 网关 | 未验证 | 代码原样复用，但需要运行中的节点才能测 |
-| 应用内 WebView | 支持代理覆盖的 WebView，tailnet 主机走网关 | — | 未做 | 链接只在系统浏览器打开 |
+| 应用内 WebView | 支持代理覆盖的 WebView，tailnet 主机走网关 | Android/iOS 用 `webview_flutter` 加载网关 URL；桌面与 Web 回退到浏览器 | 部分 | 仅 Android/iOS，真机未测；没有代理覆盖，tailnet 主机经网关 URL 访问 |
 | Agents 列表 | 按工作区的 herdr pane、状态、错误 | 经 SSH 读取真实 `agent.list`，工作区分区、状态胶囊、连接卡片 | 部分 | 已实现，错误状态验证过；真实 pane 未测 |
 | Agent 聊天 | 会话记录、输入、重启、模型切换、更多历史 | 会话记录或屏幕文本、输入、重启、`/model` 与 effort 选择、翻页 | 部分 | 同样没有真实 herdr；缺的东西见下面几行 |
 | 通知 | 在通知里允许 / 拒绝 / 回复 | — | 未做 | 没有通知渠道和操作接收器 |

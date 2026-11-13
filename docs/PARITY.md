@@ -31,9 +31,9 @@ https://markbang.github.io/taildeck-ui/ runs on mock data; no row below counts t
 | Host-key trust | TOFU, forget trusted hosts | Same, `td_forget_host_keys` | Unverified | No host was ever trusted here |
 | Services | Add, edit, delete, grouped by node | `services.json`, add/edit/delete with node, scheme, port, path | Done | Screenshotted; persisted through the native storage layer |
 | Port scan | 32 common ports through the node | `td_probe`, same port list | Unverified | Wired to the node; the Web preview says it needs a native build |
-| Open a service | In-app WebView or default browser via the gateway | Default browser through `127.0.0.1:18680` | Unverified | `gatewayUrl` and `url_launcher` are wired; the gateway was never exercised |
+| Open a service | In-app WebView or default browser via the gateway | In-app WebView on Android/iOS, default browser elsewhere, both through `127.0.0.1:18680` | Unverified | Routing and the browser fallback are wired; the gateway was never exercised and the WebView never opened on a device |
 | 18680 gateway | Loopback forward proxy, per-service origins | Same Go gateway from `bridge/` | Unverified | Reused unchanged, but needs a running node to test |
-| In-app WebView | Proxy-override WebView, tailnet hosts through the gateway | — | Not yet | Links open in the system browser |
+| In-app WebView | Proxy-override WebView, tailnet hosts through the gateway | `webview_flutter` page on Android and iOS loading the gateway URL; desktop and web fall back to the browser | Partial | Android/iOS only and untested on a device; no proxy override, so tailnet hosts are reached through the gateway URL |
 | Agents list | herdr panes by workspace, states, errors | Real `agent.list` over SSH, workspace sections, state pills, connection card | Partial | Implemented and error states verified; live panes untested |
 | Agent chat | Transcript, prompt, restart, model switch, more history | Transcript or screen text, prompt, restart, `/model` and effort picker, paging | Partial | Same gap: no live herdr; see the rows below for what is missing |
 | Notifications | Allow / deny / reply from a notification | — | Not yet | No notification channel or action receiver |
