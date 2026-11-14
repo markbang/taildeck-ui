@@ -222,7 +222,15 @@ class _TerminalPageState extends State<TerminalPage> {
   }
 
   /// Keeps the header's grid size in step with the emulator.
-  void _onSessionChanged() => setState(() {});
+  void _onSessionChanged() {
+    // A bell in the session rings once: the native side clears the bit when
+    // the snapshot is read.
+    if (_session?.snapshot.meta[TermMeta.effects] case final effects?
+        when effects & 1 != 0) {
+      unawaited(HapticFeedback.selectionClick());
+    }
+    setState(() {});
+  }
 
   @override
   void didChangeDependencies() {
