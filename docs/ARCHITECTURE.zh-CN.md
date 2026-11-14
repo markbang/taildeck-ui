@@ -66,7 +66,7 @@ Android 11+ 屏蔽 Go 的 `net.Interfaces` 所用的 netlink，应用也没有 `
 
 | 平台 | 节点 | 终端 | 网关 | 限制 |
 |---|---|---|---|---|
-| Android | c-shared `.so` 承载的应用内 tsnet | `libghostty-vt` `.so`，NDK CMake | `127.0.0.1:18680` 回环 | 还没有前台服务，进程结束节点就停；不占 VPN 槽位；minSdk 24；CI 只构建 APK，未在真机测试 |
+| Android | c-shared `.so` 承载的应用内 tsnet | `libghostty-vt` `.so`，NDK CMake | `127.0.0.1:18680` 回环 | 还没有前台服务，进程结束节点就停；不占 VPN 槽位；minSdk 26；原生库覆盖 arm64-v8a、armeabi-v7a、x86_64；CI 构建已签名的 APK 与 AAB，未在真机测试 |
 | iOS | c-archive 链进 Runner，仅进程内用户态节点 | `libghostty-vt` 静态库 | 进程内回环 | Dart 侧还打不开链接进来的静态库，应用会回退到模拟数据；没有系统级 VPN，其他应用无法使用该 tailnet；除非使用 Network Extension 或后台模式（v1 未计划），iOS 会挂起后台网络；App Store 审核可能质疑类 VPN 行为；目前 CI 只出未签名构建 |
 | Linux | Go c-shared `.so` | `libghostty-vt` 静态 / 动态库 | 进程内回环 | 产物带两个原生库，CI 在 Xvfb 里运行 |
 | Windows | Go c-shared DLL（cgo 工具链） | 为 Windows 构建的 `libghostty-vt` | 进程内回环 | DLL 与 exe 放在一起；未签名 zip；CI 在 Windows runner 上构建，尚未运行 |
@@ -79,6 +79,8 @@ Android 11+ 屏蔽 Go 的 `net.Interfaces` 所用的 netlink，应用也没有 `
   `pages.yml` 从 `main` 部署网页预览。
 - Windows、macOS、iOS：仅在打 tag 或 `workflow_dispatch` 时构建（`platform-release.yml`），产物保持未签名，
   都没有启动过。
+- Android 发布包用 Kotlin 版的密钥签名（`top.bangwu.taildeck`，证书 `A7:6A:FE:7F…`），可直接升级覆盖；任务会
+  逐个校验 APK 与 AAB 的签名。见 [SIGNING.zh-CN.md](SIGNING.zh-CN.md)。
 
 ## 里程碑
 
@@ -105,4 +107,4 @@ Android 11+ 屏蔽 Go 的 `net.Interfaces` 所用的 netlink，应用也没有 `
 ## 文档
 
 英文为默认语言。每份文档都有同名 `.zh-CN.md` 版本，章节和事实保持一致；成对的 README 在顶部互相链接。
-[PARITY.zh-CN.md](PARITY.zh-CN.md) 跟踪与 Kotlin 版的功能差距。
+[PARITY.zh-CN.md](PARITY.zh-CN.md) 跟踪与 Kotlin 版的功能差距，[SIGNING.zh-CN.md](SIGNING.zh-CN.md) 说明发布签名。

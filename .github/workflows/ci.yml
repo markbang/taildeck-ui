@@ -109,7 +109,7 @@ jobs:
       - name: Build the Go tsnet bridge
         run: |
           set -o pipefail
-          tool/build_native.sh | tee /tmp/build_native.log
+          tool/build_native.sh android android-armv7 | tee /tmp/build_native.log
           if grep -qi skipped /tmp/build_native.log; then
             echo '::error::tool/build_native.sh skipped a target; the APK would fall back to the mock backend.'
             exit 1
@@ -117,18 +117,19 @@ jobs:
       - name: Build the libghostty-vt shim
         run: |
           set -o pipefail
-          tool/build_term.sh android | tee /tmp/build_term.log
+          tool/build_term.sh android android-armv7 | tee /tmp/build_term.log
           if grep -qi skipped /tmp/build_term.log; then
             echo '::error::tool/build_term.sh skipped android; the terminal would be unavailable.'
             exit 1
           fi
       - name: Check the native libs
         run: |
-          for lib in \
-            android/app/src/main/jniLibs/arm64-v8a/libtaildeck_bridge.so \
-            android/app/src/main/jniLibs/arm64-v8a/libtaildeck_term.so; do
-            test -s "$lib" || { echo "::error::$lib missing"; exit 1; }
-            echo "$lib $(stat -c%s "$lib") bytes"
+          for abi in arm64-v8a armeabi-v7a; do
+            for lib in libtaildeck_bridge.so libtaildeck_term.so; do
+              path="android/app/src/main/jniLibs/$abi/$lib"
+              test -s "$path" || { echo "::error::$path missing"; exit 1; }
+              echo "$path $(stat -c%s "$path") bytes"
+            done
           done
       - run: flutter build apk --debug --target-platform android-arm64
       - name: Check the APK ships the native libs
@@ -137,6 +138,15 @@ jobs:
           for lib in libtaildeck_bridge.so libtaildeck_term.so; do
             grep -q "lib/arm64-v8a/$lib" /tmp/apk.log || { echo "::error::$lib not in the APK"; exit 1; }
           done
+      - name: A release build without a keystore fails
+        run: |
+          if flutter build apk --release > /tmp/release.log 2>&1; then
+            echo '::error::the release build must refuse to run without android/key.properties'
+            exit 1
+          fi
+          grep -q 'android/key.properties' /tmp/release.log \
+            || { tail -20 /tmp/release.log; echo '::error::the failure does not mention android/key.properties'; exit 1; }
+          echo "unsigned release build refused, as expected"
       - uses: actions/upload-artifact@v4
         with:
           name: android-debug-apk

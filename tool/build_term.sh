@@ -5,6 +5,7 @@
 #   tool/build_term.sh                     # linux/amd64 + android/arm64
 #   tool/build_term.sh linux
 #   tool/build_term.sh android         # arm64-v8a
+#   tool/build_term.sh android-armv7   # armeabi-v7a (32-bit phones)
 #   tool/build_term.sh android-x86_64  # x86_64 (emulators)
 #   tool/build_term.sh windows             # x86_64-windows-gnu via Zig
 #   tool/build_term.sh macos               # universal dylib (needs Xcode)
@@ -27,7 +28,7 @@ TARGETS=("$@")
 if [ ${#TARGETS[@]} -eq 0 ]; then
   TARGETS=(linux android)
 elif [ "${TARGETS[0]}" = "all" ]; then
-  TARGETS=(linux android android-x86_64 windows macos ios)
+  TARGETS=(linux android android-armv7 android-x86_64 windows macos ios)
 fi
 
 LINUX_OUT="$ROOT/linux/lib/libtaildeck_term.so"
@@ -76,16 +77,15 @@ find_ndk() {
 }
 
 build_android_abi() {
-  local abi=$1 ccarch=$2 ndk bin cc lib out
+  local abi=$1 triple=$2 ndk bin cc lib out
   ndk="$(find_ndk)"
   if [ -z "$ndk" ]; then
     echo "android/$abi: skipped, no NDK (set ANDROID_NDK_HOME or install into \$ANDROID_SDK_ROOT/ndk)"
     return 0
   fi
   bin="$ndk/toolchains/llvm/prebuilt/linux-x86_64/bin"
-  # API 24 matches the app's minSdk; fall back to 26 when the NDK lacks it.
-  cc="$bin/${ccarch}-linux-android24-clang"
-  [ -x "$cc" ] || cc="$bin/${ccarch}-linux-android26-clang"
+  # API 26 matches the app's minSdk.
+  cc="$bin/${triple}26-clang"
   if [ ! -x "$cc" ]; then
     echo "android/$abi: skipped, $cc missing"
     return 0
@@ -98,8 +98,9 @@ build_android_abi() {
     -o "$out" -lm
 }
 
-build_android() { build_android_abi arm64-v8a aarch64; }
-build_android_x86_64() { build_android_abi x86_64 x86_64; }
+build_android() { build_android_abi arm64-v8a aarch64-linux-android; }
+build_android_armv7() { build_android_abi armeabi-v7a armv7a-linux-androideabi; }
+build_android_x86_64() { build_android_abi x86_64 x86_64-linux-android; }
 
 build_windows() {
   if [ -z "$ZIG" ]; then
@@ -205,10 +206,11 @@ for target in "${TARGETS[@]}"; do
   case "$target" in
     linux) build_linux ;;
     android) build_android ;;
+    android-armv7) build_android_armv7 ;;
     android-x86_64) build_android_x86_64 ;;
     windows) build_windows ;;
     macos) build_macos ;;
     ios) build_ios ;;
-    *) die "unknown target '$target' (want all, linux, android, android-x86_64, windows, macos or ios)" ;;
+    *) die "unknown target '$target' (want all, linux, android, android-armv7, android-x86_64, windows, macos or ios)" ;;
   esac
 done

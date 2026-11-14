@@ -69,7 +69,7 @@ emulator in Dart.
 
 | Platform | Node | Terminal | Gateway | Limits |
 |---|---|---|---|---|
-| Android | in-app tsnet via the c-shared `.so` | `libghostty-vt` `.so`, NDK CMake | `127.0.0.1:18680` loopback | no foreground service yet, so the node stops with the process; no VPN slot; minSdk 24; APK built in CI but not device-tested |
+| Android | in-app tsnet via the c-shared `.so` | `libghostty-vt` `.so`, NDK CMake | `127.0.0.1:18680` loopback | no foreground service yet, so the node stops with the process; no VPN slot; minSdk 26; arm64-v8a, armeabi-v7a and x86_64 native libs; release-signed APKs and AAB built in CI, not device-tested |
 | iOS | c-archive linked into the Runner, in-process userspace node only | `libghostty-vt` static library | in-process loopback | the Dart side still needs to open the linked archive, so the app falls back to mock data; no system-wide VPN, other apps cannot use the tailnet; iOS suspends background networking unless a Network Extension or background mode is used (not planned for v1); App Store review may question VPN-like behaviour; unsigned builds only in CI for now |
 | Linux | Go c-shared `.so` | `libghostty-vt` static / shared | in-process loopback | the bundle ships both libraries and runs on Xvfb in CI |
 | Windows | Go c-shared DLL (cgo toolchain) | `libghostty-vt` built for Windows | in-process loopback | ship DLLs next to the exe; unsigned zip; built on a Windows runner in CI, not yet run |
@@ -82,6 +82,8 @@ emulator in Dart.
   screenshot) and Web (screenshots); `pages.yml` deploys the Web preview from `main`.
 - Windows, macOS and iOS: build only on tags or `workflow_dispatch` (`platform-release.yml`); artifacts stay
   unsigned. None of them has been launched.
+- Android releases are signed with the Kotlin app's key (`top.bangwu.taildeck`, certificate `A7:6A:FE:7F…`), so
+  they upgrade over it; the job verifies the signature of every APK and of the AAB. [SIGNING.md](SIGNING.md).
 
 ## Milestones
 
@@ -108,4 +110,5 @@ emulator in Dart.
 ## Docs
 
 English is the default. Every document has a `.zh-CN.md` sibling with the same sections and the same facts, and
-README pairs cross-link at the top. [PARITY.md](PARITY.md) tracks feature parity with the Kotlin app.
+README pairs cross-link at the top. [PARITY.md](PARITY.md) tracks feature parity with the Kotlin app and
+[SIGNING.md](SIGNING.md) the release signing.
