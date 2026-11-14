@@ -117,7 +117,7 @@ record() { # <name> <seconds> <command...>
   # more before giving up on the clip.
   local attempt
   for attempt in 1 2 3; do
-    sleep 1.5
+    sleep 3
     _record_once "$name" "$seconds" "$@" || true
     if [ -s "$out/$name.mp4" ] && [ "$(stat -c%s "$out/$name.mp4")" -gt 2000 ]; then
       return 0
@@ -293,7 +293,7 @@ flutter_login() { # <key>
   tapxy "$point"; type_text "$1"; ime_hide
   point=$(ui tap "Connect") || { keep_ui flutter-login; return 1; }
   tapxy "$point"
-  wait_for "This device" 75 || { keep_ui flutter-login; return 1; }
+  wait_for "Settings" 75 || { keep_ui flutter-login; return 1; }
 }
 
 # ---- signed-out clips: the login screen both apps share ----
@@ -335,6 +335,7 @@ signed_out_flutter() { # <hanging-url>
   launch "$flutter_apk" "$app"
   sleep 3
   record_hold flutter-ripple 4 "Control server"
+  sleep 2
   record_hold flutter-press 4 "Control server"
   sleep 1
   if point=$(ui tap "Use an auth key"); then tapxy "$point"; sleep 1; fi
@@ -374,7 +375,7 @@ kotlin_tailnet() { # <key>
   for clip in kotlin-scan-row kotlin-content-size; do
     launch "$kotlin_apk" "$app"
     sleep 3
-    point=$(ui tap "pixel-motion") || point=$(ui tap "This device") || point=
+    point=$(ui wide "pixel-motion") || point=$(ui wide "This device") || point=
     if [ -n "$point" ]; then
       tapxy "$point"; sleep 2
       record_tap "$clip" 10 "Scan ports"
@@ -416,7 +417,7 @@ flutter_tailnet() { # <key>
   for clip in flutter-scan-row flutter-content-size; do
     launch "$flutter_apk" "$app"
     sleep 3
-    point=$(ui tap "This device") || point=
+    point=$(ui wide "This device") || point=$(ui wide "pixel-motion") || point=
     if [ -n "$point" ]; then
       tapxy "$point"; sleep 2
       record_tap "$clip" 10 "Scan common ports"

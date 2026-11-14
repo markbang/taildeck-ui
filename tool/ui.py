@@ -5,6 +5,7 @@ Usage: ui.py dump.xml tap <needle>          -> "x y", the smallest match
        ui.py dump.xml has <needle>          -> exit 0 when a match exists
        ui.py dump.xml below <needle> <dy>   -> "x y", dy past the widest match
        ui.py dump.xml above <needle> <dy>   -> "x y", dy before it
+       ui.py dump.xml wide <needle>         -> "x y", the widest match (a row)
 
 The below/above forms reach a field that has no text of its own, such as the
 text field under a section button.
@@ -73,6 +74,16 @@ def main():
         key = (lambda b: b[1]) if command == "fieldbelow" else (lambda b: -b[3])
         bx1, by1, bx2, by2 = min(near, key=key)
         print((bx1 + bx2) // 2, (by1 + by2) // 2)
+        return 0
+    if command == "wide":
+        # The widest match is the row a label sits in, which is what a finger
+        # would tap.
+        found = boxes(path, needle)
+        if not found:
+            print(f"no node matches {needle!r}", file=sys.stderr)
+            return 1
+        x1, y1, x2, y2 = max(found, key=lambda b: b[2] - b[0])
+        print((x1 + x2) // 2, (y1 + y2) // 2)
         return 0
     if command in ("below", "above"):
         delta = int(sys.argv[4])
