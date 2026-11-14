@@ -112,6 +112,7 @@ class _TerminalPageState extends State<TerminalPage>
   String? _closedReason;
   bool _connected = false;
   bool _bannerFed = false;
+  bool _demoFilled = false;
   String _sent = '';
   final _mods = TerminalMods();
 
@@ -131,7 +132,13 @@ class _TerminalPageState extends State<TerminalPage>
     if (term != null) {
       _session = TerminalSession(term)
         ..addListener(_onSessionChanged)
-        ..onResize = (cols, rows) => terminal.resize(cols, rows);
+        ..onResize = (cols, rows) {
+          terminal.resize(cols, rows);
+          if (widget.demo && !_demoFilled) {
+            _demoFilled = true;
+            _session?.feed(demoSessionBytes(rows: rows));
+          }
+        };
       if (widget.demo) {
         _session!.feed(demoSessionBytes());
       } else {
@@ -983,22 +990,26 @@ class _InputBar extends StatelessWidget {
             ),
             const SizedBox(width: 8),
             Expanded(
-              child: TextField(
-                controller: controller,
-                focusNode: focusNode,
-                autofocus: true,
-                onTap: onTap,
-                onChanged: onChanged,
-                onSubmitted: onSubmitted,
-                cursorColor: const Color(0xFF7FB4FF),
-                cursorHeight: 15,
-                style: mono.copyWith(fontSize: 13),
-                decoration: InputDecoration.collapsed(
-                  hintText: AppLocalizations.of(context).typeCommand,
-                  hintStyle: const TextStyle(
-                    fontFamily: 'DejaVuSansMono',
-                    fontSize: 13,
-                    color: Color(0xFF4A515B),
+              child: Semantics(
+                textField: true,
+                label: AppLocalizations.of(context).terminalInput,
+                child: TextField(
+                  controller: controller,
+                  focusNode: focusNode,
+                  autofocus: true,
+                  onTap: onTap,
+                  onChanged: onChanged,
+                  onSubmitted: onSubmitted,
+                  cursorColor: const Color(0xFF7FB4FF),
+                  cursorHeight: 15,
+                  style: mono.copyWith(fontSize: 13),
+                  decoration: InputDecoration.collapsed(
+                    hintText: AppLocalizations.of(context).typeCommand,
+                    hintStyle: const TextStyle(
+                      fontFamily: 'DejaVuSansMono',
+                      fontSize: 13,
+                      color: Color(0xFF4A515B),
+                    ),
                   ),
                 ),
               ),

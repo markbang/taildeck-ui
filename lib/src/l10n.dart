@@ -459,6 +459,7 @@ class AppLocalizations implements UiLocalizations {
   String get terminalKeyLocked => _zh ? '已锁定' : 'locked';
 
   // Gestures, zoom and the keyboard-aware layout.
+  String get terminalInput => _zh ? '命令输入' : 'Command input';
   String get terminalSelection => _zh ? '选区操作' : 'Selection actions';
   String get terminalOpenLink => _zh ? '打开链接' : 'Open link';
   String get terminalCopied => _zh ? '已复制' : 'Copied';

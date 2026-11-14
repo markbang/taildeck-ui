@@ -15,6 +15,10 @@ summary="$out/summary.txt"
 note() { echo "$*" | tee -a "$summary"; }
 
 adb wait-for-device
+# Raw touch events (the pinch) need root; google_apis images allow it and the
+# production builds refuse, which the pinch step then reports.
+adb root > /dev/null 2>&1 || true
+adb wait-for-device
 adb shell settings put global hide_error_dialogs 1 > /dev/null 2>&1 || true
 for scale in window_animation_scale transition_animation_scale animator_duration_scale; do
   adb shell settings put global "$scale" 1 > /dev/null 2>&1 || true
@@ -232,21 +236,17 @@ enable_key_row() {
   # row's own label is a semantics action, not a pointer target: tap the
   # switch at its right edge.
   launch "$settings_url" || return 0
-  local x1 y1 x2 y2 x y
-  if ! scroll_to "$title" > /dev/null; then
+  local x y
+  if ! scroll_to "$title" > "$out/row-point.txt"; then
     note "key row with a hardware keyboard: row not found"
     return 0
   fi
-  read -r x1 y1 x2 y2 <<< "$(ui bounds "$title")" || return 0
-  x=$((x2 - $(dp 22)))
-  y=$(((y1 + y2) / 2))
+  read -r x y < "$out/row-point.txt"
+  shot settings-row
   adb shell input tap "$x" "$y" > /dev/null 2>&1 || true
   sleep 2
-  if ui has ', on' > /dev/null 2>&1; then
-    note "key row with a hardware keyboard: on"
-  else
-    note "key row with a hardware keyboard: tapped at $x,$y, state unreadable"
-  fi
+  shot settings-row-on
+  note "key row with a hardware keyboard: tapped its switch at $x,$y"
 }
 
 prepare_ime() {
@@ -286,13 +286,19 @@ hold_arrow() {
 }
 
 select_word() {
-  local n m row
+  local n m row x y attempt
   read -r n m <<< "$(last_rows)" || return 0
-  row=$((m - 2))
-  read -r x y <<< "$(cell 6 "$row")"
-  double_tap "$x" "$y"
-  sleep 1.5
-  note "selection: double tap at $x,$y (row $row of $m)"
+  for attempt in 2 3 4; do
+    row=$((m - attempt))
+    read -r x y <<< "$(cell 6 "$row")"
+    double_tap "$x" "$y"
+    sleep 1.2
+    if ui has 'Copy' > /dev/null 2>&1; then
+      note "selection: double tap at $x,$y (row $row of $m)"
+      return 0
+    fi
+  done
+  note "selection: no word under rows $((m - 4))..$((m - 2)) of $m"
 }
 
 copy_selection() {
@@ -353,7 +359,7 @@ ime_state() {
 
 show_keyboard() {
   local point x y
-  point=$(ui tap 'Type a command') || point=""
+  point=$(ui tap 'Command input') || point=$(ui tap 'Type a command') || point=""
   if [ -z "$point" ]; then
     note "keyboard: no input line"
     return 0
