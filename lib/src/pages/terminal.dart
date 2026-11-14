@@ -8,6 +8,8 @@ import 'package:prism_ui/icons/icons.dart';
 import 'package:prism_ui/prism_ui.dart';
 
 import '../a11y.dart';
+import '../backend.dart';
+import '../glyphs.dart';
 import '../data.dart';
 import '../l10n.dart';
 import '../motion.dart';
@@ -38,6 +40,8 @@ class TerminalPage extends StatefulWidget {
     this.port = 22,
     this.demo = false,
     this.onDisconnect,
+    this.onReconnect,
+    this.onAgents,
   });
 
   final NodeItem node;
@@ -47,6 +51,12 @@ class TerminalPage extends StatefulWidget {
 
   /// Ending the remote shell for good.
   final VoidCallback? onDisconnect;
+
+  /// Dialing the node again after the session dropped.
+  final VoidCallback? onReconnect;
+
+  /// Opening the herdr agents for this node, when the link is up.
+  final VoidCallback? onAgents;
 
   final String user;
   final int port;
@@ -265,33 +275,39 @@ class _TerminalPageState extends State<TerminalPage> {
 
   List<_Line> _outputFor(String command) => switch (command.split(' ').first) {
     'ls' => const [
-        _Line('apps    docker-compose.yml    Makefile    README.md', _Kind.output),
-        _Line('bin     grafana.ini         node_modules  scripts', _Kind.output),
-      ],
+      _Line(
+        'apps    docker-compose.yml    Makefile    README.md',
+        _Kind.output,
+      ),
+      _Line('bin     grafana.ini         node_modules  scripts', _Kind.output),
+    ],
     'uname' => const [
-        _Line('Linux devbox 6.8.0-45-generic x86_64', _Kind.output),
-      ],
+      _Line('Linux devbox 6.8.0-45-generic x86_64', _Kind.output),
+    ],
     'tailscale' => const [
-        _Line('devbox    100.71.200.9   online', _Kind.output),
-        _Line('pixel-9   100.101.4.2    offline', _Kind.output),
-        _Line('nas       100.88.12.7    online', _Kind.output),
-      ],
+      _Line('devbox    100.71.200.9   online', _Kind.output),
+      _Line('pixel-9   100.101.4.2    offline', _Kind.output),
+      _Line('nas       100.88.12.7    online', _Kind.output),
+    ],
     'docker' => const [
-        _Line('grafana:11.3.0        Up 12 days', _Kind.output),
-        _Line('code-server:latest    Up 12 days', _Kind.output),
-      ],
+      _Line('grafana:11.3.0        Up 12 days', _Kind.output),
+      _Line('code-server:latest    Up 12 days', _Kind.output),
+    ],
     'whoami' => const [_Line('root', _Kind.output)],
     'pwd' => const [_Line('/root', _Kind.output)],
     'uptime' => const [
-        _Line('16:47 up 12 days, 2 users, load 0.12 0.09 0.06', _Kind.output),
-      ],
+      _Line('16:47 up 12 days, 2 users, load 0.12 0.09 0.06', _Kind.output),
+    ],
     'help' => const [
-        _Line('Try: ls · uname -a · tailscale · docker ps · whoami · pwd · uptime · clear', _Kind.muted),
-      ],
+      _Line(
+        'Try: ls · uname -a · tailscale · docker ps · whoami · pwd · uptime · clear',
+        _Kind.muted,
+      ),
+    ],
     _ => [
-        _Line('bash: $command: command not found', _Kind.error),
-        const _Line('Type help for the demo commands.', _Kind.muted),
-      ],
+      _Line('bash: $command: command not found', _Kind.error),
+      const _Line('Type help for the demo commands.', _Kind.muted),
+    ],
   };
 
   void _toBottom() {
@@ -344,7 +360,9 @@ class _TerminalPageState extends State<TerminalPage> {
         : (l10n.notConnected, _dim);
     final grid = session?.snapshot;
     final subtitle = widget.demo
-        ? (grid == null ? 'libghostty-vt' : 'libghostty-vt · ${grid.cols}×${grid.rows}')
+        ? (grid == null
+              ? 'libghostty-vt'
+              : 'libghostty-vt · ${grid.cols}×${grid.rows}')
         : widget.live
         ? '${widget.node.ip}:${widget.port} · ${widget.node.os}'
         : '${widget.node.os} · ${widget.node.ip} · 18 ms';
@@ -371,6 +389,8 @@ class _TerminalPageState extends State<TerminalPage> {
                   subtitle: subtitle,
                   status: status,
                   statusColor: statusColor,
+                  reconnect: _closedReason != null ? widget.onReconnect : null,
+                  agents: widget.onAgents,
                 ),
                 LiveRegion(message: status),
                 Expanded(
@@ -484,7 +504,10 @@ class _PromptLine extends StatelessWidget {
             text: '$user@$host',
             style: mono.copyWith(color: const Color(0xFF57D7A0)),
           ),
-          TextSpan(text: ':~\$ ', style: mono.copyWith(color: const Color(0xFF5C6370))),
+          TextSpan(
+            text: ':~\$ ',
+            style: mono.copyWith(color: const Color(0xFF5C6370)),
+          ),
           TextSpan(
             text: command,
             style: mono.copyWith(
@@ -507,6 +530,8 @@ class _Header extends StatelessWidget {
     required this.subtitle,
     required this.status,
     required this.statusColor,
+    this.reconnect,
+    this.agents,
   });
 
   final NodeItem node;
@@ -516,13 +541,17 @@ class _Header extends StatelessWidget {
   final String subtitle;
   final String status;
   final Color statusColor;
+  final VoidCallback? reconnect;
+  final VoidCallback? agents;
 
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.fromLTRB(6, 8, 14, 10),
       decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: Color(0x14FFFFFF), width: 0.5)),
+        border: Border(
+          bottom: BorderSide(color: Color(0x14FFFFFF), width: 0.5),
+        ),
       ),
       child: Row(
         children: [
@@ -539,7 +568,10 @@ class _Header extends StatelessWidget {
               children: [
                 Text(
                   '$user@${node.name}',
-                  style: mono.copyWith(fontWeight: FontWeight.w700, fontSize: 14),
+                  style: mono.copyWith(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                  ),
                 ),
                 const SizedBox(height: 1),
                 FadeThrough(
@@ -555,6 +587,38 @@ class _Header extends StatelessWidget {
               ],
             ),
           ),
+          MotionVisibility(
+            visible: reconnect != null,
+            scaleFrom: 0.8,
+            child: _HeaderTextButton(
+              label: AppLocalizations.of(context).reconnect,
+              onPressed: reconnect ?? () {},
+              mono: mono,
+            ),
+          ),
+          if (agents != null)
+            Builder(
+              builder: (context) {
+                final herdr = BackendScope.of(context).herdr;
+                if (herdr == null) return const SizedBox.shrink();
+                return ListenableBuilder(
+                  listenable: herdr,
+                  builder: (context, _) => MotionVisibility(
+                    visible: herdr.ready && herdr.node == node.name,
+                    scaleFrom: 0.6,
+                    child: IconButton(
+                      onPressed: agents,
+                      icon: GlyphIcon(
+                        Glyphs2.agents,
+                        size: 18,
+                        color: const Color(0xFFE7E9ED),
+                      ),
+                      tooltip: AppLocalizations.of(context).agentsTitle,
+                    ),
+                  ),
+                );
+              },
+            ),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
             decoration: ShapeDecoration(
@@ -586,12 +650,45 @@ class _Header extends StatelessWidget {
   }
 }
 
+class _HeaderTextButton extends StatelessWidget {
+  const _HeaderTextButton({
+    required this.label,
+    required this.onPressed,
+    required this.mono,
+  });
+
+  final String label;
+  final VoidCallback onPressed;
+  final TextStyle mono;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextButton(
+      onPressed: onPressed,
+      style: ButtonStyle.from(
+        foregroundColor: const Color(0xFF7FB4FF),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        minimumSize: Size.zero,
+        textStyle: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600),
+        shape: const StadiumBorder(),
+      ),
+      child: Text(label, style: mono.copyWith(fontSize: 11.5)),
+    );
+  }
+}
+
 class _QuickBar extends StatelessWidget {
   const _QuickBar({required this.onRun});
 
   final ValueChanged<String> onRun;
 
-  static const _commands = ['ls', 'uname -a', 'tailscale', 'docker ps', 'clear'];
+  static const _commands = [
+    'ls',
+    'uname -a',
+    'tailscale',
+    'docker ps',
+    'clear',
+  ];
 
   @override
   Widget build(BuildContext context) {

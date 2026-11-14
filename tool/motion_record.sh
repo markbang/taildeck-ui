@@ -128,74 +128,78 @@ record() { # <name> <seconds> <command...>
   fi
 }
 
-# ---- Kotlin: login screen only; the rest needs a control server ----
-kotlin_expand() { tapxy "$ADVANCED"; sleep 2.2; }
-kotlin_press() { holdxy "$ADVANCED" 900; sleep 1.2; }
-kotlin_start() { tapxy "$SIGNIN"; sleep 9; }
+# ---- scenarios ----
 
-# ---- this build: login form, and the preview shell ----
-flutter_expand() { tapxy "$AUTHKEY"; sleep 2.4; }
-flutter_press() { holdxy "$CONTROL" 900; sleep 1.2; }
-flutter_start() { tapxy "$BROWSER"; sleep 5; }
+tap_point() { tapxy "$1"; }
+hold_point() { holdxy "$1" 900; sleep 1; }
+
+# Records one gesture on an element found just before the recording starts, so
+# a layout that moved since the last dump cannot send the tap elsewhere.
+record_tap() { # <name> <seconds> <text> [hold]
+  local name=$1 seconds=$2 text=$3 mode=${4:-tap} point
+  point=$(ui tap "$text") || { note "$name: no node for '$text'"; return 0; }
+  if [ "$mode" = hold ]; then
+    record "$name" "$seconds" hold_point "$point"
+  else
+    record "$name" "$seconds" tap_point "$point"
+  fi
+  [ -n "${5:-}" ] && check "$name" "$5"
+  return 0
+}
+
+# The dock's four items share a row: find one of them, derive the rest.
+dock_row() { # <text>
+  local point
+  point=$(ui tap "$1") || return 1
+  DOCK_Y=${point#* }
+  read -r W H <<< "$(adb shell wm size | sed -n 's/.*: \([0-9]*\)x\([0-9]*\).*/\1 \2/p' | tr -d '\r')"
+  TAB_NODES="$((W / 8)) $DOCK_Y"
+  TAB_SERVICES="$((W * 3 / 8)) $DOCK_Y"
+  TAB_AGENTS="$((W * 5 / 8)) $DOCK_Y"
+  [ -n "${W:-}" ]
+}
+
 flutter_tabs() {
   tapxy "$TAB_SERVICES"; sleep 1.4
   tapxy "$TAB_AGENTS"; sleep 1.4
   tapxy "$TAB_NODES"; sleep 1.2
 }
-flutter_detail() { tapxy "$PEER"; sleep 2; adb shell input keyevent 4 > /dev/null 2>&1 || true; sleep 1.4; }
 
-ADVANCED= SIGNIN= CONTROL= AUTHKEY= BROWSER= TAB_SERVICES= TAB_AGENTS= TAB_NODES= PEER=
+flutter_detail() {
+  local point
+  point=$(ui tap devbox) || { note "flutter-detail: no node for 'devbox'"; return 0; }
+  record flutter-detail 6 tap_point "$point"
+  adb shell input keyevent 4 > /dev/null 2>&1 || true
+  sleep 1.5
+}
+
+W= TAB_SERVICES= TAB_AGENTS= TAB_NODES=
 
 install_app "$kotlin_apk" || true
 launch "$kotlin_apk" "$app"
-coord ADVANCED Advanced || true
-record kotlin-expand 5 kotlin_expand
-# A control server that never answers keeps the node in "starting" without
-# opening a browser, unlike the real controlplane.
-tapxy "$ADVANCED" || true
-sleep 1.2
-coord CONTROL "Control server" || true
-tapxy "$CONTROL" || true
-type_text "http://10.255.255.1:1"
-adb shell input keyevent 4 > /dev/null 2>&1 || true
-sleep 1
-if ui has "10.255.255.1" > /dev/null; then
-  coord SIGNIN "Sign in" || true
-  record kotlin-start 10 kotlin_start
-  check kotlin-start "Cancel"
-else
-  note "kotlin-start: control URL not typed; the real controlplane would open a browser"
-fi
-check kotlin-expand "Control server"
-record kotlin-press 3 kotlin_press
-# A failed sign-in never leaves the app, but a stray browser would follow the
-# next clip.
-adb shell am force-stop com.android.chrome > /dev/null 2>&1 || true
+record_tap kotlin-expand 3 Advanced tap "Control server"
+record_tap kotlin-press 3 Advanced hold "Control server"
 
 install_app "$flutter_apk" || true
 # The preview shell runs on mock data: no tailnet needed for the tabs.
 launch "$flutter_apk" "$app" "taildeck://preview/?preview=1&tab=0&lang=en"
-coord TAB_SERVICES Services || true
-coord TAB_AGENTS Agents || true
-coord TAB_NODES Nodes || true
-record flutter-tabs 6 flutter_tabs
-check flutter-tabs "Search nodes"
+if dock_row Services; then
+  record flutter-tabs 6 flutter_tabs
+  check flutter-tabs "Add service"
+else
+  note "flutter-tabs: no dock row found"
+fi
 launch "$flutter_apk" "$app" "taildeck://preview/?preview=1&tab=0&lang=en"
-coord PEER devbox || true
-record flutter-detail 5 flutter_detail
+flutter_detail
 check flutter-detail "Search nodes"
 
 # Signing in with a key would start a node; no browser on this device keeps a
 # real sign-in from leaving the app.
 adb shell pm disable-user --user 0 com.android.chrome > /dev/null 2>&1 || true
 launch "$flutter_apk" "$app" "taildeck://preview/?login=1&lang=en"
-coord CONTROL "Control server" || true
-coord AUTHKEY "auth key" || true
-coord BROWSER "Continue in browser" || true
-record flutter-expand 4 flutter_expand
-check flutter-expand "Connect"
-record flutter-press 3 flutter_press
-record flutter-start 6 flutter_start
+record_tap flutter-expand 3 "auth key" tap "Connect"
+record_tap flutter-press 3 "Control server" hold
+record_tap flutter-start 6 "Continue in browser" tap
 adb shell pm enable com.android.chrome > /dev/null 2>&1 || true
 
 # ---- put them side by side: Kotlin on the left, this build on the right ----
@@ -217,16 +221,15 @@ pair() { # <kotlin clip> <flutter clip> <name>
 }
 
 pair kotlin-expand flutter-expand login-expand
-pair kotlin-start flutter-start login-start
 pair kotlin-press flutter-press press
 
 # A GIF is what a pull request can show inline.
-for name in login-expand login-start press; do
+for name in login-expand press; do
   [ -s "$out/$name.mp4" ] || continue
   ffmpeg -loglevel error -y -i "$out/$name.mp4" -vf \
     'fps=12,scale=640:-1:flags=lanczos,split[a][b];[a]palettegen[p];[b][p]paletteuse' \
     "$out/$name.gif" || true
 done
 
-note "flutter only (Kotlin screens need a tailnet): flutter-tabs, flutter-detail"
+note "flutter only (Kotlin screens need a tailnet): flutter-tabs, flutter-detail, flutter-start"
 note "ok: motion recorded"

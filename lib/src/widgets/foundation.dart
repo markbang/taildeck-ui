@@ -10,6 +10,7 @@ import '../motion.dart';
 import '../services.dart';
 import 'controls.dart';
 import 'service_avatar.dart';
+import 'wavy.dart';
 
 class PageBody extends StatelessWidget {
   const PageBody({
@@ -508,7 +509,7 @@ class ActionPill extends StatelessWidget {
             SizedBox.square(
               dimension: 15,
               child: loading
-                  ? ActivityIndicator(size: 15, color: fg)
+                  ? WavyActivityIndicator(size: 15, color: fg)
                   : GlyphIcon(glyph, size: 15, color: fg),
             ),
             const SizedBox(width: 6),

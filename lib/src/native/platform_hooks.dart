@@ -6,7 +6,8 @@
 library;
 
 import 'platform_hooks_stub.dart'
-    if (dart.library.io) 'platform_hooks_io.dart' as impl;
+    if (dart.library.io) 'platform_hooks_io.dart'
+    as impl;
 
 /// [name] is the `td_start` platform value (`host` or `go`); [warning] says
 /// why the Android hooks are unavailable.

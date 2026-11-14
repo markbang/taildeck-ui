@@ -48,7 +48,10 @@ typedef _ReplyNative = Pointer<Uint8> Function(
   Pointer<Void> term,
   Pointer<IntPtr> outLen,
 );
-typedef _Reply = Pointer<Uint8> Function(Pointer<Void> term, Pointer<IntPtr> outLen);
+typedef _Reply = Pointer<Uint8> Function(
+  Pointer<Void> term,
+  Pointer<IntPtr> outLen,
+);
 
 typedef _ResizeNative = Pointer<Uint8> Function(
   Pointer<Void> term,
@@ -133,11 +136,31 @@ typedef _Mouse = Pointer<Uint8> Function(
   Pointer<IntPtr> outLen,
 );
 
-typedef _FocusNative = Pointer<Uint8> Function(Pointer<Void> term, Int32 gained, Pointer<IntPtr> outLen);
-typedef _Focus = Pointer<Uint8> Function(Pointer<Void> term, int gained, Pointer<IntPtr> outLen);
+typedef _FocusNative = Pointer<Uint8> Function(
+  Pointer<Void> term,
+  Int32 gained,
+  Pointer<IntPtr> outLen,
+);
+typedef _Focus = Pointer<Uint8> Function(
+  Pointer<Void> term,
+  int gained,
+  Pointer<IntPtr> outLen,
+);
 
-typedef _SelectNative = Void Function(Pointer<Void> term, Int32 x0, Int32 y0, Int32 x1, Int32 y1);
-typedef _Select = void Function(Pointer<Void> term, int x0, int y0, int x1, int y1);
+typedef _SelectNative = Void Function(
+  Pointer<Void> term,
+  Int32 x0,
+  Int32 y0,
+  Int32 x1,
+  Int32 y1,
+);
+typedef _Select = void Function(
+  Pointer<Void> term,
+  int x0,
+  int y0,
+  int x1,
+  int y1,
+);
 
 typedef _WidthNative = Int32 Function(Uint32 codepoint);
 typedef _Width = int Function(int codepoint);
@@ -152,16 +175,30 @@ class _Lib {
       write = lib.lookupFunction<_BytesNative, _Bytes>('td_term_write'),
       resize = lib.lookupFunction<_ResizeNative, _Resize>('td_term_resize'),
       scroll = lib.lookupFunction<_ScrollNative, _Scroll>('td_term_scroll'),
-      snapshot = lib.lookupFunction<_SnapshotNative, _Snapshot>('td_term_snapshot'),
+      snapshot = lib.lookupFunction<_SnapshotNative, _Snapshot>(
+        'td_term_snapshot',
+      ),
       encodeKey = lib.lookupFunction<_KeyNative, _Key>('td_term_encode_key'),
-      encodeMouse = lib.lookupFunction<_MouseNative, _Mouse>('td_term_encode_mouse'),
-      encodeFocus = lib.lookupFunction<_FocusNative, _Focus>('td_term_encode_focus'),
-      encodePaste = lib.lookupFunction<_BytesNative, _Bytes>('td_term_encode_paste'),
-      takeClipboard = lib.lookupFunction<_ReplyNative, _Reply>('td_term_take_clipboard'),
+      encodeMouse = lib.lookupFunction<_MouseNative, _Mouse>(
+        'td_term_encode_mouse',
+      ),
+      encodeFocus = lib.lookupFunction<_FocusNative, _Focus>(
+        'td_term_encode_focus',
+      ),
+      encodePaste = lib.lookupFunction<_BytesNative, _Bytes>(
+        'td_term_encode_paste',
+      ),
+      takeClipboard = lib.lookupFunction<_ReplyNative, _Reply>(
+        'td_term_take_clipboard',
+      ),
       select = lib.lookupFunction<_SelectNative, _Select>('td_term_select'),
-      selectionText = lib.lookupFunction<_ReplyNative, _Reply>('td_term_selection_text'),
+      selectionText = lib.lookupFunction<_ReplyNative, _Reply>(
+        'td_term_selection_text',
+      ),
       title = lib.lookupFunction<_ReplyNative, _Reply>('td_term_title'),
-      codepointWidth = lib.lookupFunction<_WidthNative, _Width>('td_term_codepoint_width'),
+      codepointWidth = lib.lookupFunction<_WidthNative, _Width>(
+        'td_term_codepoint_width',
+      ),
       free = lib.lookupFunction<_FreeNative, _Free>('td_term_free');
 
   final _Create create;
@@ -318,7 +355,9 @@ class _FfiTerm implements NativeTerm {
     return TermSnapshot(
       cols: cols,
       rows: rows,
-      cells: Int32List.fromList(_cells.asTypedList(cols * rows * _snapshotCells)),
+      cells: Int32List.fromList(
+        _cells.asTypedList(cols * rows * _snapshotCells),
+      ),
       meta: Int32List.fromList(_meta.asTypedList(_metaLen)),
       graphemes: _graphemes(n),
     );
@@ -345,12 +384,23 @@ class _FfiTerm implements NativeTerm {
   @override
   Uint8List? encodeKey(int key, int mods, {String? text, int unshifted = 0}) {
     final bytes = text == null ? null : utf8.encode(text);
-    final ptr = bytes == null ? nullptr : calloc<Uint8>(bytes.isEmpty ? 1 : bytes.length);
+    final ptr = bytes == null
+        ? nullptr
+        : calloc<Uint8>(bytes.isEmpty ? 1 : bytes.length);
     final len = calloc<IntPtr>();
     try {
-      if (bytes != null) ptr.cast<Uint8>().asTypedList(bytes.length).setAll(0, bytes);
+      if (bytes != null)
+        ptr.cast<Uint8>().asTypedList(bytes.length).setAll(0, bytes);
       return _copy(
-        _lib.encodeKey(_term, key, mods, ptr.cast<Uint8>(), bytes?.length ?? 0, unshifted, len),
+        _lib.encodeKey(
+          _term,
+          key,
+          mods,
+          ptr.cast<Uint8>(),
+          bytes?.length ?? 0,
+          unshifted,
+          len,
+        ),
         len.value,
       );
     } finally {
@@ -411,7 +461,8 @@ class _FfiTerm implements NativeTerm {
   Uint8List? takeClipboard() => _reply(_lib.takeClipboard);
 
   @override
-  void select(int x0, int y0, int x1, int y1) => _lib.select(_term, x0, y0, x1, y1);
+  void select(int x0, int y0, int x1, int y1) =>
+      _lib.select(_term, x0, y0, x1, y1);
 
   @override
   String? selectionText() {

@@ -13,6 +13,7 @@ import '../motion.dart';
 import '../preview_env.dart';
 import '../widgets/controls.dart';
 import '../widgets/foundation.dart';
+import '../widgets/wavy.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key, required this.onSignedIn, this.onCancel});
@@ -149,8 +150,10 @@ class _LoginPageState extends State<LoginPage> {
                         const SizedBox(height: 18),
                         Text(
                           'Taildeck',
-                          style: AppTextStyle.largeTitle
-                              .of(context, emphasized: true),
+                          style: AppTextStyle.largeTitle.of(
+                            context,
+                            emphasized: true,
+                          ),
                         ),
                         const SizedBox(height: 4),
                         Text(
@@ -198,9 +201,13 @@ class _LoginPageState extends State<LoginPage> {
                         Text(
                           l10n.worksWith,
                           textAlign: TextAlign.center,
-                          style: AppTextStyle.caption1.of(context).copyWith(
-                            color: scheme.onSurfaceVariant.withValues(alpha: 0.7),
-                          ),
+                          style: AppTextStyle.caption1
+                              .of(context)
+                              .copyWith(
+                                color: scheme.onSurfaceVariant.withValues(
+                                  alpha: 0.7,
+                                ),
+                              ),
                         ),
                       ],
                     ),
@@ -265,14 +272,11 @@ class _LoginPageState extends State<LoginPage> {
                   style: AppTextStyle.body.of(context, emphasized: true),
                 ),
               ),
-              const ActivityIndicator(size: 20),
+              const WavyActivityIndicator(size: 20),
             ],
           ),
           const SizedBox(height: 10),
-          Text(
-            l10n.waitingBody,
-            style: context.listSubtitleStyle,
-          ),
+          Text(l10n.waitingBody, style: context.listSubtitleStyle),
           const SizedBox(height: 16),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -285,13 +289,19 @@ class _LoginPageState extends State<LoginPage> {
                 Expanded(
                   child: Text(
                     url.isEmpty ? l10n.waitingForUrl : url,
-                    style: AppTextStyle.footnote.of(context).copyWith(
-                      fontFamily: 'DejaVuSansMono',
-                      color: scheme.onSurfaceVariant,
-                    ),
+                    style: AppTextStyle.footnote
+                        .of(context)
+                        .copyWith(
+                          fontFamily: 'DejaVuSansMono',
+                          color: scheme.onSurfaceVariant,
+                        ),
                   ),
                 ),
-                GlyphIcon(Glyphs.copy, size: 14, color: scheme.onSurfaceVariant),
+                GlyphIcon(
+                  Glyphs.copy,
+                  size: 14,
+                  color: scheme.onSurfaceVariant,
+                ),
               ],
             ),
           ),
@@ -357,7 +367,7 @@ class _Choices extends StatelessWidget {
                 trailing: busy
                     ? const SizedBox.square(
                         dimension: 16,
-                        child: ActivityIndicator(size: 16),
+                        child: WavyActivityIndicator(size: 16),
                       )
                     : GlyphIcon(
                         Glyphs.chevronForward,
@@ -389,10 +399,9 @@ class _Choices extends StatelessWidget {
                     TextField(
                       controller: keyController,
                       obscureText: true,
-                      style: AppTextStyle.footnote.of(context).copyWith(
-                        fontFamily: 'DejaVuSansMono',
-                        fontSize: 13,
-                      ),
+                      style: AppTextStyle.footnote
+                          .of(context)
+                          .copyWith(fontFamily: 'DejaVuSansMono', fontSize: 13),
                       decoration: const InputDecoration(
                         filled: true,
                         contentPadding: EdgeInsets.symmetric(
@@ -499,10 +508,7 @@ class _OptionRow extends StatelessWidget {
                   if (subtitle != null)
                     Padding(
                       padding: const EdgeInsets.only(top: 1),
-                      child: Text(
-                        subtitle!,
-                        style: context.listCaptionStyle,
-                      ),
+                      child: Text(subtitle!, style: context.listCaptionStyle),
                     ),
                 ],
               ),
@@ -546,10 +552,7 @@ class _StageSwap extends StatelessWidget {
             child: SlideTransition(position: slide, child: child),
           );
         },
-        child: KeyedSubtree(
-          key: ValueKey(waiting),
-          child: child,
-        ),
+        child: KeyedSubtree(key: ValueKey(waiting), child: child),
       ),
     );
   }

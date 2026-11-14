@@ -110,11 +110,15 @@ class _TerminalCanvasState extends State<TerminalCanvas> {
         // Leave room for padding, so the last row and column are never clipped.
         final cols = math.max(
           1,
-          ((constraints.maxWidth - widget.padding.horizontal) / _metrics.cellWidth).floor(),
+          ((constraints.maxWidth - widget.padding.horizontal) /
+                  _metrics.cellWidth)
+              .floor(),
         );
         final rows = math.max(
           1,
-          ((constraints.maxHeight - widget.padding.vertical) / _metrics.cellHeight).floor(),
+          ((constraints.maxHeight - widget.padding.vertical) /
+                  _metrics.cellHeight)
+              .floor(),
         );
         _scheduleResize(cols, rows);
         return ClipRect(
@@ -151,7 +155,11 @@ class _TerminalCanvasState extends State<TerminalCanvas> {
 }
 
 class _GridPainter extends CustomPainter {
-  _GridPainter({required this.snapshot, required this.metrics, required this.origin});
+  _GridPainter({
+    required this.snapshot,
+    required this.metrics,
+    required this.origin,
+  });
 
   final TermSnapshot snapshot;
   final _Metrics metrics;
@@ -191,17 +199,24 @@ class _GridPainter extends CustomPainter {
           ? snapshot.fgAt(x, y)
           : snapshot.defaultFg;
     }
-    return flags & TermFlags.hasBg != 0 ? snapshot.bgAt(x, y) : snapshot.defaultBg;
+    return flags & TermFlags.hasBg != 0
+        ? snapshot.bgAt(x, y)
+        : snapshot.defaultBg;
   }
 
   Color _fgOf(int x, int y) {
     final flags = snapshot.flagsAt(x, y);
-    var value = flags & TermFlags.hasFg != 0 ? snapshot.fgAt(x, y) : snapshot.defaultFg;
+    var value = flags & TermFlags.hasFg != 0
+        ? snapshot.fgAt(x, y)
+        : snapshot.defaultFg;
     if (flags & TermFlags.inverse != 0) {
-      value = flags & TermFlags.hasBg != 0 ? snapshot.bgAt(x, y) : snapshot.defaultBg;
+      value = flags & TermFlags.hasBg != 0
+          ? snapshot.bgAt(x, y)
+          : snapshot.defaultBg;
     }
     if (flags & TermFlags.selected != 0) return _selectionFg;
-    if (flags & TermFlags.faint != 0) return Color(value & 0xFFFFFF).withValues(alpha: 0.6);
+    if (flags & TermFlags.faint != 0)
+      return Color(value & 0xFFFFFF).withValues(alpha: 0.6);
     return Color(value);
   }
 
@@ -235,14 +250,19 @@ class _GridPainter extends CustomPainter {
     final flags = snapshot.flagsAt(x, y);
     return metrics.style.copyWith(
       color: color,
-      fontWeight: flags & TermFlags.bold != 0 ? FontWeight.w700 : FontWeight.w400,
-      fontStyle: flags & TermFlags.italic != 0 ? FontStyle.italic : FontStyle.normal,
+      fontWeight: flags & TermFlags.bold != 0
+          ? FontWeight.w700
+          : FontWeight.w400,
+      fontStyle: flags & TermFlags.italic != 0
+          ? FontStyle.italic
+          : FontStyle.normal,
       decoration: TextDecoration.none,
     );
   }
 
   bool _sameStyle(int x, int y, int refX, int refY) {
-    const mask = TermFlags.bold |
+    const mask =
+        TermFlags.bold |
         TermFlags.italic |
         TermFlags.faint |
         TermFlags.inverse |
@@ -282,7 +302,11 @@ class _GridPainter extends CustomPainter {
             final cpj = snapshot.codepointAt(j, y);
             if (cpj < 32 ||
                 cpj >= 0x7F ||
-                fj & (TermFlags.spacer | TermFlags.multi | TermFlags.invisible) != 0 ||
+                fj &
+                        (TermFlags.spacer |
+                            TermFlags.multi |
+                            TermFlags.invisible) !=
+                    0 ||
                 !_sameStyle(j, y, x, y)) {
               break;
             }
@@ -306,7 +330,8 @@ class _GridPainter extends CustomPainter {
           maxLines: 1,
         )..layout();
         // Wide glyphs center in their two cells; single ones fill one.
-        final left = origin.dx + x * _cw + math.max(0, (span * _cw - painter.width) / 2);
+        final left =
+            origin.dx + x * _cw + math.max(0, (span * _cw - painter.width) / 2);
         painter.paint(canvas, Offset(left, top));
         painter.dispose();
         _paintDecoration(canvas, x, span, top, flags, color);
@@ -315,7 +340,14 @@ class _GridPainter extends CustomPainter {
     }
   }
 
-  void _paintDecoration(Canvas canvas, int x, int cells, double top, int flags, Color color) {
+  void _paintDecoration(
+    Canvas canvas,
+    int x,
+    int cells,
+    double top,
+    int flags,
+    Color color,
+  ) {
     if (flags & (TermFlags.underline | TermFlags.strike) == 0) return;
     final brush = Paint()..color = color;
     final thick = math.max(1.0, _ch / 14);
@@ -323,13 +355,21 @@ class _GridPainter extends CustomPainter {
     final right = left + cells * _cw;
     if (flags & TermFlags.underline != 0) {
       canvas.drawRect(
-        Rect.fromLTRB(left, top + _ch - thick * 1.5, right, top + _ch - thick * 0.5),
+        Rect.fromLTRB(
+          left,
+          top + _ch - thick * 1.5,
+          right,
+          top + _ch - thick * 0.5,
+        ),
         brush,
       );
     }
     if (flags & TermFlags.strike != 0) {
       final mid = top + _ch / 2;
-      canvas.drawRect(Rect.fromLTRB(left, mid - thick / 2, right, mid + thick / 2), brush);
+      canvas.drawRect(
+        Rect.fromLTRB(left, mid - thick / 2, right, mid + thick / 2),
+        brush,
+      );
     }
   }
 
@@ -350,12 +390,18 @@ class _GridPainter extends CustomPainter {
       case CursorStyle.bar:
         canvas.drawRect(Rect.fromLTWH(left, top, bar, _ch), brush);
       case CursorStyle.underline:
-        canvas.drawRect(Rect.fromLTRB(left, top + _ch - bar, right, top + _ch), brush);
+        canvas.drawRect(
+          Rect.fromLTRB(left, top + _ch - bar, right, top + _ch),
+          brush,
+        );
       case CursorStyle.blockHollow:
         brush
           ..style = PaintingStyle.stroke
           ..strokeWidth = 1;
-        canvas.drawRect(Rect.fromLTRB(left + 0.5, top + 0.5, right - 0.5, top + _ch - 0.5), brush);
+        canvas.drawRect(
+          Rect.fromLTRB(left + 0.5, top + 0.5, right - 0.5, top + _ch - 0.5),
+          brush,
+        );
         brush.style = PaintingStyle.fill;
       default:
         canvas.drawRect(Rect.fromLTRB(left, top, right, top + _ch), brush);
@@ -383,12 +429,20 @@ class _GridPainter extends CustomPainter {
     if (total <= len || offset + len >= total) return;
     final height = math.max(0.0, size.height - origin.dy);
     final top = origin.dy + height * offset / total;
-    final bottom = math.max(top + 24, origin.dy + height * (offset + len) / total);
+    final bottom = math.max(
+      top + 24,
+      origin.dy + height * (offset + len) / total,
+    );
     brush.color = const Color(0x66FFFFFF);
-    canvas.drawRect(Rect.fromLTRB(size.width - 6, top, size.width - 2, bottom), brush);
+    canvas.drawRect(
+      Rect.fromLTRB(size.width - 6, top, size.width - 2, bottom),
+      brush,
+    );
   }
 
   @override
   bool shouldRepaint(_GridPainter old) =>
-      old.snapshot != snapshot || old.metrics != metrics || old.origin != origin;
+      old.snapshot != snapshot ||
+      old.metrics != metrics ||
+      old.origin != origin;
 }

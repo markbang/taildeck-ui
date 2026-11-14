@@ -26,8 +26,7 @@ Future<NewAgentChoice?> showNewAgentSheet(
 }) {
   return showFormSheet<NewAgentChoice>(
     context: context,
-    builder: (context) =>
-        _NewAgentSheet(herdr: herdr, workspaces: workspaces),
+    builder: (context) => _NewAgentSheet(herdr: herdr, workspaces: workspaces),
   );
 }
 
@@ -170,7 +169,10 @@ class _NewAgentSheetState extends State<_NewAgentSheet> {
                     children: [
                       Text(
                         l10n.newAgent,
-                        style: AppTextStyle.title2.of(context, emphasized: true),
+                        style: AppTextStyle.title2.of(
+                          context,
+                          emphasized: true,
+                        ),
                       ),
                       const SizedBox(height: 2),
                       Text(

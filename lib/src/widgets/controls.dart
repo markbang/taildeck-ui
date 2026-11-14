@@ -6,6 +6,7 @@ import 'package:prism_ui/prism_ui.dart';
 
 import '../l10n.dart';
 import '../motion.dart';
+import 'wavy.dart';
 
 /// A pressable surface with the state layer [PressRegion] leaves out by
 /// default: a tint on press and focus, and an optional slight scale for
@@ -113,7 +114,7 @@ class LoadingButton extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               if (loading)
-                ActivityIndicator(size: 18, semanticLabel: l10n.pleaseWait)
+                WavyActivityIndicator(size: 18, semanticLabel: l10n.pleaseWait)
               else if (glyph != null)
                 GlyphIcon(glyph!, size: 18),
               if (loading || glyph != null) const SizedBox(width: 8),
@@ -151,7 +152,6 @@ class AnimatedGroupCard extends StatefulWidget {
 
 class _AnimatedGroupCardState extends State<AnimatedGroupCard>
     with TickerProviderStateMixin {
-
   late final _transitions = EntryTransitions<Key>(
     vsync: this,
     onLeft: _handleLeft,
@@ -199,8 +199,7 @@ class _AnimatedGroupCardState extends State<AnimatedGroupCard>
     var index = 0;
     for (final row in next) {
       final at = before[row.key] ?? previous.length;
-      while (index < leaving.length &&
-          (before[leaving[index].key] ?? 0) < at) {
+      while (index < leaving.length && (before[leaving[index].key] ?? 0) < at) {
         ordered.add(leaving[index++]);
       }
       ordered.add(row);

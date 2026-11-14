@@ -145,6 +145,11 @@ class AppLocalizations implements UiLocalizations {
   String get web => _zh ? '网页' : 'Web';
   String get ping => _zh ? '延迟' : 'Ping';
   String get agentsTitle => _zh ? '代理' : 'Agents';
+  String agentsCount(int count) => _zh ? '$count 个代理' : '$count agents';
+  String agentsWorkingCount(int count) =>
+      _zh ? '$count 个在工作' : '$count working';
+  String agentsBlockedCount(int count) =>
+      _zh ? '$count 个在等输入' : '$count blocked';
   String agentsSummary(int total, int working) =>
       _zh ? '$total 个代理 · $working 个运行中' : '$total agents · $working working';
   String get details => _zh ? '详情' : 'Details';
@@ -270,6 +275,17 @@ class AppLocalizations implements UiLocalizations {
   String agentActionFailed(String error) =>
       _zh ? '操作失败：$error' : 'Failed: $error';
   String get agentTool => _zh ? '工具' : 'tool';
+  String agentToolSteps(int count) => _zh ? '$count 步' : '$count steps';
+  String agentTodoProgress(int done, int total) =>
+      _zh ? '$done/$total 已完成' : '$done/$total done';
+  String get agentScrollBottom => _zh ? '回到底部' : 'Jump to bottom';
+  String get agentStop => _zh ? '停止' : 'Stop';
+  String get agentWorking => _zh ? '正在工作…' : 'Working…';
+  String get agentBlocked => _zh ? '代理在等你的输入' : 'The agent needs your input';
+  String get agentReadScreen => _zh ? '读取屏幕' : 'Read screen';
+  String get keyEnter => _zh ? '回车' : 'Enter';
+  String get keyEscape => _zh ? 'Esc' : 'Esc';
+  String get agentSubagentsRunning => _zh ? '正在运行的子代理' : 'Subagents running';
 
   String get agentCommands => _zh ? '命令' : 'Commands';
   String get agentCommandsEmpty => _zh ? '没有匹配的命令' : 'No matching commands';

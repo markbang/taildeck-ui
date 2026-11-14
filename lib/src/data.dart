@@ -77,7 +77,12 @@ const appVersion = '0.2.10';
 const repoUrl = 'https://github.com/markbang/taildeck-ui';
 
 /// `?ssh=demo`: the canned session that shows the emulator without a tailnet.
-const demoNode = NodeItem(name: 'demo', ip: 'local', os: 'Terminal', online: true);
+const demoNode = NodeItem(
+  name: 'demo',
+  ip: 'local',
+  os: 'Terminal',
+  online: true,
+);
 
 const selfNode = NodeItem(
   name: 'pixel-9',

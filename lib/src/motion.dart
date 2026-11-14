@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/widgets.dart';
+import 'package:prism_ui/icons/icons.dart';
 import 'package:prism_ui/prism_ui.dart';
 
 /// One Material 3 expressive motion token: the spring Compose plays and the
@@ -32,17 +33,11 @@ MotionSpec _spring(double stiffness, double ratio, double seconds) =>
 /// little; 0.8/200 settles in 600 ms.
 final slowSpatial = _spring(200, 0.8, 0.60);
 
-/// Position over a short distance (fastSpatialSpec): 0.6/800, 360 ms.
-final fastSpatial = _spring(800, 0.6, 0.36);
-
 /// Fades and colors (defaultEffectsSpec): critically damped 1600, 230 ms.
 final fade = _spring(1600, 1, 0.23);
 
 /// Fades that leave quickly (fastEffectsSpec): critically damped 3800, 150 ms.
 final fadeFast = _spring(3800, 1, 0.15);
-
-/// Fades that linger (slowEffectsSpec): critically damped 800, 330 ms.
-final fadeSlow = _spring(800, 1, 0.33);
 
 /// Compose's `animateFloatAsState` default spring (`spring()`: no bounce,
 /// stiffness 1500), used for chevrons.
@@ -193,7 +188,10 @@ class _MotionSwitcherState extends State<MotionSwitcher>
   @override
   Widget build(BuildContext context) {
     final leaving = _leaving;
-    final enter = CurvedAnimation(parent: _controller, curve: slowSpatial.curve);
+    final enter = CurvedAnimation(
+      parent: _controller,
+      curve: slowSpatial.curve,
+    );
     return Stack(
       fit: StackFit.expand,
       children: [
@@ -284,9 +282,10 @@ class _PulsingDotState extends State<PulsingDot>
     duration: const Duration(milliseconds: 700),
   );
   late final _alpha = _controller.drive(
-    Tween<double>(begin: 0.35, end: 1).chain(
-      CurveTween(curve: Curves.easeInOut),
-    ),
+    Tween<double>(
+      begin: 0.35,
+      end: 1,
+    ).chain(CurveTween(curve: Curves.easeInOut)),
   );
 
   @override
@@ -336,5 +335,303 @@ class _PulsingDotState extends State<PulsingDot>
         ),
       ),
     );
+  }
+}
+
+/// Compose's `AnimatedVisibility`: the child fades in with the default effects
+/// spring, and optionally scales up from [scaleFrom] and expands its height
+/// with the slow spatial one. Leaving reverses both.
+class MotionVisibility extends StatefulWidget {
+  const MotionVisibility({
+    super.key,
+    required this.visible,
+    required this.child,
+    this.scaleFrom,
+    this.expand = false,
+    this.alignment = Alignment.topCenter,
+  });
+
+  final bool visible;
+  final Widget child;
+
+  /// Start scale on enter (Compose's `scaleIn(initialScale = ...)`); the exit
+  /// is a plain fade, as in the Kotlin app.
+  final double? scaleFrom;
+
+  /// Animate the height as well (Compose's `expandVertically` /
+  /// `shrinkVertically`).
+  final bool expand;
+
+  final AlignmentGeometry alignment;
+
+  @override
+  State<MotionVisibility> createState() => _MotionVisibilityState();
+}
+
+class _MotionVisibilityState extends State<MotionVisibility>
+    with TickerProviderStateMixin {
+  late final _effects = AnimationController(
+    vsync: this,
+    value: widget.visible ? 1 : 0,
+  )..addStatusListener(_onStatus);
+  late final _spatial = AnimationController(
+    vsync: this,
+    value: widget.visible ? 1 : 0,
+  );
+  late final _opacity = CurvedAnimation(
+    parent: _effects,
+    curve: fade.curve,
+    reverseCurve: fadeFast.curve,
+  );
+  late final _size = CurvedAnimation(
+    parent: _spatial,
+    curve: slowSpatial.curve,
+    reverseCurve: slowSpatial.curve,
+  );
+  late bool _present = widget.visible;
+
+  void _onStatus(AnimationStatus status) {
+    if (status != AnimationStatus.dismissed || widget.visible || !_present) {
+      return;
+    }
+    setState(() => _present = false);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _applyDurations();
+  }
+
+  @override
+  void didUpdateWidget(covariant MotionVisibility oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.visible == widget.visible) return;
+    _applyDurations();
+    if (widget.visible) {
+      setState(() => _present = true);
+      _effects.forward(from: 0);
+      _spatial.forward(from: 0);
+      return;
+    }
+    _effects.reverse();
+    _spatial.reverse();
+  }
+
+  void _applyDurations() {
+    final still = context.disableAnimations;
+    _effects.duration = still ? Duration.zero : fade.duration;
+    _spatial.duration = still ? Duration.zero : slowSpatial.duration;
+  }
+
+  @override
+  void dispose() {
+    _effects.dispose();
+    _spatial.dispose();
+    _opacity.dispose();
+    _size.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_present) return const SizedBox.shrink();
+    Widget child = FadeTransition(opacity: _opacity, child: widget.child);
+    final scale = widget.scaleFrom;
+    if (scale != null) {
+      child = ScaleTransition(
+        scale: Tween<double>(begin: scale, end: 1).animate(_opacity),
+        child: child,
+      );
+    }
+    if (widget.expand) {
+      child = SizeTransition(
+        sizeFactor: _size,
+        alignment: widget.alignment,
+        child: child,
+      );
+    }
+    return IgnorePointer(
+      ignoring: !widget.visible,
+      child: ExcludeSemantics(excluding: !widget.visible, child: child),
+    );
+  }
+}
+
+/// Compose's `AnimatedContent` with a slide: the incoming child slides in from
+/// a fraction of the height while it fades, the outgoing one slides the same
+/// way out.
+class SlideFadeSwitcher extends StatelessWidget {
+  const SlideFadeSwitcher({
+    super.key,
+    required this.child,
+    this.slide = 1 / 3,
+    this.alignment = Alignment.center,
+  });
+
+  final Widget child;
+
+  /// Fraction of the height both children travel.
+  final double slide;
+  final AlignmentGeometry alignment;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedSwitcher(
+      duration: motionDuration(context, slowSpatial),
+      switchInCurve: fade.curve,
+      switchOutCurve: Curves.easeOut,
+      layoutBuilder: (current, previous) =>
+          Stack(alignment: alignment, children: [...previous, ?current]),
+      transitionBuilder: (child, animation) => FadeTransition(
+        opacity: animation,
+        child: SlideTransition(
+          position: Tween<Offset>(
+            begin: Offset(0, slide),
+            end: Offset.zero,
+          ).animate(animation),
+          child: child,
+        ),
+      ),
+      child: child,
+    );
+  }
+}
+
+/// Compose's default `AnimatedContent` transition: the new child fades in and
+/// scales up from [scale], the old one fades out.
+class ScaleFadeSwitcher extends StatelessWidget {
+  const ScaleFadeSwitcher({
+    super.key,
+    required this.child,
+    this.scale = 0.92,
+    this.alignment = Alignment.topCenter,
+  });
+
+  final Widget child;
+  final double scale;
+  final AlignmentGeometry alignment;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedSwitcher(
+      duration: motionDuration(context, fade),
+      switchInCurve: fade.curve,
+      switchOutCurve: fadeFast.curve,
+      layoutBuilder: (current, previous) =>
+          Stack(alignment: alignment, children: [...previous, ?current]),
+      transitionBuilder: (child, animation) => FadeTransition(
+        opacity: animation,
+        child: ScaleTransition(
+          scale: Tween<double>(begin: scale, end: 1).animate(animation),
+          child: child,
+        ),
+      ),
+      child: child,
+    );
+  }
+}
+
+/// A chevron that turns over when a section opens, on Compose's
+/// `animateFloatAsState` default spring.
+class RotatingChevron extends StatelessWidget {
+  const RotatingChevron({
+    super.key,
+    required this.open,
+    this.size = 18,
+    this.color,
+  });
+
+  final bool open;
+  final double size;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(end: open ? 1 : 0),
+      duration: motionDuration(context, chevron),
+      curve: chevron.curve,
+      builder: (context, value, child) => Transform.rotate(
+        angle: (value + 0.5) * 3.141592653589793,
+        child: child,
+      ),
+      child: GlyphIcon(Glyphs.chevronForward, size: size, color: color),
+    );
+  }
+}
+
+/// The three dots that light in turn in the Kotlin app's working bar: 600 ms
+/// each, 160 ms apart, reversed.
+class InkDots extends StatefulWidget {
+  const InkDots({super.key, this.size = 6, this.color});
+
+  final double size;
+  final Color? color;
+
+  @override
+  State<InkDots> createState() => _InkDotsState();
+}
+
+class _InkDotsState extends State<InkDots> with SingleTickerProviderStateMixin {
+  static const _period = Duration(milliseconds: 1200);
+  static const _stagger = 160 / 1200;
+
+  late final _controller = AnimationController(vsync: this, duration: _period);
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (context.disableAnimations) {
+      _controller
+        ..stop()
+        ..value = 0;
+      return;
+    }
+    if (!_controller.isAnimating) _controller.repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tint = widget.color ?? context.colorScheme.primary;
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, _) {
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (var i = 0; i < 3; i++)
+              Padding(
+                padding: EdgeInsets.only(left: i == 0 ? 0 : 3),
+                child: Opacity(
+                  opacity: _alpha(_controller.value - i * _stagger),
+                  child: SizedBox.square(
+                    dimension: widget.size,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: tint,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+
+  /// A triangle wave: 0.25 → 1 → 0.25 over one period.
+  double _alpha(double t) {
+    final phase = (t % 1 + 1) % 1;
+    final wave = phase < 0.5 ? phase * 2 : (1 - phase) * 2;
+    return 0.25 + 0.75 * wave;
   }
 }

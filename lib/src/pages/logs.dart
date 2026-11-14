@@ -87,11 +87,13 @@ class _LogsPageState extends State<LogsPage> {
                   )
                 : SelectableText(
                     _logs,
-                    style: AppTextStyle.footnote.of(context).copyWith(
-                      fontFamily: 'DejaVuSansMono',
-                      fontSize: 11,
-                      height: 1.5,
-                    ),
+                    style: AppTextStyle.footnote
+                        .of(context)
+                        .copyWith(
+                          fontFamily: 'DejaVuSansMono',
+                          fontSize: 11,
+                          height: 1.5,
+                        ),
                   ),
           ),
         ),
