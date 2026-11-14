@@ -6,9 +6,6 @@ name: keyrow-record
 
 on:
   workflow_dispatch:
-  # Temporary: dispatch only reaches a workflow that is on the default branch.
-  push:
-    branches: [fix/terminal-keyboard-inset]
 
 permissions:
   contents: read
