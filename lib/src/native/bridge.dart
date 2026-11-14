@@ -149,6 +149,18 @@ abstract class NativeBridge {
   /// Models and reasoning levels reported by the agent in [pane].
   Future<String> herdrModels(String kind, String pane);
 
+  /// Prompt commands and skills an agent of [kind] can use in [cwd], as JSON.
+  Future<String> herdrCommands(String kind, String cwd);
+
+  /// Decoded bytes of an image a transcript referenced as `img:<id>`.
+  Future<Uint8List> herdrImage(String ref);
+
+  /// Copies [data] to the node as [name] and returns its path there.
+  Future<String> herdrUpload(String name, Uint8List data);
+
+  /// The transcript of a subagent started by tool call [callId] in [pane].
+  Future<String> herdrSubagent(String pane, String callId);
+
   Future<void> herdrClose();
 }
 

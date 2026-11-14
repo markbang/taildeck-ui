@@ -96,20 +96,41 @@ class HerdrMessage {
     this.text = '',
     this.name = '',
     this.summary = '',
+    this.output = '',
     this.error = false,
     this.pending = false,
     this.kind = '',
+    this.call = '',
+    this.images = const [],
+    this.queued = false,
+    this.background = false,
   });
 
   final String role;
   final String text;
   final String name;
   final String summary;
+
+  /// Tool output, when the agent recorded one.
+  final String output;
   final bool error;
   final bool pending;
   final String kind;
 
+  /// The agent's own tool call id; a `task` call names a subagent transcript.
+  final String call;
+
+  /// `img:<id>` refs (see [HerdrController.image]) or file paths on the node.
+  final List<String> images;
+
+  /// The agent took this prompt while it was working.
+  final bool queued;
+  final bool background;
+
   bool get isTool => role == 'tool' || kind.isNotEmpty && text.isEmpty;
+
+  /// A subagent call: its own transcript can be read from the pane's session.
+  bool get isSubagent => kind == 'task' && call.isNotEmpty;
 }
 
 /// The conversation herdr can read for a pane: a parsed session file, or the
@@ -150,9 +171,17 @@ class HerdrTranscript {
             text: item['text'] as String? ?? item['output'] as String? ?? '',
             name: item['name'] as String? ?? '',
             summary: item['summary'] as String? ?? item['input'] as String? ?? '',
+            output: item['output'] as String? ?? '',
             error: item['error'] == true,
             pending: item['pending'] == true,
             kind: item['kind'] as String? ?? '',
+            call: item['call'] as String? ?? '',
+            images: [
+              for (final ref in item['images'] as List? ?? const [])
+                if (ref is String && ref.isNotEmpty) ref,
+            ],
+            queued: item['queued'] == true,
+            background: item['background'] == true,
           ),
     ];
     return HerdrTranscript(
@@ -170,6 +199,66 @@ class HerdrTranscript {
           : 0,
     );
   }
+}
+
+/// A prompt command or skill the agent takes by typing.
+class HerdrCommand {
+  const HerdrCommand(this.name, this.description, this.source);
+
+  final String name;
+  final String description;
+
+  /// `builtin`, `command`, `prompt` or `skill`.
+  final String source;
+
+  static List<HerdrCommand> listOf(String raw) {
+    if (raw.isEmpty) return const [];
+    final decoded = jsonDecode(raw);
+    if (decoded is! List) return const [];
+    return [
+      for (final item in decoded)
+        if (item is Map && (item['name'] as String? ?? '').isNotEmpty)
+          HerdrCommand(
+            item['name'] as String,
+            item['description'] as String? ?? '',
+            item['source'] as String? ?? '',
+          ),
+    ];
+  }
+}
+
+/// A subagent's own transcript, with who it was and whether it finished.
+class HerdrSubagent {
+  const HerdrSubagent({
+    required this.transcript,
+    this.type = '',
+    this.description = '',
+    this.finished = false,
+  });
+
+  final HerdrTranscript transcript;
+  final String type;
+  final String description;
+  final bool finished;
+
+  static HerdrSubagent parse(String raw) {
+    final decoded = jsonDecode(raw);
+    final agent = decoded is Map<String, dynamic> ? decoded['agent'] : null;
+    return HerdrSubagent(
+      transcript: HerdrTranscript.parse(raw),
+      type: agent is Map ? agent['type'] as String? ?? '' : '',
+      description: agent is Map ? agent['description'] as String? ?? '' : '',
+      finished: agent is Map && agent['finished'] == true,
+    );
+  }
+}
+
+/// A prompt the phone holds until its agent stops working.
+class QueuedPrompt {
+  const QueuedPrompt(this.id, this.text);
+
+  final int id;
+  final String text;
 }
 
 class HerdrModel {
@@ -209,12 +298,27 @@ class HerdrController extends ChangeNotifier {
   bool _refreshing = false;
   Timer? _debounce;
 
+  final Map<String, List<HerdrCommand>> _commands = {};
+  final Map<String, DateTime> _commandsAt = {};
+  final Map<String, Uint8List> _images = {};
+  final Map<String, List<QueuedPrompt>> _queues = {};
+  final Set<String> _flushing = {};
+  int _queueSeq = 0;
+  String _queueError = '';
+
   HerdrLink get link => _link;
   String get detail => _detail;
   String get node => _node;
   List<HerdrAgent> get agents => List.unmodifiable(_agents);
   bool get available => _bridge != null;
   bool get ready => _link == HerdrLink.ready;
+
+  /// Why the last queued prompt could not be sent; empty once one lands.
+  String get queueError => _queueError;
+
+  /// Prompts held for [pane], oldest first.
+  List<QueuedPrompt> queued(String pane) =>
+      List.unmodifiable(_queues[pane] ?? const <QueuedPrompt>[]);
 
   Future<void> connect({
     required String node,
@@ -261,6 +365,12 @@ class HerdrController extends ChangeNotifier {
     _link = HerdrLink.idle;
     _agents = const [];
     _detail = '';
+    _queues.clear();
+    _flushing.clear();
+    _queueError = '';
+    _images.clear();
+    _commands.clear();
+    _commandsAt.clear();
     notifyListeners();
     await _bridge?.herdrClose();
   }
@@ -291,6 +401,11 @@ class HerdrController extends ChangeNotifier {
       ]..sort((a, b) => a.workspace.compareTo(b.workspace));
       _detail = '';
       notifyListeners();
+      for (final agent in _agents) {
+        if (agent.status.settled && queued(agent.paneId).isNotEmpty) {
+          unawaited(_flush(agent.paneId));
+        }
+      }
     } on Object catch (error) {
       _detail = _message(error);
       if (_link == HerdrLink.ready && _detail.contains('not connected')) {
@@ -360,6 +475,88 @@ class HerdrController extends ChangeNotifier {
   /// Switches the agent's model by sending its own `/model` command.
   Future<void> setModel(String pane, String model) =>
       prompt(pane, '/model $model');
+
+  /// Commands herdr reads from the node, cached for a minute per kind + cwd.
+  Future<List<HerdrCommand>> commands(String kind, String cwd) async {
+    final key = '$kind|$cwd';
+    final at = _commandsAt[key];
+    final cached = _commands[key];
+    if (at != null &&
+        cached != null &&
+        DateTime.now().difference(at) < const Duration(minutes: 1)) {
+      return cached;
+    }
+    final list = HerdrCommand.listOf(await _need().herdrCommands(kind, cwd));
+    _commands[key] = list;
+    _commandsAt[key] = DateTime.now();
+    return list;
+  }
+
+  /// Image bytes for a transcript ref; the last few refs stay in memory.
+  Future<Uint8List> image(String ref) async {
+    final cached = _images[ref];
+    if (cached != null) return cached;
+    final bytes = await _need().herdrImage(ref);
+    if (_images.length >= 24) _images.remove(_images.keys.first);
+    _images[ref] = bytes;
+    return bytes;
+  }
+
+  /// Copies a picked or dropped file to the node; the prompt references the
+  /// returned path.
+  Future<String> upload(String name, Uint8List data) =>
+      _need().herdrUpload(name, data);
+
+  Future<HerdrSubagent> subagent(String pane, String callId) async =>
+      HerdrSubagent.parse(await _need().herdrSubagent(pane, callId));
+
+  /// Holds [text] until [pane]'s agent settles. Sends right away when it
+  /// already has.
+  void enqueue(String pane, String text) {
+    final list = [...?_queues[pane], QueuedPrompt(++_queueSeq, text)];
+    _queues[pane] = list;
+    _queueError = '';
+    notifyListeners();
+    if (_statusOf(pane)?.settled == true) unawaited(_flush(pane));
+  }
+
+  QueuedPrompt? dequeue(String pane, int id) {
+    final list = _queues[pane] ?? const <QueuedPrompt>[];
+    final found = list.where((item) => item.id == id).firstOrNull;
+    if (found == null) return null;
+    final left = list.where((item) => item.id != id).toList();
+    if (left.isEmpty) {
+      _queues.remove(pane);
+    } else {
+      _queues[pane] = left;
+    }
+    notifyListeners();
+    return found;
+  }
+
+  /// One prompt per settle: the agent starts working again, the next waits.
+  Future<void> _flush(String pane) async {
+    if (_link != HerdrLink.ready || !_flushing.add(pane)) return;
+    try {
+      final next = queued(pane).firstOrNull;
+      if (next == null) return;
+      await prompt(pane, next.text);
+      dequeue(pane, next.id);
+      _queueError = '';
+    } on Object catch (error) {
+      _queueError = _message(error);
+    } finally {
+      _flushing.remove(pane);
+      notifyListeners();
+    }
+  }
+
+  HerdrStatus? _statusOf(String pane) {
+    for (final agent in _agents) {
+      if (agent.paneId == pane) return agent.status;
+    }
+    return null;
+  }
 
   Future<List<({String id, String label})>> workspaces() async {
     final bridge = _need();
