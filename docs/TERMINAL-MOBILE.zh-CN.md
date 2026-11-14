@@ -1,6 +1,6 @@
-# 手机上的终端：扩展键行
+# 手机上的终端：按键、手势与键盘
 
-软键盘没有 Esc、Ctrl、Alt、Tab 和方向键，所以每个手机终端都会自带一条扩展键。本文记录参考应用的做法、Taildeck 在 libghostty-vt 之上的实现，以及还没做的部分。
+软键盘没有 Esc、Ctrl、Alt、Tab 和方向键，所以每个手机终端都会自带一条扩展键，也都会在网格上放手势。本文记录参考应用的做法、Taildeck 在 libghostty-vt 之上的实现，以及还没做的部分。
 
 来源读取于 2026-11-14。下文里的**键行**指终端与软键盘之间那一条，**页**指键行里的一屏按键。
 
@@ -25,8 +25,13 @@
 | 翻页 | Termux：`extra-keys` 多行，滑到其余。JuiceSSH：弹出键盘左右滑 | 横向滑动翻页，另有可点的页码圆点，方便外接键盘和读屏 | 已实现 |
 | 自定义 | Termius：排序与自定义组。Termux：`extra-keys` 配置文件。Blink：`config` → Keyboard | 设置 → 终端 → 扩展键行：逐页勾选显示哪些键（同一个键只属于一页），可恢复默认，写入应用配置持久保存 | 已实现 |
 | 震动反馈 | JuiceSSH："Vibrate Device" | 每次按键触发 `HapticFeedback.lightImpact`，开关在 设置 → 终端 → "终端按键震动" | 已实现 |
-| 复制粘贴、选择 | Termius 与 Blink 都放在手势上 | 不在本次改动 | 后续 |
-| 手势快捷键（长按拖动当方向键、双击当 Tab） | Termius | 不在本次改动 | 后续 |
+| 长按连发 | 硬件方向键按住会自动重复 | 按住键行上的 ←、↑、↓、→ 会连发：380 毫秒后开始，之后每 70 毫秒一次；松手不再补发 | 已实现 |
+| 网格手势 | Termius 把手势放在网格上；Termux 靠在键行上滑 | 单指滑动发方向键：轴向由第一段位移决定，每 26 dp 一个键，每帧最多 3 个。设置 → 终端 → "滑动发送方向键" 可关闭，关闭后上下拖动改为翻看回滚 | 已实现 |
+| 选词 | Kotlin 的 `TerminalView` 长按选词；iOS 终端用双击 | 双击或长按选中手指下的词（走 `td_term_select`），两端各有一个可拖动的把手；在网格上拖动可移动远端，单击清除 | 已实现 |
+| 复制、粘贴与链接 | Kotlin 的 action mode 有复制和粘贴；Termius 与 Blink 都放在选区上 | 选区上方的工具条：复制（`td_term_selection_text` → 系统剪贴板）、整段选区是一个 http(s) 链接时出现"打开链接"、粘贴（`td_term_encode_paste`，尊重 bracketed paste）。输入行右侧另有粘贴按钮 | 已实现 |
+| 缩放 | Blink：在网格上捏合 | 捏合改变网格字号（8–24 pt）并持久保存；设置 → 终端 显示同一数值，可点 A− / A+ | 已实现 |
+| 键盘与旋转 | — | 软键盘弹出/收起、旋转都会改变网格大小，从而同时调整模拟器（`td_term_resize`）和 SSH PTY；行列跟着单元格算，光标始终在键行之上。高度不足 420 dp 的横屏会收起快捷命令条 | 已实现 |
+| 硬件键盘 | Blink 接了键盘就隐藏 Smart Keys | Ctrl、Alt、Meta 组合键和方向键、Esc、Tab 都从输入行的焦点节点走 `td_term_encode_key`。Android 报告接了物理键盘（`Configuration.keyboard`）时键行隐藏，除非在 设置 → 终端 里强制保留，或软键盘正在弹出。iOS 与桌面维持现状：桌面一直隐藏，iOS 无法探测 | 已实现 |
 | 片段、会话、自定义按键序列 | Termius snippets、Blink Snips | 不在本次改动 | 后续 |
 
 ## 来源
@@ -37,3 +42,6 @@
 - JuiceSSH 英文文案（弹出键盘含 Ctrl/Alt/Tab、右滑自动补全、按键震动、Alt 发 Esc）：<https://github.com/Sonelli/juicessh-translations/blob/master/en_GB/strings.xml> — 应用已停止维护，`juicessh.com` 现在是停放域名，其字符串资源是仅存的一手材料
 - Termux，*Touch Keyboard* — 扩展键行、`extra-keys` 多页、弹出键、`extra-keys-style`：<https://wiki.termux.com/wiki/Touch_Keyboard>
 - Flutter `HapticFeedback.lightImpact`：<https://api.flutter.dev/flutter/services/HapticFeedback/lightImpact.html>
+- Termius，*Gestures* — 网格上的双击、长按与滑动：<https://docs.termius.com/terminal/mobile-terminal>
+- Flutter `ScaleGestureRecognizer`（捏合与单指滑动都走它）：<https://api.flutter.dev/flutter/gestures/ScaleGestureRecognizer-class.html>
+- Android `Configuration.keyboard` — 键行读取的物理键盘位：<https://developer.android.com/reference/android/content/res/Configuration#keyboard>

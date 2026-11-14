@@ -172,6 +172,23 @@ edit_keys() {
 
 install_app "$apk" || exit 0
 
+# The emulator reports a hardware keyboard, which now hides the row; the
+# recording needs it on screen.
+enable_row() {
+  local point x y
+  launch "taildeck://preview/?preview=1&tab=3&lang=en"
+  if point=$(scroll_to 'Key row with a hardware keyboard'); then
+    read -r x y <<< "$point"
+    adb shell input tap "$x" "$y" > /dev/null 2>&1 || true
+    sleep 2
+    note "key row with a hardware keyboard: kept on for the recording"
+  else
+    note "key row with a hardware keyboard: row not found"
+  fi
+}
+
+enable_row
+
 # ---- 1. the bar, and the soft keyboard under it -------------------------
 launch "$demo_url"
 if ui has 'Extra key row' > /dev/null 2>&1; then

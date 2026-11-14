@@ -195,8 +195,12 @@ class _TerminalPageState extends State<TerminalPage>
     if (event is KeyUpEvent) return KeyEventResult.handled;
     final mods = ghosttyModsOf(HardwareKeyboard.instance);
     final text = event.character;
-    // Plain printable keys go through the text field, which encodes them.
-    if (text != null && text.isNotEmpty && mods & ~GhosttyMods.shift == 0) {
+    // Printable keys go through the text field, which encodes them. Esc, Tab
+    // and Backspace also carry a control character, so they must not: their
+    // shortcuts would pop the page or edit the keystroke buffer.
+    final printable =
+        text != null && text.isNotEmpty && text.codeUnitAt(0) >= 0x20;
+    if (printable && mods & ~GhosttyMods.shift == 0) {
       return KeyEventResult.ignored;
     }
     final encoded = session.term.encodeKey(ghosttyKeyOf(event), mods);
