@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Cold-start smoke test for a release APK on a running emulator: fresh install,
 # launch, wait, then fail on a dead process or an AndroidRuntime crash.
-# Usage: tool/smoke_android.sh <apk> [application-id] [out-dir] [launcher-label]
+# Usage: tool/smoke_android.sh <apk> [application-id] [out-dir]
 set -euo pipefail
 
 apk=${1:?usage: tool/smoke_android.sh <apk> [application-id] [out-dir]}
@@ -63,19 +63,11 @@ fi
 
 echo "ok: $app alive after ${wait_s}s with no crash" | tee -a "$out/summary.txt"
 
-# Best-effort evidence for the launcher entry: home, the recents card and the
-# app drawer filtered by the label.
-label=${4:-Taildeck}
-adb shell input keyevent KEYCODE_HOME > /dev/null 2>&1 || true
-sleep 2
-adb exec-out screencap -p > "$out/launcher.png" || true
+# Best-effort evidence for the installed identity: the system's app info page
+# shows the launcher icon and label, recents shows the running app.
+adb shell am start -a android.settings.APPLICATION_DETAILS_SETTINGS -d "package:$app" > /dev/null 2>&1 || true
+sleep 3
+adb exec-out screencap -p > "$out/appinfo.png" || true
 adb shell input keyevent KEYCODE_APP_SWITCH > /dev/null 2>&1 || true
 sleep 3
 adb exec-out screencap -p > "$out/recents.png" || true
-adb shell input keyevent KEYCODE_HOME > /dev/null 2>&1 || true
-sleep 1
-adb shell input swipe 540 1900 540 300 300 > /dev/null 2>&1 || true
-sleep 2
-adb shell input text "$label" > /dev/null 2>&1 || true
-sleep 2
-adb exec-out screencap -p > "$out/drawer.png" || true
