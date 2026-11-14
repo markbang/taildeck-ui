@@ -49,9 +49,9 @@ named; **Missing** = not implemented. The evidence column says which clip in
 | 7 | `HomeScreen.kt:152` | Tab switch: slide 1/8 of the width and cross-fade | slow spatial in, fast spatial out | `shell.dart:172` + `_TabPage` (`shell.dart:646`) | 已对齐 | `flutter-tabs.mp4` |
 | 8 | `LoginScreen.kt:162` | Login stage swap: fade + vertical slide of 1/6 + size transform | slow spatial | `login.dart:526` `_StageSwap` | 已对齐 | `flutter-start.mp4` |
 | 9 | `LoginScreen.kt:129` | The advanced section expands and shrinks | default specs | `login.dart:445` `ExpandVisibility` | 已对齐 | `login-expand.mp4` (Kotlin | Flutter) |
-| 10 | `NodeScreen.kt:183` | The ping result row expands and fades in | slow spatial + fade | `node_detail.dart:265` `ExpandVisibility` | 已对齐 | not recordable (no peer to ping) |
-| 11 | `NodeScreen.kt:184` | The ping text cross-fades between states | fade / fast effects | `node_detail.dart:619` `FadeThrough` | 已对齐 | not recordable (no peer to ping) |
-| 12 | `NodeScreen.kt:224` | The scan result joins the list and resizes | animateItem placement + `animateContentSize(Motion.slow())` | `node_detail.dart:276` `PlacementVisibility` + `AnimatedContentSize` | 已对齐 | not recorded: the row only exists once a scan finds a port, which needs a tailnet peer |
+| 10 | `NodeScreen.kt:183` | The ping result row expands and fades in | slow spatial + fade | `node_detail.dart:265` `ExpandVisibility` | 已对齐 | `content-size.mp4` (Kotlin | Flutter) |
+| 11 | `NodeScreen.kt:184` | The ping text cross-fades between states | fade / fast effects | `node_detail.dart:619` `FadeThrough` | 已对齐 | `content-size.mp4` |
+| 12 | `NodeScreen.kt:224` | The scan result joins the list and resizes | animateItem placement + `animateContentSize(Motion.slow())` | `node_detail.dart:276` `PlacementVisibility` + `AnimatedContentSize` | 已对齐 | `scan-row.mp4` (the peer answers on a port, the row joins the list) |
 | 13 | `TerminalScreen.kt:273` | The SSH status subtitle cross-fades | fade / fast effects | `terminal.dart:585` `FadeThrough` | 已对齐 | needs a tailnet |
 | 14 | `TerminalScreen.kt:279` | The reconnect action appears with a fade and scales from 0.8 | default fade | `terminal.dart:598` `MotionVisibility` | 已对齐 | needs a tailnet |
 | 15 | `TerminalScreen.kt:282` | The agents action appears with a fade and scales from 0.6 | fast effects | `terminal.dart:614` `MotionVisibility` | 已对齐 | needs a tailnet |
@@ -64,7 +64,7 @@ named; **Missing** = not implemented. The evidence column says which clip in
 | 22 | `AgentsUi.kt:749` | The composer swaps to the blocked panel with a vertical slide of 1/3 | default specs | `agent_chat.dart:858` `SlideFadeSwitcher` | 已对齐 | needs a live agent |
 | 23 | `AgentsUi.kt:845` | The scroll-to-bottom button fades and scales in | default fade | `agent_chat.dart:1700` `_ScrollToBottom` | 已对齐 | needs a live agent |
 | 24 | `AgentExtras.kt:518` | The subagent count chip fades in above the composer | default fade | `agent_chat.dart:1784` `MotionVisibility` in `_WorkingBar` | 已对齐 | needs a live agent |
-| 25 | `AgentExtras.kt:217`, `:254`, `:324`, `AgentTimeline.kt:246`, `:448`, `AgentsUi.kt:765`, `:982`, `SettingsScreen.kt:94`, `NodeScreen.kt:224` | Content grows and shrinks with the layout: the composer panel, tool groups, todos, command output, expandable cards, the settings page and the scan block | slow spatial | `motion.dart:75` `AnimatedContentSize` in each of those (`agent_chat.dart` composer + `_ToolGroup` + `_TodoTrack` + `_ThinkingCard` + `_CommandOutput`, `settings.dart` page body, `node_detail.dart` scan, `login.dart`) | 已对齐 | `login-expand.mp4` (the login section); the chat and settings containers need a signed-in agent session |
+| 25 | `AgentExtras.kt:217`, `:254`, `:324`, `AgentTimeline.kt:246`, `:448`, `AgentsUi.kt:765`, `:982`, `SettingsScreen.kt:94`, `NodeScreen.kt:224` | Content grows and shrinks with the layout: the composer panel, tool groups, todos, command output, expandable cards, the settings page and the scan block | slow spatial | `motion.dart:75` `AnimatedContentSize` in each of those (`agent_chat.dart` composer + `_ToolGroup` + `_TodoTrack` + `_ThinkingCard` + `_CommandOutput`, `settings.dart` page body, `node_detail.dart` scan, `login.dart`) | 已对齐 | `login-expand.mp4` (the login section), `content-size.mp4` (the node page's growing block); the chat containers need a signed-in agent session |
 | 26 | `Expressive.kt:198`, `HomeScreen.kt:272`, `AgentsUi.kt:289`, `:711`, `NodeScreen.kt:224` | Rows animate into place and collapse when removed | animateItem (fade + placement spring) | `controls.dart:139` `AnimatedGroupCard` (`motion.dart:48` placement) | 已对齐 | no clip shows a row joining or leaving |
 | 27 | `AgentTimeline.kt:244`, `:445` | Tool-group and todo chevrons rotate 180° | `animateFloatAsState` default | `motion.dart:541` `RotatingChevron` (`agent_chat.dart:1887`, `:2146`, `:2251`) | 已对齐 | needs a live agent |
 | 28 | `AgentsUi.kt:977` | Expandable card: the chevron rotates and the content resizes | default | `RotatingChevron` + `AnimatedContentSize` | 已对齐 | needs a live agent |
@@ -76,57 +76,70 @@ named; **Missing** = not implemented. The evidence column says which clip in
 | 34 | `AgentsUi.kt:174` | The agent status dot pulses 0.35 → 1 while working or blocked | 700 ms reverse | `motion.dart:262` `PulsingDot` via `StatusPill` (`foundation.dart:315`, `agents.dart:504`) | 已对齐 | needs a live agent |
 | 35 | `AgentExtras.kt:486` | Three “typing” dots light in turn while an agent works | 600 ms, 160 ms stagger, reverse | `motion.dart:570` `InkDots` in `_WorkingBar` (`agent_chat.dart:1769`) | 已对齐 | needs a live agent |
 | 36 | `Common.kt:31` | The node status dot colour animates between online and offline | default effects | `PulsingDot` colour tween (`motion.dart:262`) | 已对齐 | no clip changes a node’s state |
-| 37 | `Common.kt:112`, `HomeScreen.kt:186`, `AgentsUi.kt:246` | Pull to refresh: the contained dot morphs with the pull and spins while the refresh runs, over an 80 dp threshold (half the drag) and at least 600 ms | Material 3 pull-to-refresh | `pull_to_refresh.dart:16` `PullToRefresh` (`foundation.dart`) | 已对齐 | `refresh.mp4` |
-| 38 | every `clickable`/`Surface(onClick)` | Bounded ink ripple from the touch point, drifting to the centre, plus the 10 % state layer | radius 0.3 × longest side → half the diagonal + 10 dp over 225 ms `fastOutSlowIn`; alpha in 75 ms, out 150 ms, linear; layer in 15 ms | `ripple.dart:16` `PressRipple` (prism `PressSurface`, `PressRegion`) | 已对齐 | `press.mp4` |
+| 37 | `Common.kt:112`, `HomeScreen.kt:186`, `AgentsUi.kt:246` | Pull to refresh: the contained dot morphs with the pull and spins while the refresh runs, over an 80 dp threshold (half the drag) and at least 600 ms | Material 3 pull-to-refresh | `pull_to_refresh.dart:16` `PullToRefresh` (`foundation.dart`) | 已对齐 | `pull-refresh.mp4` |
+| 38 | every `clickable`/`Surface(onClick)` | Bounded ink ripple from the touch point, drifting to the centre, plus the 10 % state layer | radius 0.3 × longest side → half the diagonal + 10 dp over 225 ms `fastOutSlowIn`; alpha in 75 ms, out 150 ms, linear; layer in 15 ms | `ripple.dart:16` `PressRipple` (prism `PressSurface`, `PressRegion`) | 已对齐 | `ripple.mp4` (a dock item held: the ink and its state layer) |
 | 39 | every `IconButton(shapes = …)`, `Button(shapes = …)` | Expressive press shape: the container's corners squish from a pill to `CornerSmall` (8 dp) | default effects spring (230 ms) | prism `PressSurface(squish: true)` (`card_surface.dart` `_shapeAt`), `controls.dart:12` `PressSquish` | 已对齐 | `press.mp4` |
 | 40 | `AgentsUi.kt:1070` | Long-press send-now fires a long-press haptic | — | `agent_chat.dart:268` (`HapticFeedback.mediumImpact`) | 已对齐 | needs a live agent |
 | 41 | `TerminalView.kt:382` | Long-press selects a word and fires a long-press haptic | — | `term_view.dart:149` `_selectWord` (native `td_term_select`) | 已对齐 | needs an SSH session |
 | 42 | `TerminalView.kt:603` | The terminal bell fires a key-tap haptic | — | `terminal.dart:225` (`TermMeta.effects` bit 0 → `selectionClick`) | 已对齐 | needs an SSH session |
-| 43 | `AgentExtras.kt` sheets, `AgentDialogs.kt` | Bottom sheets rise from the bottom edge over the scrim; dialogs scale up from 0.8 while they fade | sheet: default spatial in (440 ms), fast effects out (150 ms); dialog: default spatial in, fast effects out | `bottom_sheet.dart:10` `showMotionSheet`; prism `AlertMotionRouteMixin` | 已对齐 | `sheet.mp4` (Flutter); the Kotlin sheets all live behind the agent chat, which needs herdr |
-| 44 | `AgentsUi.kt:474`, `:501`, `:531`, `:589`, `:761`, `WebScreen.kt:135` | Snackbar fades in and scales up from 0.8, waits 4 s, fades away, over every action that reports | fast effects (150 ms) fade, fast spatial (410 ms) scale | `widgets/snackbar.dart:10` `showMotionSnack` (`agent_chat.dart`, `web_view.dart`) | 已对齐 | `snackbar.mp4` (Flutter); the Kotlin snackbars report agent actions (herdr) or a web download, neither reachable from the login screen |
+| 43 | `AgentExtras.kt` sheets, `AgentDialogs.kt` | Bottom sheets rise from the bottom edge over the scrim; dialogs scale up from 0.8 while they fade | sheet: default spatial in (440 ms), fast effects out (150 ms); dialog: default spatial in, fast effects out | `bottom_sheet.dart:10` `showMotionSheet`; prism `AlertMotionRouteMixin` | 已对齐 | `sheet.mp4`: the key modal (this build's sheet beside the dialog the Kotlin app opens for the same action); the Kotlin sheets live behind the agent chat |
+| 44 | `AgentsUi.kt:474`, `:501`, `:531`, `:589`, `:761`, `WebScreen.kt:135` | Snackbar fades in and scales up from 0.8, waits 4 s, fades away, over every action that reports | fast effects (150 ms) fade, fast spatial (410 ms) scale | `widgets/snackbar.dart:10` `showMotionSnack` (`agent_chat.dart`, `web_view.dart`) | 已对齐 | no pair: the Kotlin snackbars report agent actions (herdr) or a web download, this build's report agent actions or a page that cannot open in the browser; no single gesture reaches both |
 
 Count: 44 effects, 44 已对齐, 0 Partial, 0 Missing.
 
 ## Evidence
 
 `docs/motion/` holds the clips. Two capture paths, because the Android
-emulator renders with SwiftShader and its encoder drops most frames while the
-GPU is busy:
+emulator renders with SwiftShader and its encoder keeps only a handful of
+frames per second while the screen animates:
 
 - `tool/motion_record.sh` (manual workflow `motion-record.yml`) records the
   Kotlin v0.1.0 APK and this build on the same emulator and stacks them,
-  Kotlin on the left, this build on the right. The workflow starts Tailscale's
-  own `testcontrol` control plane (with its DERP relay) on the runner and hands
-  the script `http://10.0.2.2:8080` plus an auth key, so both apps can sign in
-  and the screens behind login become recordable; `testcontrol` accepts any
-  key.
+  Kotlin on the left, this build on the right. The workflow runs
+  `tool/motion/control`, a copy of Tailscale's own `testcontrol` that reports
+  every peer online (both apps gate Scan on it), and hands the script
+  `http://10.0.2.2:8080` plus an auth key, so both apps sign in and the screens
+  behind login become recordable. It also runs `tool/motion/peer`, a `tsnet`
+  node that serves a page on port 3000, so the node page has a live peer to
+  open, ping, scan and pull; the relay port is reversed into the emulator, so a
+  relay-only path still carries the traffic.
 - `tool/motion_web.py` records this build's web preview with Playwright at
   25 fps, which keeps every frame of the animation.
 
+A clip therefore shows the sequence of an effect, not every intermediate
+frame: the encoder drops frames, and a 225 ms ripple can land between two of
+them.
+
 | Clip | What it shows |
 | --- | --- |
+| `ripple.mp4` | Kotlin / Flutter: a dock item held, the bounded ink and its 10 % state layer |
+| `press.mp4` | Kotlin / Flutter: the primary button held, its pill squashing to CornerSmall |
+| `content-size.mp4` | Kotlin / Flutter: Ping, and the result block growing in under the buttons |
+| `scan-row.mp4` | Kotlin / Flutter: Scan ports, and the open port joining the list and resizing it |
+| `pull-refresh.mp4` | Kotlin / Flutter: the node list pulled past the threshold, the contained dot spinning while the refresh runs |
+| `sheet.mp4` | Kotlin / Flutter: Import key — this build's key sheet rising over the scrim, the dialog the Kotlin app opens for the same action |
 | `login-expand.mp4` | Kotlin / Flutter: the advanced section expanding, one gesture each |
 | `loading.mp4` | Kotlin / Flutter: Sign in pressed, and the loading dot that follows |
-| `press.mp4` | Kotlin / Flutter: a press and hold on the same control, ripple and pressed shape |
 | `flutter-login-expand.mp4` | This build: the auth-key section expanding (fade + size) |
 | `flutter-tabs.mp4` | This build: nodes → services → agents → nodes, sliding 1/8 and cross-fading |
 | `flutter-detail.mp4` | This build: node page sliding in from 1/5 and popping back |
 | `flutter-start.mp4` | This build: the login stage swap (fade + vertical slide of 1/6) |
 
-The signed-in rows were recorded when the control plane came up; the ones that
-need an agent session (chat, sheets, snackbars, herdr, SSH) are marked with the
-evidence they would need instead of a clip, because they also need a herdr or
-sshd peer, which no CI machine provides.
+The rows that need an agent session (chat, herdr, SSH) are marked with the
+evidence they would need instead of a clip, because that needs a herdr or sshd
+peer, which no CI machine provides.
 
 ### What could not be recorded
 
+- The snackbar pair. The Kotlin app shows its Material snackbar only in the
+  agent screens (herdr) and on a web-view download; this build shows its own
+  in the agent chat and when a page cannot open in the browser. No single
+  gesture reaches a snackbar in both apps, and neither trigger sits on the
+  login or settings screen: there the Kotlin app reports with a Toast and this
+  build with an inline notice.
 - Everything that needs an agent session: herdr panels, chat, the bottom sheets
   that only the agent screens open, and the snackbars that report agent
-  actions. `testcontrol` gives the apps a control plane, not an sshd or an
-  agent, so those screens stay unreachable from CI.
-- The web view's snackbar: it needs a service page that offers a download.
-- Port scan: `testcontrol`'s nodes have no services, so a scan finds nothing
-  and the result row never appears.
+  actions. The control plane gives the apps a tailnet, not an sshd or an agent.
 
 ## Re-recording
 
@@ -136,6 +149,9 @@ python3 tool/motion_web.py                         # web clips, needs the build 
 ```
 
 `tool/motion_record.sh <flutter.apk> <kotlin.apk>` also runs on any attached
-device; it needs `adb`, `ffmpeg` and a device with animations at scale 1. It
-finds every target through `uiautomator dump` right before its clip, so the
-device must use the English locale and be free of system dialogs.
+device; it needs `adb`, `ffmpeg`, a control server, the peer from
+`tool/motion/peer` and a device with animations at scale 1. It finds every
+target through `uiautomator dump` right before its clip, so the device must use
+the English locale and be free of system dialogs. A clip that comes back empty
+or shorter than asked is retried up to three times; `summary.txt` lists what
+was verified and what a clip could not show.
