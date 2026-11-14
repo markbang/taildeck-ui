@@ -129,12 +129,22 @@ ctrl_c() { # arm Ctrl, then type a letter
   sleep 2.5
 }
 
+drag() { # a finger drag with real move steps, which input swipe lacks
+  local y=$1 step start
+  start=$(dp 330)
+  adb shell input motionevent DOWN "$start" "$y" > /dev/null 2>&1 || return 1
+  for step in 300 270 240 210 180 150 120 90; do
+    adb shell input motionevent MOVE "$(dp "$step")" "$y" > /dev/null 2>&1 || true
+  done
+  adb shell input motionevent UP "$(dp 70)" "$y" > /dev/null 2>&1 || true
+}
+
 swipe_pages() { # one page per swipe, twice
   read -r _ y <<< "$ctrl"
-  adb shell input swipe "$(dp 330)" "$y" "$(dp 70)" "$y" 450 > /dev/null 2>&1 || true
-  sleep 1.5
-  adb shell input swipe "$(dp 330)" "$y" "$(dp 70)" "$y" 450 > /dev/null 2>&1 || true
-  sleep 1.5
+  drag "$y"
+  sleep 1.6
+  drag "$y"
+  sleep 1.6
 }
 
 toggle_haptics() {
@@ -196,7 +206,15 @@ if [ -n "$ctrl" ]; then
   if ui has 'page 3 of 3' > /dev/null 2>&1; then
     note "keybar-pages: verified (two swipes reached page 3)"
   else
-    note "keybar-pages: swipe missed, stepping with the page dots"
+    read -r _ page_y <<< "$ctrl"
+    adb shell input swipe "$(dp 330)" "$page_y" "$(dp 70)" "$page_y" 900 > /dev/null 2>&1 || true
+    sleep 1.2
+    adb shell input swipe "$(dp 330)" "$page_y" "$(dp 70)" "$page_y" 900 > /dev/null 2>&1 || true
+    sleep 1.2
+    ui has 'page 3 of 3' > /dev/null 2>&1 && note "keybar-pages: verified (input swipe reached page 3)"
+  fi
+  if ! ui has 'page 3 of 3' > /dev/null 2>&1; then
+    note "keybar-pages: swipes missed, stepping with the page dots"
     for _ in 1 2; do
       point=$(ui tap 'Key row page') || point=""
       [ -n "$point" ] && adb shell input tap $point > /dev/null 2>&1
@@ -224,7 +242,14 @@ if [ -n "$haptics" ]; then
 else
   note "haptics: no row found"
 fi
-row=$(scroll_to 'Extra key row') || row=""
+row=$(ui tap 'Extra key row') || row=""
+if [ -z "$row" ]; then
+  for _ in 1 2 3; do
+    adb shell input swipe 540 800 540 1500 400 > /dev/null 2>&1 || true
+    sleep 1
+    row=$(ui tap 'Extra key row') && break
+  done
+fi
 if [ -n "$row" ]; then
   record keyrow-editor 9 edit_keys
   shot keyrow-editor
