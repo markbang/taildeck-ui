@@ -70,7 +70,7 @@ class NodeItem {
 const tailnet = 'markbang.github';
 
 /// Shown in Settings; keep in step with `version:` in pubspec.yaml.
-const appVersion = '0.2.9';
+const appVersion = '0.2.10';
 const repoUrl = 'https://github.com/markbang/taildeck-ui';
 
 /// `?ssh=demo`: the canned session that shows the emulator without a tailnet.
