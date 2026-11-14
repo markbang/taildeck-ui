@@ -14,6 +14,7 @@ import '../webview/web_page.dart';
 import '../widgets/controls.dart';
 import '../widgets/foundation.dart';
 import 'service_sheet.dart';
+import '../widgets/wavy.dart';
 
 class ServicesPage extends StatefulWidget {
   const ServicesPage({super.key});
@@ -36,7 +37,11 @@ class _ServicesPageState extends State<ServicesPage> {
     setState(() => _notice = AppLocalizations.of(context).serviceSaved);
   }
 
-  Future<void> _editService(ServiceStore store, List<NodeItem> nodes, Service service) async {
+  Future<void> _editService(
+    ServiceStore store,
+    List<NodeItem> nodes,
+    Service service,
+  ) async {
     final edited = await showServiceSheet(
       context,
       nodes: nodes,
@@ -83,7 +88,8 @@ class _ServicesPageState extends State<ServicesPage> {
 
   Future<void> _openService(Service service) async {
     final l10n = AppLocalizations.of(context);
-    final fallback = BackendScope.of(context).openInApp && !inAppWebViewSupported;
+    final fallback =
+        BackendScope.of(context).openInApp && !inAppWebViewSupported;
     final result = await openService(context, service);
     if (!mounted) return;
     setState(() {
@@ -152,7 +158,7 @@ class _ServicesPageState extends State<ServicesPage> {
                     trailing: _deleting == service.id
                         ? const SizedBox.square(
                             dimension: 18,
-                            child: ActivityIndicator(size: 18),
+                            child: WavyActivityIndicator(size: 18),
                           )
                         : PopupAnchor(
                             targetBuilder: (open) => IconButton(
@@ -172,9 +178,8 @@ class _ServicesPageState extends State<ServicesPage> {
                                 PopupMenuItem(
                                   label: l10n.delete,
                                   danger: true,
-                                  onPressed: () => unawaited(
-                                    _deleteService(store, service),
-                                  ),
+                                  onPressed: () =>
+                                      unawaited(_deleteService(store, service)),
                                 ),
                               ],
                             ),
@@ -206,11 +211,13 @@ class _NodeHeading extends StatelessWidget {
         children: [
           Text(
             name,
-            style: AppTextStyle.footnote.of(context, emphasized: true).copyWith(
-              color: node?.online == false
-                  ? scheme.onSurfaceVariant
-                  : scheme.onSurface,
-            ),
+            style: AppTextStyle.footnote
+                .of(context, emphasized: true)
+                .copyWith(
+                  color: node?.online == false
+                      ? scheme.onSurfaceVariant
+                      : scheme.onSurface,
+                ),
           ),
           if (node != null) ...[
             const SizedBox(width: 8),

@@ -111,9 +111,7 @@ String? sshPublicKeyOf(String pem) {
   }
 
   // ciphername, kdfname, kdfoptions, then the unencrypted public key blob.
-  if (readString() == null ||
-      readString() == null ||
-      readString() == null) {
+  if (readString() == null || readString() == null || readString() == null) {
     return null;
   }
   if (offset + 4 > bytes.length) return null;

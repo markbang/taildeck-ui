@@ -10,9 +10,38 @@ const httpsPorts = {443, 5001, 8006, 8443, 9443, 10000};
 
 /// The ports Taildeck's Android app probes on a node.
 const commonPorts = [
-  80, 443, 81, 2283, 3000, 3001, 5000, 5001, 5050, 5244, 5678, 6080, 7878,
-  8000, 8006, 8080, 8081, 8088, 8096, 8123, 8181, 8384, 8443, 8888, 8989,
-  9000, 9090, 9091, 9443, 10000, 19999, 32400,
+  80,
+  443,
+  81,
+  2283,
+  3000,
+  3001,
+  5000,
+  5001,
+  5050,
+  5244,
+  5678,
+  6080,
+  7878,
+  8000,
+  8006,
+  8080,
+  8081,
+  8088,
+  8096,
+  8123,
+  8181,
+  8384,
+  8443,
+  8888,
+  8989,
+  9000,
+  9090,
+  9091,
+  9443,
+  10000,
+  19999,
+  32400,
 ];
 
 /// One saved service; [url] is the tailnet URL (`http://nas:5001/`) and the
@@ -180,7 +209,10 @@ class ServicesScope extends InheritedNotifier<ServiceStore> {
 /// not running (port 0), which the caller explains inline.
 String? gatewayUrl(Service service, int gatewayPort) {
   final uri = service.uri;
-  if (gatewayPort <= 0 || uri == null || uri.host.isEmpty || service.port <= 0) {
+  if (gatewayPort <= 0 ||
+      uri == null ||
+      uri.host.isEmpty ||
+      service.port <= 0) {
     return null;
   }
   final label =

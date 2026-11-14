@@ -83,9 +83,10 @@ class _EntryRowState extends State<EntryRow> {
         final shown = [
           if (filtering)
             for (final value in widget.suggestions)
-              if (value.toLowerCase().contains(typed)) value
-          else
-            ...widget.suggestions,
+              if (value.toLowerCase().contains(typed))
+                value
+              else
+                ...widget.suggestions,
         ];
         return PopupMenu(
           items: [

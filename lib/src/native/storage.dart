@@ -40,8 +40,7 @@ class StoredConfig {
     sshPorts: switch (json['sshPorts']) {
       final Map<String, dynamic> map => {
         for (final entry in map.entries)
-          if (entry.value case final num port
-              when port >= 1 && port <= 65535)
+          if (entry.value case final num port when port >= 1 && port <= 65535)
             entry.key: port.toInt(),
       },
       _ => const {},

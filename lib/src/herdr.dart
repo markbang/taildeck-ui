@@ -133,6 +133,28 @@ class HerdrMessage {
   bool get isSubagent => kind == 'task' && call.isNotEmpty;
 }
 
+/// One item of the agent's own task list (`TodoWrite` / `update_plan`).
+class HerdrTodo {
+  const HerdrTodo({required this.text, required this.status});
+
+  final String text;
+
+  /// pending, in_progress or completed.
+  final String status;
+
+  bool get done => status == 'completed';
+  bool get current => status == 'in_progress';
+
+  static List<HerdrTodo> parse(Object? raw) => [
+    for (final item in raw as List? ?? const [])
+      if (item is Map<String, dynamic>)
+        HerdrTodo(
+          text: item['text'] as String? ?? '',
+          status: item['status'] as String? ?? '',
+        ),
+  ];
+}
+
 /// The conversation herdr can read for a pane: a parsed session file, or the
 /// pane's screen text when the agent keeps no readable session.
 class HerdrTranscript {
@@ -145,6 +167,7 @@ class HerdrTranscript {
     this.effort = '',
     this.contextUsed = 0,
     this.contextWindow = 0,
+    this.todos = const [],
   });
 
   final bool screenMode;
@@ -155,6 +178,9 @@ class HerdrTranscript {
   final String effort;
   final int contextUsed;
   final int contextWindow;
+
+  /// The agent's task list, rewritten in full on every update.
+  final List<HerdrTodo> todos;
 
   bool get isEmpty => screenMode ? screen.trim().isEmpty : messages.isEmpty;
 
@@ -170,7 +196,8 @@ class HerdrTranscript {
             role: item['role'] as String? ?? 'assistant',
             text: item['text'] as String? ?? item['output'] as String? ?? '',
             name: item['name'] as String? ?? '',
-            summary: item['summary'] as String? ?? item['input'] as String? ?? '',
+            summary:
+                item['summary'] as String? ?? item['input'] as String? ?? '',
             output: item['output'] as String? ?? '',
             error: item['error'] == true,
             pending: item['pending'] == true,
@@ -189,7 +216,8 @@ class HerdrTranscript {
       screen: decoded['screen'] as String? ?? '',
       messages: messages,
       truncated: decoded['truncated'] == true,
-      model: (settings is Map ? settings['model'] as String? : null) ??
+      model:
+          (settings is Map ? settings['model'] as String? : null) ??
           decoded['model'] as String? ??
           '',
       effort: (settings is Map ? settings['effort'] as String? : null) ?? '',
@@ -197,6 +225,7 @@ class HerdrTranscript {
       contextWindow: context is Map
           ? (context['window'] as num?)?.toInt() ?? 0
           : 0,
+      todos: HerdrTodo.parse(decoded['todos']),
     );
   }
 }
@@ -434,7 +463,8 @@ class HerdrController extends ChangeNotifier {
   /// herdr only signals; re-read after a short quiet period so a burst of
   /// streaming updates costs one list request.
   void onEvent(BridgeEvent event) {
-    if (_connId == 0 || (event.herdrId != 0 && event.herdrId != _connId)) return;
+    if (_connId == 0 || (event.herdrId != 0 && event.herdrId != _connId))
+      return;
     switch (event.event) {
       case 'changed':
         _debounce?.cancel();
@@ -459,6 +489,15 @@ class HerdrController extends ChangeNotifier {
 
   /// Reads further back; true when the next [transcript] call shows more.
   Future<bool> transcriptMore(String pane) => _need().herdrTranscriptMore(pane);
+
+  /// Terminal keys for a blocked agent's prompt panel (Kotlin's
+  /// `agent.send_keys`), then re-read the pane once it has taken them.
+  Future<void> sendKeys(String pane, List<String> keys) async {
+    final bridge = _need();
+    await _call(bridge, 'agent.send_keys', {'target': pane, 'keys': keys});
+    await Future<void>.delayed(const Duration(milliseconds: 400));
+    await refresh();
+  }
 
   Future<void> prompt(String pane, String text) async {
     final bridge = _need();

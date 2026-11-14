@@ -22,6 +22,7 @@ import '../widgets/foundation.dart';
 import '../widgets/select_row.dart';
 import 'key_sheet.dart';
 import 'logs.dart';
+import '../widgets/wavy.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({
@@ -320,7 +321,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   trailing: _forgetting
                       ? const SizedBox.square(
                           dimension: 18,
-                          child: ActivityIndicator(size: 18),
+                          child: WavyActivityIndicator(size: 18),
                         )
                       : null,
                 ),
@@ -393,7 +394,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 trailing: _refreshingIcons
                     ? const SizedBox.square(
                         dimension: 18,
-                        child: ActivityIndicator(size: 18),
+                        child: WavyActivityIndicator(size: 18),
                       )
                     : null,
               ),
@@ -447,7 +448,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         width: 51,
                         height: 31,
                         child: Center(
-                          child: ActivityIndicator(
+                          child: WavyActivityIndicator(
                             size: 18,
                             semanticLabel: l10n.pleaseWait,
                           ),

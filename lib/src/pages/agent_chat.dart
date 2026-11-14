@@ -8,8 +8,11 @@ import 'package:prism_ui/prism_ui.dart';
 import '../glyphs.dart';
 import '../herdr.dart';
 import '../l10n.dart';
+import '../motion.dart';
 import '../widgets/controls.dart';
 import '../widgets/foundation.dart';
+import '../widgets/snackbar.dart';
+import '../widgets/wavy.dart';
 
 /// One agent pane: its transcript, a prompt box, restart and model switching.
 class AgentChatPage extends StatefulWidget {
@@ -38,7 +41,6 @@ class _AgentChatPageState extends State<AgentChatPage> {
   final _inputFocus = FocusNode();
   HerdrTranscript? _transcript;
   String _error = '';
-  String _notice = '';
   bool _loading = true;
   bool _sending = false;
   bool _restarting = false;
@@ -50,6 +52,7 @@ class _AgentChatPageState extends State<AgentChatPage> {
   bool _loadingCommands = false;
   bool _commandsLoaded = false;
   bool _popup = false;
+  bool _nearBottom = true;
 
   String get _pane => widget.agent.paneId;
 
@@ -69,6 +72,7 @@ class _AgentChatPageState extends State<AgentChatPage> {
     super.initState();
     widget.herdr.addListener(_onHerdr);
     _input.addListener(_onDraft);
+    _scroll.addListener(_onScroll);
     for (final text in widget.demoQueue) {
       widget.herdr.enqueue(_pane, text);
     }
@@ -85,6 +89,30 @@ class _AgentChatPageState extends State<AgentChatPage> {
     super.dispose();
   }
 
+  /// The scroll-to-bottom button shows whenever the transcript is not at its
+  /// end, as in the Kotlin chat.
+  void _onScroll() {
+    if (!_scroll.hasClients) return;
+    final position = _scroll.position;
+    final near = position.maxScrollExtent - position.pixels < 120;
+    if (near != _nearBottom) setState(() => _nearBottom = near);
+  }
+
+  void _toBottom() {
+    if (!_scroll.hasClients) return;
+    if (context.disableAnimations) {
+      _scroll.jumpTo(_scroll.position.maxScrollExtent);
+      return;
+    }
+    unawaited(
+      _scroll.animateTo(
+        _scroll.position.maxScrollExtent,
+        duration: motionDuration(context, slowSpatial),
+        curve: slowSpatial.curve,
+      ),
+    );
+  }
+
   /// herdr events say that the pane moved; re-read once the burst settles.
   void _onHerdr() {
     if (mounted) setState(() {});
@@ -93,6 +121,12 @@ class _AgentChatPageState extends State<AgentChatPage> {
       const Duration(milliseconds: 300),
       () => unawaited(_load()),
     );
+  }
+
+  /// Finished actions report in a snackbar, as the Kotlin chat does.
+  void _say(String text) {
+    if (!mounted || text.isEmpty) return;
+    showMotionSnack(context, text);
   }
 
   static String _message(Object error) =>
@@ -222,10 +256,17 @@ class _AgentChatPageState extends State<AgentChatPage> {
   void _clearDraft() {
     _input.clear();
     setState(() {
-      _notice = '';
       _popup = false;
       _suggestions = const [];
     });
+  }
+
+  /// Long-press on send bypasses the queue, as the Kotlin composer's send
+  /// button does, and fires the same long-press haptic.
+  Future<void> _sendNow() async {
+    if (_input.text.trim().isEmpty || _sending) return;
+    unawaited(HapticFeedback.mediumImpact());
+    await _sendText(_input.text.trim());
   }
 
   Future<void> _sendQueued(QueuedPrompt prompt) async {
@@ -237,7 +278,6 @@ class _AgentChatPageState extends State<AgentChatPage> {
     final l10n = AppLocalizations.of(context);
     setState(() {
       _sending = true;
-      _notice = '';
     });
     try {
       await widget.herdr.prompt(_pane, text);
@@ -245,7 +285,7 @@ class _AgentChatPageState extends State<AgentChatPage> {
       await _load();
     } on Object catch (error) {
       if (mounted) {
-        setState(() => _notice = l10n.agentActionFailed(_message(error)));
+        _say(l10n.agentActionFailed(_message(error)));
       }
     } finally {
       if (mounted) setState(() => _sending = false);
@@ -274,16 +314,15 @@ class _AgentChatPageState extends State<AgentChatPage> {
     if (confirmed != true || !mounted) return;
     setState(() {
       _restarting = true;
-      _notice = '';
     });
     try {
       await widget.herdr.restart(_pane);
       if (!mounted) return;
-      setState(() => _notice = l10n.agentRestarted);
+      _say(l10n.agentRestarted);
       await _load();
     } on Object catch (error) {
       if (mounted) {
-        setState(() => _notice = l10n.agentRestartFailed(_message(error)));
+        _say(l10n.agentRestartFailed(_message(error)));
       }
     } finally {
       if (mounted) setState(() => _restarting = false);
@@ -297,13 +336,13 @@ class _AgentChatPageState extends State<AgentChatPage> {
       options = await widget.herdr.models(_agent.kind, _pane);
     } on Object catch (error) {
       if (mounted) {
-        setState(() => _notice = l10n.agentActionFailed(_message(error)));
+        _say(l10n.agentActionFailed(_message(error)));
       }
       return;
     }
     if (!mounted) return;
     if (options.models.isEmpty) {
-      setState(() => _notice = l10n.agentModelEmpty);
+      _say(l10n.agentModelEmpty);
       return;
     }
     final current = _transcript?.model ?? '';
@@ -358,14 +397,13 @@ class _AgentChatPageState extends State<AgentChatPage> {
     if (chosen == null || !mounted) return;
     setState(() {
       _switchingModel = true;
-      _notice = '';
     });
     try {
       await widget.herdr.setModel(_pane, chosen);
       await _load();
     } on Object catch (error) {
       if (mounted) {
-        setState(() => _notice = l10n.agentActionFailed(_message(error)));
+        _say(l10n.agentActionFailed(_message(error)));
       }
     } finally {
       if (mounted) setState(() => _switchingModel = false);
@@ -410,21 +448,31 @@ class _AgentChatPageState extends State<AgentChatPage> {
           child: Column(
             children: [
               _header(context, l10n, agent, status, tint),
-              if (_notice.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
-                  child: InlineNotice(
-                    text: _notice,
-                    tint: scheme.onSurfaceVariant,
-                  ),
-                ),
               Expanded(
-                child: Align(
-                  alignment: Alignment.topCenter,
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 760),
-                    child: _body(context, l10n),
-                  ),
+                child: Stack(
+                  children: [
+                    Positioned.fill(
+                      child: Align(
+                        alignment: Alignment.topCenter,
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 760),
+                          child: _body(context, l10n),
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: 12,
+                      child: Center(
+                        child: MotionVisibility(
+                          visible: !_nearBottom,
+                          scaleFrom: 0.8,
+                          child: _ScrollToBottom(onPressed: _toBottom),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
               _composer(context, l10n),
@@ -478,7 +526,17 @@ class _AgentChatPageState extends State<AgentChatPage> {
                       ),
                     ),
                     const SizedBox(width: 8),
-                    StatusPill(label: status, tint: tint),
+                    FadeThrough(
+                      child: StatusPill(
+                        key: ValueKey(status),
+                        label: status,
+                        tint: tint,
+                        dot: true,
+                        pulse:
+                            _agent.status == HerdrStatus.working ||
+                            _agent.status == HerdrStatus.blocked,
+                      ),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 2),
@@ -498,7 +556,7 @@ class _AgentChatPageState extends State<AgentChatPage> {
                 ? null
                 : () => unawaited(_pickModel()),
             icon: _switchingModel
-                ? ActivityIndicator(
+                ? WavyActivityIndicator(
                     size: 16,
                     semanticLabel: l10n.pleaseWait,
                   )
@@ -510,7 +568,7 @@ class _AgentChatPageState extends State<AgentChatPage> {
                 ? null
                 : () => unawaited(_restart()),
             icon: _restarting
-                ? ActivityIndicator(
+                ? WavyActivityIndicator(
                     size: 16,
                     semanticLabel: l10n.agentRestarting,
                   )
@@ -531,7 +589,7 @@ class _AgentChatPageState extends State<AgentChatPage> {
   Widget _body(BuildContext context, AppLocalizations l10n) {
     final scheme = context.colorScheme;
     if (_loading) {
-      return const Center(child: ActivityIndicator(size: 20));
+      return const Center(child: WavyActivityIndicator(size: 20));
     }
     if (_error.isNotEmpty) {
       return ListView(
@@ -604,16 +662,82 @@ class _AgentChatPageState extends State<AgentChatPage> {
                   .copyWith(color: scheme.onSurfaceVariant),
             ),
           ),
-        for (final message in transcript.messages)
-          _MessageBlock(
-            message: message,
-            herdr: widget.herdr,
-            onOpenImage: _openImage,
-            onOpenSubagent: _openSubagent,
-          ),
+        for (final row in _rows(transcript.messages))
+          if (row is List<HerdrMessage>)
+            _ToolGroup(
+              key: ValueKey(
+                'tools-${row.first.call.isNotEmpty ? row.first.call : row.first.name}',
+              ),
+              messages: row,
+              herdr: widget.herdr,
+              live: _working,
+              onOpenImage: _openImage,
+              onOpenSubagent: _openSubagent,
+            )
+          else
+            _MessageBlock(
+              message: row as HerdrMessage,
+              herdr: widget.herdr,
+              onOpenImage: _openImage,
+              onOpenSubagent: _openSubagent,
+            ),
       ],
     );
   }
+
+  /// Consecutive tool calls read as one collapsible group, as the Kotlin
+  /// timeline shows them; subagent calls keep their own row.
+  static List<Object> _rows(List<HerdrMessage> messages) {
+    final rows = <Object>[];
+    var group = <HerdrMessage>[];
+    void flush() {
+      if (group.isEmpty) return;
+      rows.add(group);
+      group = <HerdrMessage>[];
+    }
+
+    for (final message in messages) {
+      if (message.isTool && !message.isSubagent) {
+        group.add(message);
+        continue;
+      }
+      flush();
+      rows.add(message);
+    }
+    flush();
+    return rows;
+  }
+
+  /// What the agent is doing right now: its newest running tool call.
+  String _activity(AppLocalizations l10n) {
+    final messages = _transcript?.messages ?? const <HerdrMessage>[];
+    for (final message in messages.reversed) {
+      if (message.role == 'user') break;
+      if (message.isTool && message.pending) {
+        final name = message.name.isNotEmpty ? message.name : l10n.agentTool;
+        return message.summary.isEmpty ? name : '$name · ${message.summary}';
+      }
+    }
+    return l10n.agentWorking;
+  }
+
+  /// The question a blocked agent is waiting on: its last spoken line.
+  String _lastAgentText() {
+    for (final message
+        in (_transcript?.messages ?? const <HerdrMessage>[]).reversed) {
+      if (message.isTool) continue;
+      if (message.text.trim().isNotEmpty) return message.text.trim();
+    }
+    final screen = _transcript?.screen.trim() ?? '';
+    if (screen.isEmpty) return '';
+    final lines = screen.split('\n').where((l) => l.trim().isNotEmpty).toList();
+    return lines.skip(lines.length > 6 ? lines.length - 6 : 0).join('\n');
+  }
+
+  List<HerdrMessage> get _runningSubagents => [
+    for (final message in _transcript?.messages ?? const <HerdrMessage>[])
+      if (message.isSubagent && message.pending) message,
+  ];
 
   Widget _composer(BuildContext context, AppLocalizations l10n) {
     final scheme = context.colorScheme;
@@ -622,6 +746,18 @@ class _AgentChatPageState extends State<AgentChatPage> {
     final composer = Column(
       mainAxisSize: MainAxisSize.min,
       children: [
+        if (_working)
+          _WorkingBar(
+            activity: _activity(l10n),
+            subagents: _runningSubagents.length,
+            onStop: () => unawaited(widget.herdr.sendKeys(_pane, ['esc'])),
+            onSubagents: () {
+              final running = _runningSubagents;
+              if (running.isNotEmpty) _openSubagent(running.first);
+            },
+          ),
+        if (_transcript?.todos case final todos?)
+          if (todos.any((todo) => !todo.done)) _TodoTrack(todos: todos),
         if (widget.herdr.queueError.isNotEmpty)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
@@ -699,22 +835,44 @@ class _AgentChatPageState extends State<AgentChatPage> {
                 ),
               ),
               const SizedBox(width: 8),
-              IconButton(
-                onPressed: _sending ? null : () => unawaited(_send()),
-                icon: _sending
-                    ? const ActivityIndicator(size: 18)
-                    : GlyphIcon(_working ? Glyphs2.schedule : Glyphs2.arrowUp),
-                tooltip: _working ? l10n.agentQueued : l10n.agentSend,
+              GestureDetector(
+                onLongPress: _working ? () => unawaited(_sendNow()) : null,
+                child: IconButton(
+                  onPressed: _sending ? null : () => unawaited(_send()),
+                  icon: _sending
+                      ? const WavyActivityIndicator(size: 18)
+                      : GlyphIcon(
+                          _working ? Glyphs2.schedule : Glyphs2.arrowUp,
+                        ),
+                  tooltip: _working ? l10n.agentQueued : l10n.agentSend,
+                ),
               ),
             ],
           ),
         ),
       ],
     );
+    // A blocked agent takes the composer away and slides its prompt panel in
+    // from a third of the height (Kotlin's `AnimatedContent(blocked)`).
+    final blocked = _agent.status == HerdrStatus.blocked;
+    final panel = SlideFadeSwitcher(
+      slide: 1 / 3,
+      alignment: Alignment.bottomCenter,
+      child: blocked
+          ? KeyedSubtree(
+              key: const ValueKey('blocked'),
+              child: _BlockedPanel(
+                question: _lastAgentText(),
+                screen: _transcript?.screen ?? '',
+                onKeys: (keys) => unawaited(widget.herdr.sendKeys(_pane, keys)),
+              ),
+            )
+          : KeyedSubtree(key: const ValueKey('composer'), child: composer),
+    );
     // The wrapper stays in place so the input keeps its focus and text
     // connection; only the popup's keys are bound, and only while it is up.
     return CallbackShortcuts(
-      bindings: popup
+      bindings: popup && !blocked
           ? {
               const SingleActivator(LogicalKeyboardKey.escape):
                   _dismissCommands,
@@ -724,7 +882,7 @@ class _AgentChatPageState extends State<AgentChatPage> {
                   _moveSuggestion(1),
             }
           : const {},
-      child: composer,
+      child: panel,
     );
   }
 }
@@ -764,7 +922,7 @@ class _CommandPopup extends StatelessWidget {
                   vertical: 11,
                 ),
                 child: loading
-                    ? const ActivityIndicator(size: 16)
+                    ? const WavyActivityIndicator(size: 16)
                     : Text(
                         l10n.agentCommandsEmpty,
                         style: AppTextStyle.footnote
@@ -1029,12 +1187,9 @@ class _MessageBlock extends StatelessWidget {
           ),
         );
       case 'thinking':
-        return Padding(
-          padding: const EdgeInsets.symmetric(vertical: 4),
-          child: SelectableText(
-            message.text,
-            style: caption.copyWith(fontStyle: FontStyle.italic),
-          ),
+        return _ThinkingCard(
+          text: message.text,
+          style: caption.copyWith(fontStyle: FontStyle.italic),
         );
       case 'system' || 'command' || 'output' || 'recap':
         return Padding(
@@ -1192,7 +1347,7 @@ class _RemoteImageState extends State<_RemoteImage> {
         shape: AppShape.all(AppCorner.md),
       ),
       child: busy
-          ? const ActivityIndicator(size: 18)
+          ? const WavyActivityIndicator(size: 18)
           : Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -1398,6 +1553,8 @@ class _SubagentViewState extends State<_SubagentView> {
                         ? l10n.agentSubagentFinished
                         : l10n.agentSubagentRunning,
                     tint: finished ? const Color(0xFF3BB273) : scheme.primary,
+                    dot: true,
+                    pulse: !finished,
                   ),
                 ],
               ),
@@ -1436,7 +1593,7 @@ class _SubagentViewState extends State<_SubagentView> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const ActivityIndicator(size: 20),
+            const WavyActivityIndicator(size: 20),
             const SizedBox(height: 10),
             Text(
               l10n.agentSubagentLoading,
@@ -1538,3 +1695,580 @@ List<HerdrCommand> builtinCommands(String kind, AppLocalizations l10n) =>
               HerdrCommand(name, l10n.agentBuiltinHelp(kind, name), 'builtin'),
         )
         .toList();
+
+/// The jump-to-bottom action the Kotlin chat floats over a scrolled transcript.
+class _ScrollToBottom extends StatelessWidget {
+  const _ScrollToBottom({required this.onPressed});
+
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = context.colorScheme;
+    final l10n = AppLocalizations.of(context);
+    return TapFeedback(
+      onTap: onPressed,
+      shape: AppShape.full,
+      semanticsLabel: l10n.agentScrollBottom,
+      child: Container(
+        width: 44,
+        height: 44,
+        alignment: Alignment.center,
+        decoration: ShapeDecoration(
+          color: scheme.surfaceContainerHighest,
+          shape: AppShape.full,
+          shadows: [
+            BoxShadow(
+              color: scheme.shadow.withValues(alpha: 0.16),
+              blurRadius: 14,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: GlyphIcon(
+          Glyphs2.arrowDown,
+          size: 18,
+          color: scheme.onSurfaceVariant,
+        ),
+      ),
+    );
+  }
+}
+
+/// Dots, what the agent is doing, a stop button and how many subagents are out.
+class _WorkingBar extends StatelessWidget {
+  const _WorkingBar({
+    required this.activity,
+    required this.subagents,
+    required this.onStop,
+    required this.onSubagents,
+  });
+
+  final String activity;
+  final int subagents;
+  final VoidCallback onStop;
+  final VoidCallback onSubagents;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = context.colorScheme;
+    final l10n = AppLocalizations.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
+      child: Row(
+        children: [
+          Expanded(
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(12, 2, 4, 2),
+              decoration: ShapeDecoration(
+                color: scheme.surfaceContainerHigh,
+                shape: AppShape.full,
+              ),
+              child: Row(
+                children: [
+                  const InkDots(),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      activity,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTextStyle.caption1.of(context),
+                    ),
+                  ),
+                  TextButton(onPressed: onStop, child: Text(l10n.agentStop)),
+                ],
+              ),
+            ),
+          ),
+          MotionVisibility(
+            visible: subagents > 0,
+            child: Padding(
+              padding: const EdgeInsets.only(left: 6),
+              child: TapFeedback(
+                onTap: onSubagents,
+                shape: AppShape.full,
+                semanticsLabel: l10n.agentSubagentsRunning,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 9,
+                  ),
+                  decoration: ShapeDecoration(
+                    color: scheme.surfaceContainerHigh,
+                    shape: AppShape.full,
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      GlyphIcon(
+                        Glyphs2.agents,
+                        size: 15,
+                        color: scheme.onSurfaceVariant,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        '$subagents',
+                        style: AppTextStyle.caption1.of(context),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The agent's task list above the composer: the progress line stays, the list
+/// expands with the chevron.
+class _TodoTrack extends StatefulWidget {
+  const _TodoTrack({required this.todos});
+
+  final List<HerdrTodo> todos;
+
+  @override
+  State<_TodoTrack> createState() => _TodoTrackState();
+}
+
+class _TodoTrackState extends State<_TodoTrack> {
+  bool _open = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = context.colorScheme;
+    final l10n = AppLocalizations.of(context);
+    final done = widget.todos.where((todo) => todo.done).length;
+    final current =
+        widget.todos.where((todo) => todo.current).firstOrNull ??
+        widget.todos.where((todo) => !todo.done).firstOrNull;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
+      child: AnimatedContentSize(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            TapFeedback(
+              onTap: () => setState(() => _open = !_open),
+              shape: AppShape.all(AppCorner.sm),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+                child: Row(
+                  children: [
+                    GlyphIcon(
+                      Glyphs2.checklist,
+                      size: 16,
+                      color: scheme.primary,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      l10n.agentTodoProgress(done, widget.todos.length),
+                      style: AppTextStyle.caption1
+                          .of(context, emphasized: true)
+                          .copyWith(color: scheme.primary),
+                    ),
+                    const SizedBox(width: 8),
+                    if (!_open)
+                      Expanded(
+                        child: Text(
+                          current?.text ?? '',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppTextStyle.caption2
+                              .of(context)
+                              .copyWith(color: scheme.onSurfaceVariant),
+                        ),
+                      )
+                    else
+                      const Spacer(),
+                    RotatingChevron(
+                      open: _open,
+                      size: 16,
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            if (_open)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(6, 2, 6, 6),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    for (final todo in widget.todos)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 4),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.only(top: 4, right: 8),
+                              child: Container(
+                                width: 7,
+                                height: 7,
+                                decoration: BoxDecoration(
+                                  color: todo.done
+                                      ? scheme.primary
+                                      : todo.current
+                                      ? scheme.primary.withValues(alpha: 0.4)
+                                      : scheme.onSurfaceVariant.withValues(
+                                          alpha: 0.3,
+                                        ),
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                            ),
+                            Expanded(
+                              child: Text(
+                                todo.text,
+                                style: AppTextStyle.caption1
+                                    .of(context)
+                                    .copyWith(
+                                      color: todo.done
+                                          ? scheme.onSurfaceVariant
+                                          : scheme.onSurface,
+                                      decoration: todo.done
+                                          ? TextDecoration.lineThrough
+                                          : null,
+                                    ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// A blocked agent's question, its screen and the keys it is waiting for.
+class _BlockedPanel extends StatefulWidget {
+  const _BlockedPanel({
+    required this.question,
+    required this.screen,
+    required this.onKeys,
+  });
+
+  final String question;
+  final String screen;
+  final ValueChanged<List<String>> onKeys;
+
+  @override
+  State<_BlockedPanel> createState() => _BlockedPanelState();
+}
+
+class _BlockedPanelState extends State<_BlockedPanel> {
+  bool _screen = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = context.colorScheme;
+    final l10n = AppLocalizations.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
+        decoration: ShapeDecoration(
+          color: const Color(0xFFE3B341).withValues(alpha: 0.12),
+          shape: AppShape.all(AppCorner.lg),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                const PulsingDot(
+                  color: Color(0xFFE3B341),
+                  size: 7,
+                  pulse: true,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  l10n.agentBlocked,
+                  style: AppTextStyle.caption1
+                      .of(context, emphasized: true)
+                      .copyWith(color: const Color(0xFFE3B341)),
+                ),
+              ],
+            ),
+            if (widget.question.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  widget.question,
+                  maxLines: _screen ? 12 : 4,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTextStyle.body.of(context),
+                ),
+              ),
+            if (_screen && widget.screen.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(10),
+                  decoration: ShapeDecoration(
+                    color: scheme.surface,
+                    shape: AppShape.all(AppCorner.sm),
+                  ),
+                  child: SelectableText(
+                    widget.screen,
+                    style: AppTextStyle.caption2
+                        .of(context)
+                        .copyWith(
+                          fontFamily: 'DejaVuSansMono',
+                          fontSize: 11,
+                          height: 1.4,
+                        ),
+                  ),
+                ),
+              ),
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  for (final (label, key) in [
+                    (l10n.keyEnter, 'enter'),
+                    (l10n.keyEscape, 'esc'),
+                    ('1', '1'),
+                    ('2', '2'),
+                    ('3', '3'),
+                  ])
+                    TextButton(
+                      onPressed: () => widget.onKeys([key]),
+                      child: Text(label),
+                    ),
+                  TextButton(
+                    onPressed: () => setState(() => _screen = !_screen),
+                    child: Text(l10n.agentReadScreen),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Consecutive tool calls under one row: the summary stays, the calls expand.
+class _ToolGroup extends StatefulWidget {
+  const _ToolGroup({
+    super.key,
+    required this.messages,
+    required this.herdr,
+    required this.live,
+    required this.onOpenImage,
+    required this.onOpenSubagent,
+  });
+
+  final List<HerdrMessage> messages;
+  final HerdrController herdr;
+  final bool live;
+  final ValueChanged<Uint8List> onOpenImage;
+  final ValueChanged<HerdrMessage> onOpenSubagent;
+
+  @override
+  State<_ToolGroup> createState() => _ToolGroupState();
+}
+
+class _ToolGroupState extends State<_ToolGroup> {
+  bool _open = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = context.colorScheme;
+    final l10n = AppLocalizations.of(context);
+    final messages = widget.messages;
+    final running = widget.live
+        ? messages.reversed.where((m) => m.pending).firstOrNull
+        : null;
+    final names = <String>[];
+    for (final message in messages) {
+      if (message.name.isNotEmpty && !names.contains(message.name)) {
+        names.add(message.name);
+      }
+    }
+    final summary = running != null
+        ? _label(l10n, running)
+        : [
+            l10n.agentToolSteps(messages.length),
+            if (names.isNotEmpty) names.take(3).join(', '),
+          ].join(' · ');
+    final shown = _open
+        ? messages
+        : running != null
+        ? [running]
+        : const <HerdrMessage>[];
+    return AnimatedContentSize(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          TapFeedback(
+            onTap: () => setState(() => _open = !_open),
+            shape: AppShape.all(AppCorner.sm),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 7),
+              child: Row(
+                children: [
+                  if (running != null)
+                    const WavyActivityIndicator(size: 16)
+                  else
+                    GlyphIcon(
+                      Glyphs2.doc,
+                      size: 16,
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      summary,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTextStyle.caption1
+                          .of(context, emphasized: true)
+                          .copyWith(color: scheme.onSurfaceVariant),
+                    ),
+                  ),
+                  RotatingChevron(
+                    open: _open,
+                    size: 16,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          AnimatedContentSize(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (final message in shown)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 24),
+                    child: _MessageBlock(
+                      message: message,
+                      herdr: widget.herdr,
+                      onOpenImage: widget.onOpenImage,
+                      onOpenSubagent: widget.onOpenSubagent,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static String _label(AppLocalizations l10n, HerdrMessage message) {
+    final name = message.name.isNotEmpty ? message.name : l10n.agentTool;
+    return message.summary.isEmpty ? name : '$name · ${message.summary}';
+  }
+}
+
+/// The agent's reasoning, folded under a chevron: the summary stays, the body
+/// expands and the card resizes with it (Kotlin's `Expandable`).
+class _ThinkingCard extends StatefulWidget {
+  const _ThinkingCard({required this.text, required this.style});
+
+  final String text;
+  final TextStyle style;
+
+  @override
+  State<_ThinkingCard> createState() => _ThinkingCardState();
+}
+
+class _ThinkingCardState extends State<_ThinkingCard> {
+  bool _open = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = context.colorScheme;
+    final l10n = AppLocalizations.of(context);
+    final firstLine = widget.text
+        .split('\n')
+        .map((line) => line.trim())
+        .firstWhere((line) => line.isNotEmpty, orElse: () => '');
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: AnimatedContentSize(
+        child: Container(
+          decoration: ShapeDecoration(
+            color: scheme.surfaceContainerHigh,
+            shape: AppShape.all(AppCorner.md),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              TapFeedback(
+                onTap: () => setState(() => _open = !_open),
+                shape: AppShape.all(AppCorner.md),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 8, 10, 8),
+                  child: Row(
+                    children: [
+                      GlyphIcon(
+                        Glyphs2.bolt,
+                        size: 15,
+                        color: scheme.onSurfaceVariant,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        l10n.agentThinking,
+                        style: AppTextStyle.caption1.of(
+                          context,
+                          emphasized: true,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      if (!_open)
+                        Expanded(
+                          child: Text(
+                            firstLine,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: AppTextStyle.caption2
+                                .of(context)
+                                .copyWith(color: scheme.onSurfaceVariant),
+                          ),
+                        )
+                      else
+                        const Spacer(),
+                      RotatingChevron(
+                        open: _open,
+                        size: 15,
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              AnimatedContentSize(
+                child: _open
+                    ? Padding(
+                        padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+                        child: SelectableText(widget.text, style: widget.style),
+                      )
+                    : const SizedBox(width: double.infinity),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}

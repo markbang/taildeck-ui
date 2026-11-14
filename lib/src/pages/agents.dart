@@ -9,12 +9,14 @@ import '../data.dart';
 import '../glyphs.dart';
 import '../herdr.dart';
 import '../l10n.dart';
+import '../motion.dart';
 import '../native/bridge.dart';
 import '../preview_env.dart';
 import '../ssh_identities.dart';
 import '../widgets/controls.dart';
 import '../widgets/entry_row.dart';
 import '../widgets/foundation.dart';
+import '../widgets/shape_badge.dart';
 import '../widgets/select_row.dart';
 import 'agent_chat.dart';
 import 'new_agent_sheet.dart';
@@ -95,72 +97,112 @@ class _AgentsPageState extends State<AgentsPage> {
     if (herdr == null) return _demoPage(l10n, backend);
     return ListenableBuilder(
       listenable: herdr,
-      builder: (context, _) => PageBody(
-        title: l10n.agentsTitle,
-        subtitle: herdr.node.isEmpty ? 'herdr' : 'herdr · ${herdr.node}',
-        trailing: IconButton(
-          onPressed: herdr.ready ? () => unawaited(_addAgent(herdr)) : null,
-          icon: const GlyphIcon(Glyphs2.plus),
-          tooltip: herdr.ready ? l10n.newAgent : l10n.herdrNotConnected,
-        ),
+      builder: (context, _) => Stack(
         children: [
-          if (!backend.signedIn) ...[
-            InlineNotice(
-              text: l10n.herdrNeedsNode,
-              tint: context.colorScheme.onSurfaceVariant,
-            ),
-            const SizedBox(height: 14),
-          ],
-          if (_notice.isNotEmpty) ...[
-            InlineNotice(text: _notice, tint: context.colorScheme.onSurfaceVariant),
-            const SizedBox(height: 14),
-          ],
-          if (!herdr.ready) ...[
-            _linkNotice(context, l10n, herdr),
-            _HerdrConnectCard(backend: backend),
-          ] else if (herdr.agents.isEmpty)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(6, 24, 6, 8),
-              child: Text(
-                l10n.herdrNoAgents,
-                style: AppTextStyle.subheadline
-                    .of(context)
-                    .copyWith(color: context.colorScheme.onSurfaceVariant),
-              ),
-            ) else
-          for (final (index, group) in _groups(herdr.agents).indexed)
-            ...[
-              Reveal(
-                key: ValueKey('agents-heading-${group.section}'),
-                index: index,
-                child: SectionLabel(
-                  group.section == 'Needs you' ? l10n.needsYou : group.section,
+          PageBody(
+            title: l10n.agentsTitle,
+            subtitle: herdr.node.isEmpty ? 'herdr' : 'herdr · ${herdr.node}',
+            onRefresh: herdr.ready ? herdr.refresh : null,
+            children: [
+              if (!backend.signedIn) ...[
+                InlineNotice(
+                  text: l10n.herdrNeedsNode,
+                  tint: context.colorScheme.onSurfaceVariant,
+                ),
+                const SizedBox(height: 14),
+              ],
+              if (_notice.isNotEmpty) ...[
+                InlineNotice(
+                  text: _notice,
+                  tint: context.colorScheme.onSurfaceVariant,
+                ),
+                const SizedBox(height: 14),
+              ],
+              ScaleFadeSwitcher(
+                child: KeyedSubtree(
+                  key: ValueKey(_herdrState(herdr)),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (!herdr.ready) ...[
+                        _linkNotice(context, l10n, herdr),
+                        _HerdrConnectCard(backend: backend),
+                      ] else if (herdr.agents.isEmpty)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(6, 24, 6, 8),
+                          child: Text(
+                            l10n.herdrNoAgents,
+                            style: AppTextStyle.subheadline
+                                .of(context)
+                                .copyWith(
+                                  color: context.colorScheme.onSurfaceVariant,
+                                ),
+                          ),
+                        )
+                      else
+                        for (final (index, group) in _groups(
+                          herdr.agents,
+                        ).indexed) ...[
+                          Reveal(
+                            key: ValueKey('agents-heading-${group.section}'),
+                            index: index,
+                            child: SectionLabel(
+                              group.section == 'Needs you'
+                                  ? l10n.needsYou
+                                  : group.section,
+                            ),
+                          ),
+                          Reveal(
+                            key: ValueKey('agents-card-${group.section}'),
+                            index: index,
+                            child: AnimatedGroupCard(
+                              dividerInset: 56,
+                              children: [
+                                for (final agent in group.items)
+                                  RowSemantics(
+                                    key: ValueKey(agent.paneId),
+                                    label: _liveAgentLabel(
+                                      context,
+                                      l10n,
+                                      agent,
+                                    ),
+                                    onTap: () => _openAgent(herdr, agent),
+                                    child: _LiveAgentRow(
+                                      agent: agent,
+                                      onTap: () => _openAgent(herdr, agent),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                        ],
+                    ],
+                  ),
                 ),
               ),
-              Reveal(
-                key: ValueKey('agents-card-${group.section}'),
-                index: index,
-                child: AnimatedGroupCard(
-                  dividerInset: 56,
-                  children: [
-                    for (final agent in group.items)
-                      RowSemantics(
-                        key: ValueKey(agent.paneId),
-                        label: _liveAgentLabel(context, l10n, agent),
-                        onTap: () => _openAgent(herdr, agent),
-                        child: _LiveAgentRow(
-                          agent: agent,
-                          onTap: () => _openAgent(herdr, agent),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
             ],
+          ),
+          PositionedDirectional(
+            end: 20,
+            bottom: context.bottomInset + 20,
+            child: _NewAgentFab(
+              visible: herdr.ready,
+              label: l10n.newAgent,
+              onPressed: () => unawaited(_addAgent(herdr)),
+            ),
+          ),
         ],
       ),
     );
+  }
+
+  /// Which of herdr's states the page is drawing, so the swap animates only
+  /// when that changes (Kotlin's `AnimatedContent(state?.javaClass)`).
+  static String _herdrState(HerdrController herdr) {
+    if (!herdr.ready) return 'link:${herdr.link.name}';
+    if (herdr.agents.isEmpty) return 'empty';
+    return 'agents:${_groups(herdr.agents).map((g) => g.section).join('|')}';
   }
 
   Widget _linkNotice(
@@ -208,53 +250,63 @@ class _AgentsPageState extends State<AgentsPage> {
     final scheme = context.colorScheme;
     // `?tab=2&herdr=connect` opens the connect form on the web preview.
     final connect = previewParam('herdr') == 'connect';
-    return PageBody(
-      title: l10n.agentsTitle,
-      subtitle: 'herdr · devbox',
-      trailing: IconButton(
-        onPressed: () => unawaited(_addDemoAgent()),
-        icon: const GlyphIcon(Glyphs2.plus),
-        tooltip: l10n.newAgent,
-      ),
+    return Stack(
       children: [
-        InlineNotice(
-          text: l10n.herdrNeedsBackend,
-          tint: scheme.onSurfaceVariant,
+        PageBody(
+          title: l10n.agentsTitle,
+          subtitle: 'herdr · devbox',
+          children: [
+            InlineNotice(
+              text: l10n.herdrNeedsBackend,
+              tint: scheme.onSurfaceVariant,
+            ),
+            if (_notice.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              InlineNotice(text: _notice, tint: scheme.onSurfaceVariant),
+            ],
+            if (connect) ...[
+              const SizedBox(height: 14),
+              _HerdrConnectCard(backend: backend, preview: true),
+            ],
+            const SizedBox(height: 6),
+            for (final (index, group) in _demo.indexed) ...[
+              Reveal(
+                key: ValueKey('demo-heading-${group.section}'),
+                index: index,
+                child: SectionLabel(
+                  group.section == 'Needs you' ? l10n.needsYou : group.section,
+                ),
+              ),
+              Reveal(
+                key: ValueKey('demo-card-${group.section}'),
+                index: index,
+                child: AnimatedGroupCard(
+                  dividerInset: 56,
+                  children: [
+                    for (final agent in group.items)
+                      RowSemantics(
+                        key: ValueKey(
+                          '${agent.project}/${agent.name}/${agent.task}',
+                        ),
+                        label: _demoAgentLabel(l10n, agent),
+                        child: _DemoAgentRow(agent: agent),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
+          ],
         ),
-        if (_notice.isNotEmpty) ...[
-          const SizedBox(height: 6),
-          InlineNotice(text: _notice, tint: scheme.onSurfaceVariant),
-        ],
-        if (connect) ...[
-          const SizedBox(height: 14),
-          _HerdrConnectCard(backend: backend, preview: true),
-        ],
-        const SizedBox(height: 6),
-        for (final (index, group) in _demo.indexed) ...[
-          Reveal(
-            key: ValueKey('demo-heading-${group.section}'),
-            index: index,
-            child: SectionLabel(
-              group.section == 'Needs you' ? l10n.needsYou : group.section,
-            ),
+        PositionedDirectional(
+          end: 20,
+          bottom: context.bottomInset + 20,
+          child: _NewAgentFab(
+            visible: true,
+            label: l10n.newAgent,
+            onPressed: () => unawaited(_addDemoAgent()),
           ),
-          Reveal(
-            key: ValueKey('demo-card-${group.section}'),
-            index: index,
-            child: AnimatedGroupCard(
-              dividerInset: 56,
-              children: [
-                for (final agent in group.items)
-                  RowSemantics(
-                    key: ValueKey('${agent.project}/${agent.name}/${agent.task}'),
-                    label: _demoAgentLabel(l10n, agent),
-                    child: _DemoAgentRow(agent: agent),
-                  ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-        ],
+        ),
       ],
     );
   }
@@ -262,15 +314,17 @@ class _AgentsPageState extends State<AgentsPage> {
   static List<({String section, List<HerdrAgent> items})> _groups(
     List<HerdrAgent> all,
   ) {
-    final needsYou = [
-      for (final agent in all)
-        if (agent.status == HerdrStatus.blocked || agent.status == HerdrStatus.done)
-          agent,
-    ]..sort(
-      (a, b) => (a.status == HerdrStatus.blocked ? 0 : 1).compareTo(
-        b.status == HerdrStatus.blocked ? 0 : 1,
-      ),
-    );
+    final needsYou =
+        [
+          for (final agent in all)
+            if (agent.status == HerdrStatus.blocked ||
+                agent.status == HerdrStatus.done)
+              agent,
+        ]..sort(
+          (a, b) => (a.status == HerdrStatus.blocked ? 0 : 1).compareTo(
+            b.status == HerdrStatus.blocked ? 0 : 1,
+          ),
+        );
     final projects = <String, List<HerdrAgent>>{};
     for (final agent in all) {
       if (needsYou.contains(agent)) continue;
@@ -282,6 +336,85 @@ class _AgentsPageState extends State<AgentsPage> {
       if (needsYou.isNotEmpty) (section: 'Needs you', items: needsYou),
       for (final key in keys) (section: key, items: projects[key]!),
     ];
+  }
+}
+
+/// Kotlin's badge polygons, per status: working spins, blocked bursts, done and
+/// idle rest on a cookie (Expressive.kt `ShapeBadge`).
+BlobShape _liveShape(HerdrStatus status) => switch (status) {
+  HerdrStatus.working => BlobShape.cookie9,
+  HerdrStatus.blocked => BlobShape.softBurst,
+  HerdrStatus.done => BlobShape.cookie6,
+  HerdrStatus.idle || HerdrStatus.unknown => BlobShape.cookie4,
+};
+
+BlobShape _demoShape(AgentState state) => switch (state) {
+  AgentState.working => BlobShape.cookie9,
+  AgentState.done => BlobShape.cookie6,
+  AgentState.idle => BlobShape.cookie4,
+};
+
+/// The herdr action: fades and expands in once herdr is ready, as the Kotlin
+/// page's `SmallExtendedFloatingActionButton` does.
+class _NewAgentFab extends StatelessWidget {
+  const _NewAgentFab({
+    required this.visible,
+    required this.label,
+    required this.onPressed,
+  });
+
+  final bool visible;
+  final String label;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = context.colorScheme;
+    return MotionVisibility(
+      visible: visible,
+      scaleFrom: 0.8,
+      expand: true,
+      alignment: AlignmentDirectional.bottomEnd,
+      child: TapFeedback(
+        onTap: onPressed,
+        shape: AppShape.full,
+        child: Semantics(
+          button: true,
+          label: label,
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(16, 12, 18, 12),
+            decoration: ShapeDecoration(
+              color: scheme.primaryContainer,
+              shape: AppShape.full,
+              shadows: [
+                BoxShadow(
+                  color: scheme.shadow.withValues(alpha: 0.18),
+                  blurRadius: 18,
+                  offset: const Offset(0, 6),
+                ),
+              ],
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                GlyphIcon(
+                  Glyphs2.plus,
+                  size: 18,
+                  color: scheme.onPrimaryContainer,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  label,
+                  style: AppTextStyle.body
+                      .of(context, emphasized: true)
+                      .copyWith(color: scheme.onPrimaryContainer),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -333,19 +466,16 @@ class _LiveAgentRow extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              width: 34,
-              height: 34,
-              alignment: Alignment.center,
-              decoration: ShapeDecoration(
-                color: scheme.onSurface.withValues(alpha: 0.12),
-                shape: AppShape.all(10),
-              ),
+            ShapeBadge(
+              shape: _liveShape(agent.status),
+              color: tint.withValues(alpha: 0.14),
+              size: 34,
+              spin: agent.status == HerdrStatus.working,
               child: Text(
                 agent.label.characters.first.toUpperCase(),
                 style: AppTextStyle.subheadline
                     .of(context, emphasized: true)
-                    .copyWith(color: scheme.onSurfaceVariant),
+                    .copyWith(color: tint),
               ),
             ),
             const SizedBox(width: 12),
@@ -360,11 +490,14 @@ class _LiveAgentRow extends StatelessWidget {
                           agent.label,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: AppTextStyle.body.of(context, emphasized: true),
+                          style: AppTextStyle.body.of(
+                            context,
+                            emphasized: true,
+                          ),
                         ),
                       ),
                       const SizedBox(width: 6),
-                      StatusPill(label: label, tint: tint),
+                      StatusPill(label: label, tint: tint, dot: true),
                     ],
                   ),
                   if (detail.isNotEmpty)
@@ -426,19 +559,16 @@ class _DemoAgentRow extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              width: 34,
-              height: 34,
-              alignment: Alignment.center,
-              decoration: ShapeDecoration(
-                color: scheme.onSurface.withValues(alpha: 0.12),
-                shape: AppShape.all(10),
-              ),
+            ShapeBadge(
+              shape: _demoShape(agent.state),
+              color: tint.withValues(alpha: 0.14),
+              size: 34,
+              spin: agent.state == AgentState.working,
               child: Text(
                 agent.name.characters.first.toUpperCase(),
                 style: AppTextStyle.subheadline
                     .of(context, emphasized: true)
-                    .copyWith(color: scheme.onSurfaceVariant),
+                    .copyWith(color: tint),
               ),
             ),
             const SizedBox(width: 12),
@@ -453,7 +583,7 @@ class _DemoAgentRow extends StatelessWidget {
                         style: AppTextStyle.body.of(context, emphasized: true),
                       ),
                       const SizedBox(width: 6),
-                      StatusPill(label: label, tint: tint),
+                      StatusPill(label: label, tint: tint, dot: true),
                     ],
                   ),
                   if (task.isNotEmpty)

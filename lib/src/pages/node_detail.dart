@@ -8,6 +8,8 @@ import '../backend.dart';
 import '../data.dart';
 import '../l10n.dart';
 import '../glyphs.dart';
+import '../herdr.dart';
+import '../motion.dart';
 import '../native/bridge.dart';
 import '../service_open.dart';
 import '../services.dart';
@@ -15,7 +17,9 @@ import '../terminal_store.dart';
 import '../webview/web_page.dart';
 import '../widgets/controls.dart';
 import '../widgets/foundation.dart';
+import '../widgets/shape_badge.dart';
 import 'service_sheet.dart';
+import '../widgets/wavy.dart';
 
 class NodeDetailPage extends StatefulWidget {
   const NodeDetailPage({
@@ -244,23 +248,43 @@ class _NodeDetailPageState extends State<NodeDetailPage> {
           const SizedBox(height: 12),
           InlineNotice(text: _notice, tint: scheme.onSurfaceVariant),
         ],
-        if (_pinging || _ping != null) ...[
-          const SizedBox(height: 10),
-          _PingLabel(
-            pinging: _pinging,
-            result: _ping,
-            onRetry: () => unawaited(_runPing()),
+        Builder(
+          builder: (context) {
+            final herdr = BackendScope.of(context).herdr;
+            if (herdr == null) return const SizedBox.shrink();
+            return ListenableBuilder(
+              listenable: herdr,
+              builder: (context, _) => _HerdrSummary(
+                herdr: herdr,
+                node: node.name,
+                onOpen: widget.onOpenAgents,
+              ),
+            );
+          },
+        ),
+        ExpandVisibility(
+          visible: _pinging || _ping != null,
+          child: Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: _PingLabel(
+              pinging: _pinging,
+              result: _ping,
+              onRetry: () => unawaited(_runPing()),
+            ),
           ),
-        ],
-        if (_scanning || _ports != null || _scanError.isNotEmpty) ...[
-          const SizedBox(height: 14),
-          _ScanResult(
-            scanning: _scanning,
-            ports: _ports,
-            error: _scanError,
-            onAdd: (port) => unawaited(_addScanned(port)),
+        ),
+        ExpandVisibility(
+          visible: _scanning || _ports != null || _scanError.isNotEmpty,
+          child: Padding(
+            padding: const EdgeInsets.only(top: 14),
+            child: _ScanResult(
+              scanning: _scanning,
+              ports: _ports,
+              error: _scanError,
+              onAdd: (port) => unawaited(_addScanned(port)),
+            ),
           ),
-        ],
+        ),
         if (services.isNotEmpty) ...[
           const SizedBox(height: 14),
           SectionLabel(l10n.tabServices),
@@ -493,7 +517,7 @@ class _ScanResult extends StatelessWidget {
       return Row(
         children: [
           const SizedBox(width: 4),
-          const ActivityIndicator(size: 16),
+          const WavyActivityIndicator(size: 16),
           const SizedBox(width: 10),
           Text(
             l10n.scanning,
@@ -592,13 +616,16 @@ class _PingLabel extends StatelessWidget {
       child: Row(
         children: [
           Flexible(
-            child: Text(
-              text,
-              style: AppTextStyle.footnote
-                  .of(context)
-                  .copyWith(
-                    color: failed ? scheme.error : scheme.onSurfaceVariant,
-                  ),
+            child: FadeThrough(
+              child: Text(
+                key: ValueKey(text),
+                text,
+                style: AppTextStyle.footnote
+                    .of(context)
+                    .copyWith(
+                      color: failed ? scheme.error : scheme.onSurfaceVariant,
+                    ),
+              ),
             ),
           ),
           if (failed) ...[
@@ -633,6 +660,107 @@ class _DetailRow extends StatelessWidget {
           const SizedBox(height: 5),
           child,
         ],
+      ),
+    );
+  }
+}
+
+/// The herdr card on the node page: how many agents are out, who is blocked,
+/// and a badge that spins while one of them works (Kotlin's `HerdrSummary`).
+class _HerdrSummary extends StatelessWidget {
+  const _HerdrSummary({
+    required this.herdr,
+    required this.node,
+    required this.onOpen,
+  });
+
+  final HerdrController herdr;
+  final String node;
+  final VoidCallback onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final agents = herdr.ready && herdr.node == node
+        ? herdr.agents
+        : const <HerdrAgent>[];
+    final blocked = agents.where((a) => a.status == HerdrStatus.blocked).length;
+    final working = agents.where((a) => a.status == HerdrStatus.working).length;
+    final scheme = context.colorScheme;
+    final l10n = AppLocalizations.of(context);
+    final tint = blocked > 0 ? scheme.tertiary : scheme.secondary;
+    return MotionVisibility(
+      visible: agents.isNotEmpty,
+      expand: true,
+      child: Padding(
+        padding: const EdgeInsets.only(top: 12),
+        child: TapFeedback(
+          onTap: onOpen,
+          shape: AppShape.all(AppCorner.xl),
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: ShapeDecoration(
+              color: blocked > 0
+                  ? scheme.tertiaryContainer
+                  : scheme.secondaryContainer,
+              shape: AppShape.all(AppCorner.xl),
+            ),
+            child: Row(
+              children: [
+                ShapeBadge(
+                  shape: blocked > 0 ? BlobShape.softBurst : BlobShape.cookie9,
+                  color: tint.withValues(alpha: 0.18),
+                  size: 44,
+                  spin: working > 0,
+                  child: GlyphIcon(
+                    Glyphs2.agents,
+                    size: 20,
+                    color: blocked > 0
+                        ? scheme.onTertiaryContainer
+                        : scheme.onSecondaryContainer,
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        l10n.agentsTitle,
+                        style: AppTextStyle.body
+                            .of(context, emphasized: true)
+                            .copyWith(
+                              color: blocked > 0
+                                  ? scheme.onTertiaryContainer
+                                  : scheme.onSecondaryContainer,
+                            ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        [
+                          l10n.agentsCount(agents.length),
+                          if (working > 0) l10n.agentsWorkingCount(working),
+                          if (blocked > 0) l10n.agentsBlockedCount(blocked),
+                        ].join(' · '),
+                        style: AppTextStyle.caption1
+                            .of(context)
+                            .copyWith(
+                              color: blocked > 0
+                                  ? scheme.onTertiaryContainer
+                                  : scheme.onSecondaryContainer,
+                            ),
+                      ),
+                    ],
+                  ),
+                ),
+                GlyphIcon(
+                  Glyphs.chevronForward,
+                  size: 16,
+                  color: scheme.onSurfaceVariant,
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

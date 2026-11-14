@@ -7,8 +7,10 @@ import '../backend.dart';
 import '../data.dart';
 import '../l10n.dart';
 import '../glyphs.dart';
+import '../motion.dart';
 import '../widgets/controls.dart';
 import '../widgets/foundation.dart';
+import '../widgets/wavy.dart';
 
 class NodesPage extends StatelessWidget {
   const NodesPage({
@@ -30,6 +32,7 @@ class NodesPage extends StatelessWidget {
     final online = nodes.where((node) => node.online).toList();
     return PageBody(
       title: live ? backend.tailnet : tailnet,
+      onRefresh: live ? backend.refresh : null,
       trailing: IconButton(
         onPressed: onToggleTheme,
         icon: const GlyphIcon(Glyphs2.sun),
@@ -48,7 +51,15 @@ class NodesPage extends StatelessWidget {
         const SizedBox(height: 14),
         Reveal(
           key: const ValueKey('self-card'),
-          child: _SelfCard(node: self, peers: online, onOpenNode: onOpenNode),
+          child: _SelfCard(
+            node: self,
+            peers: online,
+            starting:
+                backend.available &&
+                (backend.state == BackendState.starting ||
+                    backend.state == BackendState.needsLogin),
+            onOpenNode: onOpenNode,
+          ),
         ),
         const SizedBox(height: 14),
         Reveal(
@@ -75,11 +86,15 @@ class _SelfCard extends StatelessWidget {
   const _SelfCard({
     required this.node,
     required this.peers,
+    required this.starting,
     required this.onOpenNode,
   });
 
   final NodeItem node;
   final List<NodeItem> peers;
+
+  /// The node is still coming up: the card runs the wavy progress line.
+  final bool starting;
   final ValueChanged<NodeItem> onOpenNode;
 
   @override
@@ -109,7 +124,10 @@ class _SelfCard extends StatelessWidget {
                     children: [
                       Text(
                         node.name,
-                        style: AppTextStyle.title3.of(context, emphasized: true),
+                        style: AppTextStyle.title3.of(
+                          context,
+                          emphasized: true,
+                        ),
                       ),
                       const SizedBox(height: 2),
                       Text(
@@ -124,6 +142,14 @@ class _SelfCard extends StatelessWidget {
                   tint: const Color(0xFF3BB273),
                 ),
               ],
+            ),
+          ),
+          MotionVisibility(
+            visible: starting,
+            expand: true,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(6, 8, 6, 4),
+              child: WavyLine(color: scheme.primary, height: 8),
             ),
           ),
           const SizedBox(height: 10),
@@ -151,8 +177,10 @@ class _SelfCard extends StatelessWidget {
                             const SizedBox(width: 12),
                             Text(
                               peers[i].name,
-                              style: AppTextStyle.subheadline
-                                  .of(context, emphasized: true),
+                              style: AppTextStyle.subheadline.of(
+                                context,
+                                emphasized: true,
+                              ),
                             ),
                             const Spacer(),
                             GlyphIcon(

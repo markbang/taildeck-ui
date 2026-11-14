@@ -77,7 +77,9 @@ class _ServiceSheetState extends State<_ServiceSheet> {
           ? (seedPort?.toString() ?? '')
           : initial.port.toString(),
     );
-    _path = TextEditingController(text: initial == null ? '/' : _pathOf(initial));
+    _path = TextEditingController(
+      text: initial == null ? '/' : _pathOf(initial),
+    );
   }
 
   String _firstNode() {

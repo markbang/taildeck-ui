@@ -139,10 +139,9 @@ class _KeySheetState extends State<_KeySheet> {
                     maxLines: 10,
                     autocorrect: false,
                     enableSuggestions: false,
-                    style: AppTextStyle.footnote.of(context).copyWith(
-                      fontFamily: 'DejaVuSansMono',
-                      fontSize: 11,
-                    ),
+                    style: AppTextStyle.footnote
+                        .of(context)
+                        .copyWith(fontFamily: 'DejaVuSansMono', fontSize: 11),
                     decoration: InputDecoration(
                       hintText: l10n.privateKeyHint,
                       hintStyle: context.listCaptionStyle,
