@@ -158,7 +158,10 @@ jobs:
           set -euo pipefail
           apk=build/smoke.apk
           if [ ! -s "$apk" ]; then
-            apk="$(ls build/artifact/taildeck-android-x64-*.apk | head -1)"
+            apk="$(ls build/artifact/taildeck-android-x64-*.apk 2>/dev/null | head -1 || true)"
+          fi
+          if [ -z "$apk" ] || [ ! -s "$apk" ]; then
+            apk="$(ls build/artifact/*.apk 2>/dev/null | head -1 || true)"
           fi
           test -s "$apk" || { echo "::error::no APK to smoke"; exit 1; }
           echo "APK=$PWD/$apk" >> "$GITHUB_ENV"
