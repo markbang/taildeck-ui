@@ -118,6 +118,8 @@ int td_jni_attach(JNIEnv *env, jobject helper) {
   if ((*env)->GetJavaVM(env, &vm) != JNI_OK || vm == NULL) return 0;
   cls = (*env)->GetObjectClass(env, helper);
   if (cls == NULL) return 0;
+  // Instance methods: PlatformBridge.kt must not mark them @JvmStatic, because
+  // GetMethodID never matches a static method.
   m_ifaces = (*env)->GetMethodID(env, cls, "interfacesJson", "()Ljava/lang/String;");
   m_default = (*env)->GetMethodID(env, cls, "defaultInterface", "()Ljava/lang/String;");
   m_lookup = (*env)->GetMethodID(env, cls, "lookup", "(Ljava/lang/String;)Ljava/lang/String;");
