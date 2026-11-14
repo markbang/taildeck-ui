@@ -6,6 +6,9 @@ import 'package:prism_ui/prism_ui.dart';
 import '../data.dart';
 import '../l10n.dart';
 import '../services.dart';
+import '../widgets/controls.dart';
+import '../widgets/foundation.dart';
+import '../widgets/select_row.dart';
 
 /// Adds a service, or edits [initial]. Returns null when dismissed.
 Future<Service?> showServiceSheet(
@@ -14,6 +17,7 @@ Future<Service?> showServiceSheet(
   Service? initial,
   String? initialNode,
   int? initialPort,
+  Future<void> Function(Service service)? onSave,
 }) {
   return showFormSheet<Service>(
     context: context,
@@ -22,6 +26,7 @@ Future<Service?> showServiceSheet(
       initial: initial,
       initialNode: initialNode,
       initialPort: initialPort,
+      onSave: onSave,
     ),
   );
 }
@@ -32,12 +37,14 @@ class _ServiceSheet extends StatefulWidget {
     this.initial,
     this.initialNode,
     this.initialPort,
+    this.onSave,
   });
 
   final List<NodeItem> nodes;
   final Service? initial;
   final String? initialNode;
   final int? initialPort;
+  final Future<void> Function(Service service)? onSave;
 
   @override
   State<_ServiceSheet> createState() => _ServiceSheetState();
@@ -50,6 +57,8 @@ class _ServiceSheetState extends State<_ServiceSheet> {
   late final TextEditingController _name;
   late final TextEditingController _port;
   late final TextEditingController _path;
+  bool _busy = false;
+  String _error = '';
 
   @override
   void initState() {
@@ -101,23 +110,36 @@ class _ServiceSheetState extends State<_ServiceSheet> {
     return value != null && value >= 1 && value <= 65535 ? value : null;
   }
 
-  void _save() {
+  Future<void> _save() async {
     final port = _parsedPort;
-    if (port == null || _node.isEmpty) return;
-    FocusScope.of(context).unfocus();
-    Navigator.of(context).pop(
-      Service(
-        id: widget.initial?.id ?? ServiceStore.newId(),
+    if (_busy || port == null || _node.isEmpty) return;
+    final service = Service(
+      id: widget.initial?.id ?? ServiceStore.newId(),
+      node: _node,
+      name: _name.text.trim().isEmpty ? '$port' : _name.text.trim(),
+      url: serviceUrl(
         node: _node,
-        name: _name.text.trim().isEmpty ? '$port' : _name.text.trim(),
-        url: serviceUrl(
-          node: _node,
-          scheme: _scheme,
-          port: port,
-          path: _path.text,
-        ),
+        scheme: _scheme,
+        port: port,
+        path: _path.text,
       ),
     );
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _busy = true;
+      _error = '';
+    });
+    try {
+      await widget.onSave?.call(service);
+      if (mounted) Navigator.of(context).pop(service);
+    } on Object catch (error) {
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _error = AppLocalizations.of(context).serviceSaveFailed('$error');
+        });
+      }
+    }
   }
 
   @override
@@ -175,10 +197,11 @@ class _ServiceSheetState extends State<_ServiceSheet> {
               padding: EdgeInsets.zero,
               child: Column(
                 children: [
-                  _SelectRow<String>(
+                  SelectRow<String>(
                     label: l10n.serviceNode,
                     value: _node,
                     options: [for (final node in _nodes) (node, node)],
+                    enabled: !_busy,
                     onChanged: (value) => setState(() => _node = value),
                   ),
                   const _RowDivider(),
@@ -188,10 +211,11 @@ class _ServiceSheetState extends State<_ServiceSheet> {
                     hintText: l10n.serviceNameHint,
                   ),
                   const _RowDivider(),
-                  _SelectRow<String>(
+                  SelectRow<String>(
                     label: l10n.serviceScheme,
                     value: _scheme,
                     options: const [('http', 'http'), ('https', 'https')],
+                    enabled: !_busy,
                     onChanged: (value) => setState(() => _scheme = value),
                   ),
                   const _RowDivider(),
@@ -212,10 +236,15 @@ class _ServiceSheetState extends State<_ServiceSheet> {
                 ],
               ),
             ),
+            if (_error.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              InlineNotice(text: _error),
+            ],
             const SizedBox(height: 16),
-            FilledButton(
+            LoadingButton(
+              label: l10n.save,
+              loading: _busy,
               onPressed: _parsedPort == null || _node.isEmpty ? null : _save,
-              child: Text(l10n.save),
             ),
           ],
         ),
@@ -305,66 +334,6 @@ class _Digits extends TextInputFormatter {
     return TextEditingValue(
       text: text,
       selection: TextSelection.collapsed(offset: text.length),
-    );
-  }
-}
-
-class _SelectRow<T> extends StatelessWidget {
-  const _SelectRow({
-    required this.label,
-    required this.value,
-    required this.options,
-    required this.onChanged,
-  });
-
-  final String label;
-  final T value;
-  final List<(T, String)> options;
-  final ValueChanged<T> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = context.colorScheme;
-    final current = options
-        .firstWhere(
-          (option) => option.$1 == value,
-          orElse: () => (value, '$value'),
-        )
-        .$2;
-    return PopupAnchor(
-      targetBuilder: (open) => PressRegion(
-        onTap: open,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
-          child: Row(
-            children: [
-              Expanded(child: Text(label, style: context.listTitleStyle)),
-              Text(
-                current,
-                style: AppTextStyle.body.of(
-                  context,
-                ).copyWith(color: scheme.onSurfaceVariant),
-              ),
-              const SizedBox(width: 4),
-              GlyphIcon(
-                Glyphs.chevronDown,
-                size: 14,
-                color: scheme.onSurfaceVariant.opacity50,
-              ),
-            ],
-          ),
-        ),
-      ),
-      popupBuilder: (context) => PopupMenu(
-        items: [
-          for (final (option, text) in options)
-            PopupMenuItem(
-              label: text,
-              checked: option == value,
-              onPressed: () => onChanged(option),
-            ),
-        ],
-      ),
     );
   }
 }

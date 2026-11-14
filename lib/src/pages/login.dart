@@ -10,6 +10,7 @@ import '../backend.dart';
 import '../glyphs.dart';
 import '../l10n.dart';
 import '../preview_env.dart';
+import '../widgets/controls.dart';
 import '../widgets/foundation.dart';
 
 class LoginPage extends StatefulWidget {
@@ -29,9 +30,9 @@ class _LoginPageState extends State<LoginPage> {
   _Stage _previewStage = previewParam('login') == 'waiting'
       ? _Stage.waiting
       : _Stage.idle;
-  bool _authKey = false;
+  bool _authKey = previewParam('auth') == '1';
   bool _advanced = false;
-  bool _busy = false;
+  bool _busy = previewParam('busy') == '1';
   String _openedUrl = '';
   static const _previewUrl = 'login.tailscale.com/a/4f2c9e';
   final _key = TextEditingController();
@@ -217,6 +218,7 @@ class _LoginPageState extends State<LoginPage> {
       keyController: _key,
       controlController: _control,
       connectEnabled: !_busy,
+      busy: _busy,
       onToggleAuthKey: () => setState(() => _authKey = !_authKey),
       onToggleAdvanced: () => setState(() => _advanced = !_advanced),
       onConnect: () => _connectWithKey(backend),
@@ -231,6 +233,7 @@ class _LoginPageState extends State<LoginPage> {
       keyController: _key,
       controlController: _control,
       connectEnabled: true,
+      busy: _busy,
       onToggleAuthKey: () => setState(() => _authKey = !_authKey),
       onToggleAdvanced: () => setState(() => _advanced = !_advanced),
       onConnect: widget.onSignedIn,
@@ -312,6 +315,7 @@ class _Choices extends StatelessWidget {
     required this.keyController,
     required this.controlController,
     required this.connectEnabled,
+    required this.busy,
     required this.onToggleAuthKey,
     required this.onToggleAdvanced,
     required this.onConnect,
@@ -323,6 +327,7 @@ class _Choices extends StatelessWidget {
   final TextEditingController keyController;
   final TextEditingController controlController;
   final bool connectEnabled;
+  final bool busy;
   final VoidCallback onToggleAuthKey;
   final VoidCallback onToggleAdvanced;
   final VoidCallback onConnect;
@@ -345,12 +350,17 @@ class _Choices extends StatelessWidget {
                 glyph: Glyphs2.globe,
                 title: l10n.continueInBrowser,
                 subtitle: l10n.signInToControlServer,
-                onTap: onBrowser,
-                trailing: GlyphIcon(
-                  Glyphs.chevronForward,
-                  size: 16,
-                  color: scheme.onSurfaceVariant.opacity50,
-                ),
+                onTap: busy ? null : onBrowser,
+                trailing: busy
+                    ? const SizedBox.square(
+                        dimension: 16,
+                        child: ActivityIndicator(size: 16),
+                      )
+                    : GlyphIcon(
+                        Glyphs.chevronForward,
+                        size: 16,
+                        color: scheme.onSurfaceVariant.opacity50,
+                      ),
               ),
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 4),
@@ -381,9 +391,10 @@ class _Choices extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 10),
-                FilledButton(
+                LoadingButton(
+                  label: l10n.connect,
+                  loading: busy,
                   onPressed: connectEnabled ? onConnect : null,
-                  child: Text(l10n.connect),
                 ),
               ],
             ],
@@ -445,7 +456,7 @@ class _OptionRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = context.colorScheme;
-    return PressRegion(
+    return TapFeedback(
       onTap: onTap,
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 10),

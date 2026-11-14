@@ -7,6 +7,7 @@ import '../backend.dart';
 import '../data.dart';
 import '../l10n.dart';
 import '../glyphs.dart';
+import '../widgets/controls.dart';
 import '../widgets/foundation.dart';
 
 class NodesPage extends StatelessWidget {
@@ -45,14 +46,25 @@ class NodesPage extends StatelessWidget {
           onChanged: (_) {},
         ),
         const SizedBox(height: 14),
-        _SelfCard(node: self, peers: online, onOpenNode: onOpenNode),
+        Reveal(
+          key: const ValueKey('self-card'),
+          child: _SelfCard(node: self, peers: online, onOpenNode: onOpenNode),
+        ),
         const SizedBox(height: 14),
-        GroupCard(
-          dividerInset: 60,
-          children: [
-            for (final node in nodes)
-              _PeerRow(node: node, onTap: () => onOpenNode(node)),
-          ],
+        Reveal(
+          key: const ValueKey('peer-list'),
+          index: 1,
+          child: AnimatedGroupCard(
+            dividerInset: 60,
+            children: [
+              for (final node in nodes)
+                _PeerRow(
+                  key: ValueKey(node.name),
+                  node: node,
+                  onTap: () => onOpenNode(node),
+                ),
+            ],
+          ),
         ),
       ],
     );
@@ -129,7 +141,7 @@ class _SelfCard extends StatelessWidget {
                       relay: peers[i].relay,
                     ),
                     onTap: () => onOpenNode(peers[i]),
-                    child: PressRegion(
+                    child: TapFeedback(
                       onTap: () => onOpenNode(peers[i]),
                       child: SizedBox(
                         height: 44,
@@ -170,7 +182,7 @@ class _SelfCard extends StatelessWidget {
 }
 
 class _PeerRow extends StatelessWidget {
-  const _PeerRow({required this.node, required this.onTap});
+  const _PeerRow({super.key, required this.node, required this.onTap});
 
   final NodeItem node;
   final VoidCallback onTap;
@@ -197,7 +209,7 @@ class _PeerRow extends StatelessWidget {
     return RowSemantics(
       label: label,
       onTap: onTap,
-      child: PressRegion(
+      child: TapFeedback(
         onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),

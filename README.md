@@ -163,8 +163,9 @@ Drop `U+AC00-D7A3` to save ~1.1 MB if Korean is not needed.
 M0–M4 have landed: the native bridge and terminal FFI, SSH sessions, services and the gateway, herdr agents,
 settings, keys and logs, Android host network hooks, and unsigned Windows/macOS/iOS packaging. See
 [docs/PARITY.md](docs/PARITY.md) for the feature-by-feature comparison with the Kotlin app,
-[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the native boundary and [docs/SIGNING.md](docs/SIGNING.md) for the
-release signing.
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the native boundary, [docs/SIGNING.md](docs/SIGNING.md) for the
+release signing and [docs/UI-GUIDELINES.md](docs/UI-GUIDELINES.md) for button states, loading feedback, selects,
+motion and copy.
 
 Still missing: an in-app WebView (links open in the system browser), notification actions with allow/deny/reply,
 prompt queues while an agent is busy, subagent transcripts, image attachments, slash-command completion, and an

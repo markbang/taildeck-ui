@@ -5,6 +5,7 @@ import 'package:prism_ui/prism_ui.dart';
 import '../backend.dart';
 import '../l10n.dart';
 import '../ssh_identities.dart';
+import '../widgets/controls.dart';
 
 /// Imports a private key as `ssh/<name>.key`; null when dismissed.
 Future<SshIdentity?> showKeySheet(
@@ -183,9 +184,10 @@ class _KeySheetState extends State<_KeySheet> {
               ),
             ),
             const SizedBox(height: 16),
-            FilledButton(
-              onPressed: _busy ? null : _save,
-              child: Text(l10n.importKey),
+            LoadingButton(
+              label: l10n.importKey,
+              loading: _busy,
+              onPressed: _save,
             ),
           ],
         ),

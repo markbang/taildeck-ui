@@ -15,6 +15,7 @@ import '../native/keys.dart';
 import '../native/ssh.dart';
 import '../native/term.dart';
 import '../native/term_demo.dart';
+import '../widgets/controls.dart';
 import 'term_view.dart';
 
 enum _Kind { command, output, muted, error, ok }
@@ -579,8 +580,9 @@ class _QuickBar extends StatelessWidget {
           for (final command in _commands)
             Padding(
               padding: const EdgeInsets.only(right: 8),
-              child: PressRegion(
+              child: TapFeedback(
                 onTap: () => onRun(command),
+                scale: true,
                 shape: AppShape.full,
                 child: Container(
                   alignment: Alignment.center,

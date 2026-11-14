@@ -6,6 +6,7 @@ import 'package:prism_ui/prism_ui.dart';
 
 import '../herdr.dart';
 import '../l10n.dart';
+import '../widgets/controls.dart';
 import '../widgets/select_row.dart';
 
 typedef NewAgentChoice = ({
@@ -256,9 +257,10 @@ class _NewAgentSheetState extends State<_NewAgentSheet> {
               ),
             ],
             const SizedBox(height: 16),
-            FilledButton(
-              onPressed: _busy || nameError != null ? null : _create,
-              child: Text(_busy ? l10n.connecting : l10n.create),
+            LoadingButton(
+              label: l10n.create,
+              loading: _busy,
+              onPressed: nameError == null ? _create : null,
             ),
           ],
         ),
