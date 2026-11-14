@@ -68,9 +68,9 @@ named; **Missing** = not implemented. The evidence column says which clip in
 | 28 | `AgentsUi.kt:977` | Expandable card: the chevron rotates and the content resizes | default | `RotatingChevron` + `AnimatedContentSize` | 已对齐 | needs a live agent |
 | 29 | `HomeScreen.kt:126` | Indeterminate wavy linear progress while the node starts | Material 3 wavy, fade in/out | `nodes.dart:147` `MotionVisibility` + `WavyLine` (`wavy.dart:8`) | 已对齐 | needs a signed-in node |
 | 30 | `AgentDialogs.kt:145`, `AgentExtras.kt:188`, `:591`, `:746`, `:889`, `:971`, `:1000`, `AgentTimeline.kt:202`, `:253`, `AgentsUi.kt:306`, `:694`, `HomeScreen.kt:221`, `NodeScreen.kt:174`, `:205` | Material 3 wavy loading indicator | 1 s loop | `wavy.dart:128` `WavyActivityIndicator` (login, nodes, node detail, services, settings, chat, buttons) | Partial | an arc rather than the shape-shifting dot |
-| 31 | `Expressive.kt:113` | The working badge turns once every 9 s | linear | `shape_badge.dart:33` `ShapeBadge(spin:)` | 已对齐 | needs herdr |
-| 32 | `Expressive.kt:99` | The badge polygon morphs when the status changes | slow spatial | `shape_badge.dart:31` `ShapeBadge` (`BlobShape` morph) | 已对齐 | blob approximation of the MaterialShapes polygon |
-| 33 | `Expressive.kt:110` | The badge container colour fades on a status change | default effects | `shape_badge.dart:35` | 已对齐 | needs herdr |
+| 31 | `Expressive.kt:113` | The working badge turns once every 9 s | linear | `shape_badge.dart:61` `ShapeBadge` spin (`9 s`) | 已对齐 | needs herdr |
+| 32 | `Expressive.kt:99` | The badge polygon morphs when the status changes | slow spatial | `shape_badge.dart:55` `ShapeBadge` morph (`BlobShape`) | 已对齐 | blob approximation of the MaterialShapes polygon |
+| 33 | `Expressive.kt:110` | The badge container colour fades on a status change | default effects | `shape_badge.dart:58` | 已对齐 | needs herdr |
 | 34 | `AgentsUi.kt:174` | The agent status dot pulses 0.35 → 1 while working or blocked | 700 ms reverse | `motion.dart:262` `PulsingDot` via `StatusPill` (`foundation.dart:310`, `agents.dart:504`) | 已对齐 | needs a live agent |
 | 35 | `AgentExtras.kt:486` | Three “typing” dots light in turn while an agent works | 600 ms, 160 ms stagger, reverse | `motion.dart:570` `InkDots` in `_WorkingBar` (`agent_chat.dart:1769`) | 已对齐 | needs a live agent |
 | 36 | `Common.kt:31` | The node status dot colour animates between online and offline | default effects | `PulsingDot` colour tween (`motion.dart:262`) | 已对齐 | no clip changes a node’s state |

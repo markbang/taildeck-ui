@@ -64,9 +64,9 @@ Flutter 侧全部走 `context.motionDuration(spec)`（`prism_ui`），因此系�
 | 28 | `AgentsUi.kt:977` | 可展开卡片：箭头旋转、内容改变高度 | 默认 | `RotatingChevron` + `AnimatedContentSize` | 已对齐 | 需要在线 Agent |
 | 29 | `HomeScreen.kt:126` | 节点启动时的波浪线性进度 | Material 3 波浪，淡入淡出 | `nodes.dart:147` `MotionVisibility` + `WavyLine` (`wavy.dart:8`) | 已对齐 | 需要已登录节点 |
 | 30 | `AgentDialogs.kt:145`, `AgentExtras.kt:188`, `:591`, `:746`, `:889`, `:971`, `:1000`, `AgentTimeline.kt:202`, `:253`, `AgentsUi.kt:306`, `:694`, `HomeScreen.kt:221`, `NodeScreen.kt:174`, `:205` | Material 3 波浪加载指示器 | 1 秒循环 | `wavy.dart:128` `WavyActivityIndicator` (login, nodes, node detail, services, settings, chat, buttons) | Partial | 是波浪弧，不是形变的圆点 |
-| 31 | `Expressive.kt:113` | 工作中的徽标每 9 秒转一圈 | 线性 | `shape_badge.dart:33` `ShapeBadge(spin:)` | 已对齐 | 需要 herdr |
-| 32 | `Expressive.kt:99` | 状态变化时徽标多边形变形 | 慢空间 | `shape_badge.dart:31` `ShapeBadge` (`BlobShape` morph) | 已对齐 | 用 blob 近似 MaterialShapes 多边形 |
-| 33 | `Expressive.kt:110` | 徽标底色随状态淡变 | 默认淡入 | `shape_badge.dart:35` | 已对齐 | 需要 herdr |
+| 31 | `Expressive.kt:113` | 工作中的徽标每 9 秒转一圈 | 线性 | `shape_badge.dart:61` `ShapeBadge` spin (`9 s`) | 已对齐 | 需要 herdr |
+| 32 | `Expressive.kt:99` | 状态变化时徽标多边形变形 | 慢空间 | `shape_badge.dart:55` `ShapeBadge` morph (`BlobShape`) | 已对齐 | 用 blob 近似 MaterialShapes 多边形 |
+| 33 | `Expressive.kt:110` | 徽标底色随状态淡变 | 默认淡入 | `shape_badge.dart:58` | 已对齐 | 需要 herdr |
 | 34 | `AgentsUi.kt:174` | 工作中/被阻塞时状态点 0.35 → 1 脉冲 | 700 ms 往返 | `motion.dart:262` `PulsingDot` via `StatusPill` (`foundation.dart:310`, `agents.dart:504`) | 已对齐 | 需要在线 Agent |
 | 35 | `AgentExtras.kt:486` | 三个“输入中”圆点轮流亮起 | 600 ms，错开 160 ms，往返 | `motion.dart:570` `InkDots` in `_WorkingBar` (`agent_chat.dart:1769`) | 已对齐 | 需要在线 Agent |
 | 36 | `Common.kt:31` | 节点状态点在线/离线颜色淡变 | 默认淡入 | `PulsingDot` colour tween (`motion.dart:262`) | 已对齐 | 没有片段改变节点状态 |
