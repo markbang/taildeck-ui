@@ -350,7 +350,7 @@ flutter_probe() {
   sleep 3
   if point=$(ui tap "Agents"); then
     tap_xy "$point"
-    sleep 2
+    sleep 3
     if ui has "herdr" > /dev/null 2>&1; then
       note "flutter input: a tap on the preview shell landed"
     else
@@ -375,12 +375,12 @@ flutter_login_scene() {
   # ripple stays; the release signs the node in, past the end of the clip.
   point=$(find_or_scroll "Connect") || { note "flutter-press: no Connect"; return 0; }
   record flutter-press 3 hold_long "$point" 4200
-  wait_for "Search nodes" 40 || { shot flutter-after-press; note "flutter login: still on the login screen"; }
+  wait_for "Services" 40 || { shot flutter-after-press; note "flutter login: still on the login screen"; }
 }
 
 flutter_scene() {
   local point
-  if ! ui has "Search nodes" > /dev/null 2>&1; then
+  if ! ui has "Services" > /dev/null 2>&1; then
     note "flutter: not signed in, the node page stays unrecorded"
     return 0
   fi
