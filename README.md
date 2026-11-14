@@ -106,8 +106,15 @@ node), `/?ssh=devbox` (terminal), `/?lang=zh`,
 herdr connection it shows the real error state), `/?chat=w1:p1&status=working` (the same chat with the agent
 busy, so the prompt queue shows), `/?chat=w1:p1&queue=first%20prompt|second` (prompts that start out queued),
 `/?motion=off` (preview the system's reduce-motion setting),
-`/?scale=1.3` (preview a text scale; the app clamps 0.9–1.3). The desktop bundle has no URL, so pass the same
-parameters as `TAILDECK_QUERY=ssh=demo`.
+`/?scale=1.3` (preview a text scale; the app clamps 0.9–1.3), `/?sheet=ssh|service|agent|key|dialog` (open that
+sheet over the preview page). The desktop bundle has no URL, so pass the same parameters as
+`TAILDECK_QUERY=ssh=demo`; on Android a launch link takes them:
+`adb shell am start -a android.intent.action.VIEW -d 'taildeck://preview/?preview=1&node=devbox'`.
+
+Android back follows one policy (`lib/src/back.dart`): sheets, dialogs and popup menus pop as routes; a text
+field's keyboard hides; the tab's page pops; a secondary tab returns to Nodes; the first tab's list asks for a
+second press (a banner) before the app leaves. Leaving the terminal page does not end the SSH session: the node
+detail offers to resume or disconnect it.
 
 ## Run
 

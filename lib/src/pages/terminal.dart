@@ -12,9 +12,9 @@ import '../data.dart';
 import '../l10n.dart';
 import '../native/bridge.dart';
 import '../native/keys.dart';
-import '../native/ssh.dart';
 import '../native/term.dart';
 import '../native/term_demo.dart';
+import '../terminal_store.dart';
 import '../widgets/controls.dart';
 import 'term_view.dart';
 
@@ -32,24 +32,32 @@ class TerminalPage extends StatefulWidget {
     super.key,
     required this.node,
     required this.onClose,
+    required this.terminal,
     this.user = 'root',
     this.port = 22,
-    this.ssh,
     this.demo = false,
+    this.onDisconnect,
   });
 
   final NodeItem node;
+
+  /// Leaving the page; the session keeps running in [terminal].
   final VoidCallback onClose;
+
+  /// Ending the remote shell for good.
+  final VoidCallback? onDisconnect;
+
   final String user;
   final int port;
 
-  /// Live session from the Go node; null on the mock/web path.
-  final SshSession? ssh;
+  /// Owns the SSH session and its output; live unless the mock path opened it
+  /// without a session.
+  final SshTerminal terminal;
 
   /// `?ssh=demo`: feed a canned ANSI session through the emulator.
   final bool demo;
 
-  bool get live => ssh != null;
+  bool get live => terminal.live;
 
   @override
   State<TerminalPage> createState() => _TerminalPageState();
@@ -91,17 +99,26 @@ class _TerminalPageState extends State<TerminalPage> {
   @override
   void initState() {
     super.initState();
-    final ssh = widget.ssh;
+    final terminal = widget.terminal;
     final term = createNativeTerm(cols: 80, rows: 24, scrollback: 5000);
     if (term != null) {
       _session = TerminalSession(term)
         ..addListener(_onSessionChanged)
-        ..onResize = (cols, rows) => ssh?.resize(cols, rows);
-      if (widget.demo) _session!.feed(demoSessionBytes());
+        ..onResize = (cols, rows) => terminal.resize(cols, rows);
+      if (widget.demo) {
+        _session!.feed(demoSessionBytes());
+      } else {
+        // Output that arrived while no page was attached.
+        final buffered = terminal.takeBuffered();
+        if (buffered.isNotEmpty) {
+          _session!.feed(buffered);
+          _connected = terminal.live;
+        }
+      }
     }
-    if (ssh != null) {
+    if (terminal.live) {
       _focus.onKeyEvent = _onKey;
-      _output = ssh.output.listen(_onOutput);
+      _output = terminal.frames.listen(_onOutput);
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _focus.requestFocus();
@@ -123,7 +140,7 @@ class _TerminalPageState extends State<TerminalPage> {
     final bytes = frame.bytes;
     if (bytes == null) return;
     final reply = session?.feed(bytes);
-    if (reply != null && reply.isNotEmpty) widget.ssh?.write(reply);
+    if (reply != null && reply.isNotEmpty) widget.terminal.write(reply);
     if (!frame.notice && !_connected) setState(() => _connected = true);
   }
 
@@ -132,9 +149,9 @@ class _TerminalPageState extends State<TerminalPage> {
   /// Hardware keys reach the emulator's encoder; printable characters come
   /// through the text field below and are encoded there.
   KeyEventResult _onKey(FocusNode node, KeyEvent event) {
-    final ssh = widget.ssh;
-    final session = _session;
-    if (ssh == null || session == null) return KeyEventResult.ignored;
+    final terminal = widget.terminal;
+    if (!terminal.live || _session == null) return KeyEventResult.ignored;
+    final session = _session!;
     if (event is KeyUpEvent) return KeyEventResult.handled;
     final mods = ghosttyModsOf(HardwareKeyboard.instance);
     final text = event.character;
@@ -143,14 +160,14 @@ class _TerminalPageState extends State<TerminalPage> {
       return KeyEventResult.ignored;
     }
     final encoded = session.term.encodeKey(ghosttyKeyOf(event), mods);
-    if (encoded != null) ssh.write(encoded);
+    if (encoded != null) terminal.write(encoded);
     return KeyEventResult.handled;
   }
 
   void _onTextChanged(String value) {
-    final ssh = widget.ssh;
-    final session = _session;
-    if (ssh == null || session == null) return;
+    final terminal = widget.terminal;
+    if (!terminal.live || _session == null) return;
+    final session = _session!;
     // An IME preedit is not committed text: wait for the commit.
     if (_input.value.composing.isValid) return;
     final added = _sent.isEmpty
@@ -164,7 +181,7 @@ class _TerminalPageState extends State<TerminalPage> {
         0,
         text: text,
       );
-      if (encoded != null) ssh.write(encoded);
+      if (encoded != null) terminal.write(encoded);
     }
     if (value.isEmpty) return;
     // The line is a keystroke buffer, not an input box: clear it once the
@@ -177,9 +194,9 @@ class _TerminalPageState extends State<TerminalPage> {
   }
 
   void _sendLine(String text) {
-    final ssh = widget.ssh;
-    final session = _session;
-    if (ssh == null || session == null) return;
+    final terminal = widget.terminal;
+    if (!terminal.live || _session == null) return;
+    final session = _session!;
     for (final rune in text.runes) {
       final ch = String.fromCharCode(rune);
       final encoded = session.term.encodeKey(
@@ -187,10 +204,10 @@ class _TerminalPageState extends State<TerminalPage> {
         0,
         text: ch,
       );
-      if (encoded != null) ssh.write(encoded);
+      if (encoded != null) terminal.write(encoded);
     }
     final enter = session.term.encodeKey(58, 0); // GHOSTTY_KEY_ENTER
-    if (enter != null) ssh.write(enter);
+    if (enter != null) terminal.write(enter);
   }
 
   /// Keeps the header's grid size in step with the emulator.
@@ -209,8 +226,8 @@ class _TerminalPageState extends State<TerminalPage> {
 
   @override
   void dispose() {
+    // Detach only; the session stays up in the store and back reattaches.
     _output?.cancel();
-    widget.ssh?.close();
     _focus.dispose();
     _session?.removeListener(_onSessionChanged);
     _session?.dispose();

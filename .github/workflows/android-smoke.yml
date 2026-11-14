@@ -1,5 +1,6 @@
 # Cold-start smoke test: installs a release APK on an emulator, launches it
-# fresh and fails when the process dies or AndroidRuntime reports a crash.
+# fresh and fails when the process dies or AndroidRuntime reports a crash. Then
+# the back key: a sheet, the page under it, a tab and the exit hint.
 name: android-smoke
 
 on:
@@ -54,7 +55,7 @@ env:
 
 jobs:
   smoke:
-    name: cold start
+    name: cold start and back key
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -187,7 +188,8 @@ jobs:
           profile: pixel_6
           disable-animations: true
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          script: bash tool/smoke_android.sh "$APK" "$APP_ID" smoke
+          # One line: the runner hands each line to sh separately.
+          script: bash tool/smoke_android.sh "$APK" "$APP_ID" smoke && bash tool/back_android.sh "$APK" "$APP_ID" smoke-back
 
       - name: Job summary
         if: always()
@@ -198,12 +200,20 @@ jobs:
             echo '```'
             cat smoke/summary.txt 2>/dev/null || echo 'no summary'
             echo '```'
+            echo
+            echo "### Android back key"
+            echo
+            echo '```'
+            cat smoke-back/summary.txt 2>/dev/null || echo 'no summary'
+            echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: android-smoke
-          path: smoke/
+          path: |
+            smoke/
+            smoke-back/
           if-no-files-found: warn
       - uses: actions/upload-artifact@v4
         if: always()

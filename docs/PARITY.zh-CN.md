@@ -24,7 +24,7 @@ Flutter 客户端对 [markbang/taildeck](https://github.com/markbang/taildeck)�
 | 登录 | 浏览器登录、auth key、Headscale 控制服务器 | 同样三种方式，有等待状态和可选的控制服务器地址 | 未验证 | 浏览器 URL 和等待状态已实现；没有控制面，无法完成批准 |
 | 节点状态、对端、ping | 在线、系统、地址、标签、路由、直连/中继、延迟 | `td_status` / `td_ping`；最后在线和密钥到期时间已本地化 | 未验证 | 用固定数据渲染并截图；真实对端和 ping 未测 |
 | 节点列表与详情 | 分组列表、带操作的详情页 | 本机卡片、按系统徽标、路径徽标、SSH/Web/Ping 操作、信息卡 | 已完成 | 界面完整并截图；真实数值依赖未验证的节点 |
-| SSH 会话 | Tailscale SSH、密码、内置密钥、导入密钥、OpenSSH 证书 | `td_ssh_dial` + PTY，Tailscale SSH / 密码 / 密钥认证 | 未验证 | 会话链路和按键映射已落地（M2b）；没有可达主机可连 |
+| SSH 会话 | Tailscale SSH、密码、内置密钥、导入密钥、OpenSSH 证书 | `td_ssh_dial` + PTY，Tailscale SSH / 密码 / 密钥认证；离开终端页不结束会话，节点页可继续或断开 | 未验证 | 会话链路和按键映射已落地（M2b）；没有可达主机可连。保活缓冲用假会话做了本地测试 |
 | SSH 认证方式 | 含 OpenSSH 证书 | Tailscale SSH、密码、内置 ed25519 密钥，以及可带密码短语的导入 PEM 密钥 | 部分 | ABI 有 `certPath`，但表单里没有证书选择 |
 | SSH 身份 | 内置密钥、导入、删除 | 内置 `id_ed25519`，导入 PEM 密钥，密码短语随元数据保存，可删除 | 已完成 | 密钥生成和导入路径本地测过；用它们拨号属于上面未验证的 SSH 行 |
 | SSH 登录用户 | 用户名可编辑，随保存的配置记住 | 同样可编辑并校验；依次用该节点/服务上次的登录、节点的 Tailscale 用户、`root` 预填 | 已完成 | 写入 `config.json`，Linux 构建重启后能读回 |
@@ -45,6 +45,7 @@ Flutter 客户端对 [markbang/taildeck](https://github.com/markbang/taildeck)�
 | 退出登录 | 停止并登出节点 | `td_logout`，带确认 | 未验证 | 需要已登录的节点 |
 | Android 前台服务 | 退到后台时保持节点存活 | `dataSync` 前台服务加一条低优先级通知，节点进入 `Running` 时启动，停止或退出登录时结束 | 未验证 | 已进合并后的 manifest 和 debug APK；没有真机确认进程退到后台后仍存活 |
 | Android 网络钩子 | 基于 ConnectivityManager 的网卡和 DNS | `PlatformBridge.kt` + JNI（`platform_jni.c`），`"platform": "host"` | 已完成 | #16 合入；CI 能构建，尚未在真机运行 |
+| Android 系统返回键 | Compose 返回栈；在节点列表按返回会退出应用 | `lib/src/back.dart` 一条策略：先关弹窗/对话框/菜单，再退当前页，再回第一个标签，最后需连按两次才退出 | 已完成 | `android-smoke` 里 `tool/back_android.sh` 在模拟器上发真实返回键，逐步校验、进程和前台 Activity |
 | 无障碍 | Compose 语义 | 读屏标签、Esc 关闭、减少动态效果、文字缩放限制在 0.9–1.3 | 已完成 | #15 合入；有减少动态效果和缩放的截图 |
 | Linux 桌面 | — | 带两个原生库的产物，CI 在 Xvfb 里运行 | 已完成 | Kotlin 版之外新增 |
 | Windows / macOS | — | 打 tag 或手动触发时构建未签名包，DLL/dylib 已接好 | 未验证 | 从未启动 |

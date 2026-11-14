@@ -1,5 +1,10 @@
 import 'package:flutter/widgets.dart';
 
 import 'src/app.dart';
+import 'src/preview_env.dart';
 
-void main() => runApp(const TaildeckApp());
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await readLaunchQuery();
+  runApp(const TaildeckApp());
+}

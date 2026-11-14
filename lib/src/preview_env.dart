@@ -1,6 +1,11 @@
-import 'preview_env_stub.dart' if (dart.library.io) 'preview_env_io.dart' as env;
+import 'preview_env_stub.dart'
+    if (dart.library.io) 'preview_env_io.dart'
+    as env;
 
-/// Preview parameters (`?tab=1`, `?ssh=demo`, ...). Web and mobile read the
+/// A launch link (`taildeck://preview/?...`) is read before the first frame.
+Future<void> readLaunchQuery() => env.readLaunchQuery();
+
+/// Preview parameters (`?tab=1`, `?ssh=demo`, ...). Web and Android read the
 /// URL; the desktop bundle has none, so `TAILDECK_QUERY=ssh=demo` stands in.
 String? previewParam(String name) {
   final value = Uri.base.queryParameters[name];

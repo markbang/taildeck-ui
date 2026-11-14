@@ -130,6 +130,7 @@ class AppLocalizations implements UiLocalizations {
 
   @override
   String get back => _zh ? '返回' : 'Back';
+  String get backAgainToExit => _zh ? '再按一次返回键退出' : 'Press back again to exit';
   String get ssh => 'SSH';
   String get sshUser => _zh ? '用户' : 'User';
   String get sshPort => _zh ? '端口' : 'Port';
@@ -576,6 +577,8 @@ class AppLocalizations implements UiLocalizations {
   String get sshPasswordHint => _zh ? '服务器密码' : 'Server password';
   String get sshKeyTitle => _zh ? '公钥' : 'Public key';
   String get sshIdentity => _zh ? '身份' : 'Identity';
+  String get sshSessionRunning => _zh ? 'SSH 会话仍在运行' : 'SSH session running';
+  String get resume => _zh ? '继续' : 'Resume';
   String get sshKeyHint => _zh
       ? '把这段公钥加到服务器的 ~/.ssh/authorized_keys。'
       : 'Add this public key to ~/.ssh/authorized_keys on the server.';
