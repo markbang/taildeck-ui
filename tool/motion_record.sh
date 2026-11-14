@@ -17,9 +17,13 @@ summary="$out/summary.txt"
 note() { echo "$*" | tee -a "$summary"; }
 
 adb wait-for-device
+# A freshly booted emulator sometimes shows an ANR dialog over the app.
+adb shell settings put global hide_error_dialogs 1 > /dev/null 2>&1 || true
 for scale in window_animation_scale transition_animation_scale animator_duration_scale; do
   adb shell settings put global "$scale" 1 > /dev/null 2>&1 || true
 done
+sleep 20
+adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS > /dev/null 2>&1 || true
 
 [ -s "$kotlin_apk" ] || curl -fsSL -o "$kotlin_apk" "$kotlin_url"
 
@@ -61,15 +65,26 @@ type_text() {
 }
 
 launch() { # <apk> <app> [url]
-  local id=$2 url=${3:-}
-  adb shell am force-stop "$id" > /dev/null 2>&1 || true
-  sleep 1
-  if [ -n "$url" ]; then
-    adb shell am start -W -a android.intent.action.VIEW -d "$url" "$id" > /dev/null 2>&1 || true
-  else
-    adb shell monkey -p "$id" -c android.intent.category.LAUNCHER 1 > /dev/null 2>&1 || true
-  fi
-  sleep 4
+  local id=$2 url=${3:-} attempt resumed
+  for attempt in 1 2 3; do
+    adb shell am force-stop "$id" > /dev/null 2>&1 || true
+    sleep 1
+    if [ -n "$url" ]; then
+      adb shell am start -W -a android.intent.action.VIEW -d "$url" "$id" > /dev/null 2>&1 || true
+    else
+      adb shell monkey -p "$id" -c android.intent.category.LAUNCHER 1 > /dev/null 2>&1 || true
+    fi
+    sleep 5
+    resumed=$(adb shell dumpsys activity activities 2> /dev/null \
+      | grep -m1 -E 'mResumedActivity|topResumedActivity' || true)
+    case "$resumed" in
+      *"$id"*) return 0 ;;
+    esac
+    note "launch attempt $attempt: ${resumed:-no resumed activity}"
+    sleep 3
+  done
+  note "launch failed: $id"
+  return 1
 }
 
 install_app() { # <apk>
