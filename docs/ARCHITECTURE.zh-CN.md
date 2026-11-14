@@ -73,6 +73,15 @@ Android 11+ 屏蔽 Go 的 `net.Interfaces` 所用的 netlink，应用也没有 `
 | macOS | Go c-shared dylib（arm64 + x86_64） | `libghostty-vt` | 进程内回环 | 目前是未签名 `.app` zip，尚未运行；公证和 App Sandbox 网络授权属于发布阶段的工作 |
 | Web | 带固定数据的模拟后端 | 模拟终端 | 无 | 没有 `dart:ffi`；仅用于预览/调试，部署在 GitHub Pages |
 
+### 图标
+
+`android/app/src/main/res` 原样保留 Kotlin 版的自适应图标 —— `mipmap-anydpi-v26/ic_launcher.xml`、
+`drawable/ic_launcher_fg.xml`（3×3 圆点，中心为强调色）以及 `ic_bg`/`ic_fg`/`ic_accent` 三个颜色 —— 因此两个
+APK 里的图标字节完全一致。不要重画，也不要让 `flutter_launcher_icons` 生成：改动从 `markbang/taildeck` 开始，
+再复制过来。`tool/gen_icons.py` 用同一份资源渲染 Windows `.ico`、macOS 与 iOS 的 `AppIcon.appiconset`、Linux PNG
+和网页图标，按启动器遮罩的可见范围裁到 108dp 自适应视口的 72dp 区域；`tool/compare_apk_icons.py` 用 `aapt2`
+对比两个 APK 的图标资源，`icon-compare` 工作流还会在模拟器上分别截图两个图标。
+
 ## CI
 
 - 每个 PR：`ci.yml` 构建 Android（带两个原生库的 APK）、Linux（产物在 Xvfb 里启动并截图）和 Web（截图）；
