@@ -35,11 +35,6 @@ on:
         description: Package to install, launch and watch
         type: string
         default: top.bangwu.taildeck
-  push:
-    branches: [fix/cold-start-crash]
-    paths:
-      - '.github/workflows/android-smoke.yml'
-      - 'tool/smoke_android.sh'
 
 permissions:
   contents: read
@@ -163,6 +158,10 @@ jobs:
           fi
           test -s "$apk" || { echo "::error::no APK to smoke"; exit 1; }
           echo "APK=$PWD/$apk" >> "$GITHUB_ENV"
+          mkdir -p smoke
+          aapt2="$(ls -d "${ANDROID_SDK_ROOT:-$ANDROID_HOME}"/build-tools/*/ | sort -V | tail -1)/aapt2"
+          "$aapt2" dump badging "$apk" | grep -E "^(package|application-label:|launchable-activity)" \
+            | tee smoke/badging.txt
           echo "smoking $apk ($(stat -c%s "$apk") bytes)"
 
       - name: Enable KVM
