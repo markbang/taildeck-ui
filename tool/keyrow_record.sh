@@ -190,10 +190,10 @@ fi
 if [ -n "$ctrl" ]; then
   record keybar-pages 8 swipe_pages
   shot keybar-page3
-  if ui has 'Page down' > /dev/null 2>&1; then
-    note "keybar-pages: page 2 reached ('Page down' present)"
+  if ui has 'page 3 of 3' > /dev/null 2>&1; then
+    note "keybar-pages: verified (two swipes reached page 3)"
   else
-    note "keybar-pages: no 'Page down' node after the swipe"
+    note "keybar-pages: no page 3 after the swipes"
   fi
 else
   note "keybar-pages: no Control key found"

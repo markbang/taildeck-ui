@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
   # Temporary: dispatch only reaches a workflow that is on the default branch.
   push:
-    branches: [feat/terminal-keyrow]
+    branches: [fix/terminal-keyboard-inset]
 
 permissions:
   contents: read
