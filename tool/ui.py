@@ -29,19 +29,29 @@ def center(box):
 
 
 def matches(path, needle):
+    """A label, exact match first: a caption that merely contains the words
+    ("Works with ... control servers") must not win over the button."""
     root = ET.parse(path).getroot()
     wanted = needle.lower()
-    found = []
+    exact, partial = [], []
     for node in root.iter("node"):
-        label = f"{node.get('text') or ''} {node.get('content-desc') or ''}".strip()
-        if wanted not in label.lower():
+        labels = [
+            value.lower()
+            for value in (node.get("text") or "", node.get("content-desc") or "")
+            if value
+        ]
+        if not any(wanted in label for label in labels):
             continue
         box = bounds(node)
         if box is None:
             continue
         x1, y1, x2, y2 = box
-        found.append(((x2 - x1) * (y2 - y1), center(box)))
-    return [point for _, point in sorted(found)]
+        entry = ((x2 - x1) * (y2 - y1), center(box))
+        if any(label == wanted for label in labels):
+            exact.append(entry)
+        else:
+            partial.append(entry)
+    return [point for _, point in sorted(exact) + sorted(partial)]
 
 
 def edits(path):
