@@ -43,6 +43,11 @@ focus=$(adb shell dumpsys window 2>/dev/null | grep -m1 mCurrentFocus | tr -d '\
   echo "launcher activity: $activity"
   echo "pid after ${wait_s}s: ${pid:-<none>}"
   echo "focus: ${focus:-<none>}"
+  # Cold-start timing: am start -W's TotalTime and the system's own first-frame
+  # line, which also covers the launch screen hand-off.
+  grep -m1 -E '^TotalTime' "$out/launch.txt" | tr -d '\r' || true
+  grep -m1 -E '^WaitTime' "$out/launch.txt" | tr -d '\r' || true
+  grep -m1 "Displayed $app/" "$out/logcat.txt" | tr -d '\r' || true
 } | tee "$out/summary.txt"
 
 [ -n "$pid" ] || fail "process $app is gone; the app died within ${wait_s}s of launch"

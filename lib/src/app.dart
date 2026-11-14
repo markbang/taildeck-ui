@@ -8,6 +8,7 @@ import 'l10n.dart';
 import 'preview_env.dart';
 import 'services.dart';
 import 'shell.dart';
+import 'splash.dart';
 import 'theme.dart';
 
 class TaildeckApp extends StatefulWidget {
@@ -17,8 +18,7 @@ class TaildeckApp extends StatefulWidget {
   State<TaildeckApp> createState() => _TaildeckAppState();
 }
 
-class _TaildeckAppState extends State<TaildeckApp>
-    with WidgetsBindingObserver {
+class _TaildeckAppState extends State<TaildeckApp> with WidgetsBindingObserver {
   final theme = TaildeckTheme();
   final backend = TaildeckBackend();
   final services = ServiceStore.open();
@@ -89,11 +89,13 @@ class _TaildeckAppState extends State<TaildeckApp>
             ),
           );
         },
-        home: BackendScope(
-          backend: backend,
-          child: ServicesScope(
-            store: services,
-            child: TaildeckShell(theme: theme),
+        home: SplashGate(
+          child: BackendScope(
+            backend: backend,
+            child: ServicesScope(
+              store: services,
+              child: TaildeckShell(theme: theme),
+            ),
           ),
         ),
       ),

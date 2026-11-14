@@ -66,6 +66,16 @@ def render(size: int, rounded: bool) -> Image.Image:
     return image.resize((size, size), Image.LANCZOS)
 
 
+def render_mark(size: int) -> Image.Image:
+    """The launcher mark on transparent, for the launch screens."""
+    image = render(size, False)
+    mask = Image.new("L", image.size, 0)
+    w, h = image.size
+    ImageDraw.Draw(mask).ellipse([0, 0, w - 1, h - 1], fill=255)
+    image.putalpha(mask)
+    return image
+
+
 def save(image: Image.Image, path: str, opaque: bool = False) -> None:
     path = os.path.join(ROOT, path)
     os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -88,6 +98,12 @@ def main() -> int:
              sizes=[(s, s) for s in (16, 24, 32, 48, 64, 128, 256)])
     save(render(512, True), "linux/runner/resources/app_icon.png")
     save(render(32, False), "web/favicon.png")
+    # Launch screens: 96dp at Android's 3x and iOS's 3x.
+    save(render_mark(288), "android/app/src/main/res/drawable-nodpi/splash_logo.png")
+    for scale in (1, 2, 3):
+        suffix = f"@{scale}x" if scale > 1 else ""
+        save(render_mark(96 * scale),
+             f"ios/Runner/Assets.xcassets/LaunchImage.imageset/LaunchImage{suffix}.png")
     for size in (192, 512):
         save(render(size, False), f"web/icons/Icon-{size}.png")
         save(render(size, False), f"web/icons/Icon-maskable-{size}.png")
