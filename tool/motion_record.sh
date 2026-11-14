@@ -49,7 +49,7 @@ coord() {
 
 tapxy() { # 'x y'
   # shellcheck disable=SC2086
-  adb shell input tap $1 > /dev/null 2>&1 || true
+  adb shell input swipe $1 $1 120 > /dev/null 2>&1 || true
   sleep 0.5
 }
 
@@ -87,6 +87,16 @@ launch() { # <apk> <app> [url]
   return 1
 }
 
+# Confirms a scenario left the state it should have, so summary.txt says what
+# the clip really shows.
+check() { # <clip> <marker text>
+  if ui has "$2" > /dev/null 2>&1; then
+    note "$1: verified ('$2')"
+  else
+    note "$1: marker '$2' missing"
+  fi
+}
+
 install_app() { # <apk>
   adb uninstall "$app" > /dev/null 2>&1 || true
   adb install -g "$1" > "$out/install.txt" 2>&1 || { note "install failed, see install.txt"; return 1; }
@@ -119,14 +129,14 @@ record() { # <name> <seconds> <command...>
 }
 
 # ---- Kotlin: login screen only; the rest needs a control server ----
-kotlin_expand() { tapxy "$ADVANCED"; sleep 1.8; tapxy "$ADVANCED"; }
-kotlin_start() { tapxy "$SIGNIN"; sleep 5; }
-kotlin_press() { holdxy "$SIGNIN" 900; sleep 1; }
+kotlin_expand() { tapxy "$ADVANCED"; sleep 2.2; }
+kotlin_press() { holdxy "$ADVANCED" 900; sleep 1.2; }
+kotlin_start() { tapxy "$SIGNIN"; sleep 9; }
 
 # ---- this build: login form, and the preview shell ----
-flutter_expand() { tapxy "$CONTROL"; sleep 1.4; tapxy "$AUTHKEY"; sleep 1.6; }
-flutter_start() { tapxy "$BROWSER"; sleep 3; }
-flutter_press() { holdxy "$BROWSER" 900; sleep 1; }
+flutter_expand() { tapxy "$AUTHKEY"; sleep 2.4; }
+flutter_press() { holdxy "$CONTROL" 900; sleep 1.2; }
+flutter_start() { tapxy "$BROWSER"; sleep 5; }
 flutter_tabs() {
   tapxy "$TAB_SERVICES"; sleep 1.4
   tapxy "$TAB_AGENTS"; sleep 1.4
@@ -134,7 +144,7 @@ flutter_tabs() {
 }
 flutter_detail() { tapxy "$PEER"; sleep 2; adb shell input keyevent 4 > /dev/null 2>&1 || true; sleep 1.4; }
 
-ADVANCED= SIGNIN= CONTROL= AUTHKEY= BROWSER= TAB_SERVICES= TAB_AGENTS= TAB_NODES= PEER= BACK=
+ADVANCED= SIGNIN= CONTROL= AUTHKEY= BROWSER= TAB_SERVICES= TAB_AGENTS= TAB_NODES= PEER=
 
 install_app "$kotlin_apk" || true
 launch "$kotlin_apk" "$app"
@@ -151,10 +161,12 @@ adb shell input keyevent 4 > /dev/null 2>&1 || true
 sleep 1
 if ui has "10.255.255.1" > /dev/null; then
   coord SIGNIN "Sign in" || true
-  record kotlin-start 7 kotlin_start
+  record kotlin-start 10 kotlin_start
+  check kotlin-start "Cancel"
 else
   note "kotlin-start: control URL not typed; the real controlplane would open a browser"
 fi
+check kotlin-expand "Control server"
 record kotlin-press 3 kotlin_press
 # A failed sign-in never leaves the app, but a stray browser would follow the
 # next clip.
@@ -167,18 +179,24 @@ coord TAB_SERVICES Services || true
 coord TAB_AGENTS Agents || true
 coord TAB_NODES Nodes || true
 record flutter-tabs 6 flutter_tabs
+check flutter-tabs "Search nodes"
 launch "$flutter_apk" "$app" "taildeck://preview/?preview=1&tab=0&lang=en"
 coord PEER devbox || true
 record flutter-detail 5 flutter_detail
+check flutter-detail "Search nodes"
 
+# Signing in with a key would start a node; no browser on this device keeps a
+# real sign-in from leaving the app.
+adb shell pm disable-user --user 0 com.android.chrome > /dev/null 2>&1 || true
 launch "$flutter_apk" "$app" "taildeck://preview/?login=1&lang=en"
 coord CONTROL "Control server" || true
 coord AUTHKEY "auth key" || true
-record flutter-expand 6 flutter_expand
-launch "$flutter_apk" "$app" "taildeck://preview/?login=1&lang=en"
 coord BROWSER "Continue in browser" || true
-record flutter-start 4 flutter_start
+record flutter-expand 4 flutter_expand
+check flutter-expand "Connect"
 record flutter-press 3 flutter_press
+record flutter-start 6 flutter_start
+adb shell pm enable com.android.chrome > /dev/null 2>&1 || true
 
 # ---- put them side by side: Kotlin on the left, this build on the right ----
 label() { # <mp4> <text> <dest>
