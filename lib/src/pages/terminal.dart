@@ -521,14 +521,10 @@ class _TerminalPageState extends State<TerminalPage> {
         _ => false,
       };
 
-  /// iOS and macOS report the keyboard as an inset; Android's adjustResize
-  /// already shrank the view.
+  /// The keyboard reaches the page as a view inset on every platform: nothing
+  /// above the terminal builds a Scaffold that would resize for it.
   static double _keyboardInset(BuildContext context) =>
-      switch (defaultTargetPlatform) {
-        TargetPlatform.iOS ||
-        TargetPlatform.macOS => MediaQuery.viewInsetsOf(context).bottom,
-        _ => 0,
-      };
+      MediaQuery.viewInsetsOf(context).bottom;
 
   Widget _emulator(TerminalSession session, double fontSize) {
     return Listener(

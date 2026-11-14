@@ -21,7 +21,7 @@ keys inside that row.
 
 | Feature | Reference | Our plan / implementation | Status |
 | --- | --- | --- | --- |
-| Row placement | Termius puts the add-on directly above the system keyboard and keeps it while typing | Docked at the bottom of the terminal page, under the input line and above the soft keyboard. Android's `adjustResize` already shrinks the view; iOS gets the keyboard as a `viewInsets` pad. The terminal grid shrinks with the row, so the cursor stays visible. A desktop window has a hardware keyboard, so it hides the row | Implemented |
+| Row placement | Termius puts the add-on directly above the system keyboard and keeps it while typing | Docked at the bottom of the terminal page, under the input line and above the soft keyboard. The page pads by `MediaQuery.viewInsets` on every platform (nothing above it builds a `Scaffold` that would resize), and the terminal grid shrinks with the row, so the cursor stays visible. A desktop window has a hardware keyboard, so it hides the row | Implemented |
 | Keys | Termius: modifiers, arrows, function and symbol keys. Termux: a fixed two-row default | Page 1: Esc, Tab, Ctrl, Alt, ←, ↑, ↓, →. Page 2: Home, End, PgUp, PgDn, `\|`, `~`, `/`, `-`. Page 3: `_`, `:`, `*`, `&`, `=`, `?`, `'`, `\` | Implemented |
 | Encoding | — | Every key goes through libghostty-vt's encoder (`td_term_encode_key`) with the armed modifiers, so Alt and Ctrl produce what the running program expects | Implemented |
 | Sticky modifiers | Blink: hold a modifier to chain. Termux: CTRL/ALT are special keys | One tap arms Ctrl/Alt and highlights the key; the next key (row key or typed character) carries the modifier and clears the highlight | Implemented |
