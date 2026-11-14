@@ -10,6 +10,7 @@ import 'package:prism_ui/prism_ui.dart';
 import '../a11y.dart';
 import '../data.dart';
 import '../l10n.dart';
+import '../motion.dart';
 import '../native/bridge.dart';
 import '../native/keys.dart';
 import '../native/term.dart';
@@ -541,9 +542,15 @@ class _Header extends StatelessWidget {
                   style: mono.copyWith(fontWeight: FontWeight.w700, fontSize: 14),
                 ),
                 const SizedBox(height: 1),
-                Text(
-                  subtitle,
-                  style: mono.copyWith(fontSize: 11, color: const Color(0xFF7C838D)),
+                FadeThrough(
+                  child: Text(
+                    subtitle,
+                    key: ValueKey(subtitle),
+                    style: mono.copyWith(
+                      fontSize: 11,
+                      color: const Color(0xFF7C838D),
+                    ),
+                  ),
                 ),
               ],
             ),

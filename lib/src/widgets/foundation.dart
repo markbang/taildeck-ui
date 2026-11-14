@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart' show RefreshIndicator;
 import 'package:flutter/widgets.dart';
 import 'package:prism_ui/icons/icons.dart';
 import 'package:prism_ui/prism_ui.dart';
@@ -5,6 +6,7 @@ import 'package:prism_ui/prism_ui.dart';
 import '../data.dart';
 import '../l10n.dart';
 import '../glyphs.dart';
+import '../motion.dart';
 import '../services.dart';
 import 'controls.dart';
 import 'service_avatar.dart';
@@ -19,6 +21,7 @@ class PageBody extends StatelessWidget {
     this.children,
     this.maxWidth = 720,
     this.padding,
+    this.onRefresh,
   });
 
   final String title;
@@ -29,6 +32,9 @@ class PageBody extends StatelessWidget {
   final double maxWidth;
   final EdgeInsets? padding;
 
+  /// Pull to refresh, as the Kotlin app's `RefreshBox` offers on lists.
+  final Future<void> Function()? onRefresh;
+
   @override
   Widget build(BuildContext context) {
     final scheme = context.colorScheme;
@@ -36,57 +42,79 @@ class PageBody extends StatelessWidget {
       alignment: Alignment.topCenter,
       child: ConstrainedBox(
         constraints: BoxConstraints(maxWidth: maxWidth),
-        child: ListView(
-          padding:
-              padding ??
-              EdgeInsets.fromLTRB(
-                20,
-                context.contentTopPadding,
-                20,
-                40 + context.bottomInset,
-              ),
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (leading != null) ...[leading!, const SizedBox(width: 4)],
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Semantics(
-                        header: true,
-                        child: Text(
-                          title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: AppTextStyle.largeTitle.of(
-                            context,
-                            emphasized: true,
-                          ),
-                        ),
-                      ),
-                      if (subtitle != null)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 2),
-                          child: Text(
-                            subtitle!,
-                            style: AppTextStyle.subheadline
-                                .of(context)
-                                .copyWith(color: scheme.onSurfaceVariant),
-                          ),
-                        ),
-                    ],
-                  ),
+        child: _refreshable(
+          context,
+          ListView(
+            physics: onRefresh == null
+                ? null
+                : const AlwaysScrollableScrollPhysics(),
+            padding:
+                padding ??
+                EdgeInsets.fromLTRB(
+                  20,
+                  context.contentTopPadding,
+                  20,
+                  40 + context.bottomInset,
                 ),
-                ?trailing,
-              ],
-            ),
-            const SizedBox(height: 16),
-            ...?children,
-          ],
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (leading != null) ...[leading!, const SizedBox(width: 4)],
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Semantics(
+                          header: true,
+                          child: Text(
+                            title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: AppTextStyle.largeTitle.of(
+                              context,
+                              emphasized: true,
+                            ),
+                          ),
+                        ),
+                        if (subtitle != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 2),
+                            child: Text(
+                              subtitle!,
+                              style: AppTextStyle.subheadline
+                                  .of(context)
+                                  .copyWith(color: scheme.onSurfaceVariant),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  ?trailing,
+                ],
+              ),
+              const SizedBox(height: 16),
+              ...?children,
+            ],
+          ),
         ),
       ),
+    );
+  }
+
+  Widget _refreshable(BuildContext context, Widget list) {
+    final onRefresh = this.onRefresh;
+    if (onRefresh == null) return list;
+    return RefreshIndicator(
+      color: context.colorScheme.primary,
+      backgroundColor: context.colorScheme.surfaceContainerHigh,
+      onRefresh: () async {
+        await Future.wait([
+          onRefresh(),
+          Future<void>.delayed(const Duration(milliseconds: 600)),
+        ]);
+      },
+      child: list,
     );
   }
 }
@@ -279,24 +307,45 @@ class PathBadge extends StatelessWidget {
 }
 
 class StatusPill extends StatelessWidget {
-  const StatusPill({super.key, required this.label, required this.tint});
+  const StatusPill({
+    super.key,
+    required this.label,
+    required this.tint,
+    this.dot = false,
+    this.pulse = false,
+  });
 
   final String label;
   final Color tint;
 
+  /// Draws the status dot the Kotlin app's chip carries.
+  final bool dot;
+
+  /// Fades the dot in and out while the subject is working or blocked.
+  final bool pulse;
+
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      padding: EdgeInsets.symmetric(horizontal: dot ? 7 : 8, vertical: 3),
       decoration: ShapeDecoration(
         color: tint.withValues(alpha: 0.16),
         shape: AppShape.full,
       ),
-      child: Text(
-        label,
-        style: AppTextStyle.caption2
-            .of(context, emphasized: true)
-            .copyWith(color: tint),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (dot) ...[
+            PulsingDot(color: tint, size: 6, pulse: pulse),
+            const SizedBox(width: 5),
+          ],
+          Text(
+            label,
+            style: AppTextStyle.caption2
+                .of(context, emphasized: true)
+                .copyWith(color: tint),
+          ),
+        ],
       ),
     );
   }

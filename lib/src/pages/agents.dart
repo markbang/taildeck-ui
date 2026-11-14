@@ -98,6 +98,7 @@ class _AgentsPageState extends State<AgentsPage> {
       builder: (context, _) => PageBody(
         title: l10n.agentsTitle,
         subtitle: herdr.node.isEmpty ? 'herdr' : 'herdr · ${herdr.node}',
+        onRefresh: herdr.ready ? herdr.refresh : null,
         trailing: IconButton(
           onPressed: herdr.ready ? () => unawaited(_addAgent(herdr)) : null,
           icon: const GlyphIcon(Glyphs2.plus),
@@ -364,7 +365,7 @@ class _LiveAgentRow extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(width: 6),
-                      StatusPill(label: label, tint: tint),
+                      StatusPill(label: label, tint: tint, dot: true),
                     ],
                   ),
                   if (detail.isNotEmpty)
@@ -453,7 +454,7 @@ class _DemoAgentRow extends StatelessWidget {
                         style: AppTextStyle.body.of(context, emphasized: true),
                       ),
                       const SizedBox(width: 6),
-                      StatusPill(label: label, tint: tint),
+                      StatusPill(label: label, tint: tint, dot: true),
                     ],
                   ),
                   if (task.isNotEmpty)

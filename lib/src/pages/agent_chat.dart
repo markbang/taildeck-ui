@@ -8,6 +8,7 @@ import 'package:prism_ui/prism_ui.dart';
 import '../glyphs.dart';
 import '../herdr.dart';
 import '../l10n.dart';
+import '../motion.dart';
 import '../widgets/controls.dart';
 import '../widgets/foundation.dart';
 
@@ -226,6 +227,14 @@ class _AgentChatPageState extends State<AgentChatPage> {
       _popup = false;
       _suggestions = const [];
     });
+  }
+
+  /// Long-press on send bypasses the queue, as the Kotlin composer's send
+  /// button does, and fires the same long-press haptic.
+  Future<void> _sendNow() async {
+    if (_input.text.trim().isEmpty || _sending) return;
+    unawaited(HapticFeedback.mediumImpact());
+    await _sendText(_input.text.trim());
   }
 
   Future<void> _sendQueued(QueuedPrompt prompt) async {
@@ -478,7 +487,17 @@ class _AgentChatPageState extends State<AgentChatPage> {
                       ),
                     ),
                     const SizedBox(width: 8),
-                    StatusPill(label: status, tint: tint),
+                    FadeThrough(
+                      child: StatusPill(
+                        key: ValueKey(status),
+                        label: status,
+                        tint: tint,
+                        dot: true,
+                        pulse:
+                            _agent.status == HerdrStatus.working ||
+                            _agent.status == HerdrStatus.blocked,
+                      ),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 2),
@@ -699,12 +718,15 @@ class _AgentChatPageState extends State<AgentChatPage> {
                 ),
               ),
               const SizedBox(width: 8),
-              IconButton(
-                onPressed: _sending ? null : () => unawaited(_send()),
-                icon: _sending
-                    ? const ActivityIndicator(size: 18)
-                    : GlyphIcon(_working ? Glyphs2.schedule : Glyphs2.arrowUp),
-                tooltip: _working ? l10n.agentQueued : l10n.agentSend,
+              GestureDetector(
+                onLongPress: _working ? () => unawaited(_sendNow()) : null,
+                child: IconButton(
+                  onPressed: _sending ? null : () => unawaited(_send()),
+                  icon: _sending
+                      ? const ActivityIndicator(size: 18)
+                      : GlyphIcon(_working ? Glyphs2.schedule : Glyphs2.arrowUp),
+                  tooltip: _working ? l10n.agentQueued : l10n.agentSend,
+                ),
               ),
             ],
           ),
@@ -1398,6 +1420,8 @@ class _SubagentViewState extends State<_SubagentView> {
                         ? l10n.agentSubagentFinished
                         : l10n.agentSubagentRunning,
                     tint: finished ? const Color(0xFF3BB273) : scheme.primary,
+                    dot: true,
+                    pulse: !finished,
                   ),
                 ],
               ),

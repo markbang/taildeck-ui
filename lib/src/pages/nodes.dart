@@ -30,6 +30,7 @@ class NodesPage extends StatelessWidget {
     final online = nodes.where((node) => node.online).toList();
     return PageBody(
       title: live ? backend.tailnet : tailnet,
+      onRefresh: live ? backend.refresh : null,
       trailing: IconButton(
         onPressed: onToggleTheme,
         icon: const GlyphIcon(Glyphs2.sun),

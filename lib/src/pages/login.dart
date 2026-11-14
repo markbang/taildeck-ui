@@ -9,6 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../backend.dart';
 import '../glyphs.dart';
 import '../l10n.dart';
+import '../motion.dart';
 import '../preview_env.dart';
 import '../widgets/controls.dart';
 import '../widgets/foundation.dart';
@@ -159,18 +160,20 @@ class _LoginPageState extends State<LoginPage> {
                               .copyWith(color: scheme.onSurfaceVariant),
                         ),
                         const SizedBox(height: 28),
-                        if (waiting || previewWaiting)
-                          _waiting(
-                            context,
-                            url: waiting ? backend.authUrl : _previewUrl,
-                            onCancel: waiting
-                                ? () => _leaveWaiting(backend)
-                                : _cancel,
-                          )
-                        else if (live)
-                          _buildLiveChoices(context, backend)
-                        else
-                          _buildPreviewChoices(context),
+                        _StageSwap(
+                          waiting: waiting || previewWaiting,
+                          child: waiting || previewWaiting
+                              ? _waiting(
+                                  context,
+                                  url: waiting ? backend.authUrl : _previewUrl,
+                                  onCancel: waiting
+                                      ? () => _leaveWaiting(backend)
+                                      : _cancel,
+                                )
+                              : live
+                              ? _buildLiveChoices(context, backend)
+                              : _buildPreviewChoices(context),
+                        ),
                         if (live && backend.state == BackendState.starting) ...[
                           const SizedBox(height: 12),
                           Text(
@@ -377,26 +380,36 @@ class _Choices extends StatelessWidget {
                   color: scheme.onSurfaceVariant.opacity50,
                 ),
               ),
-              if (authKey) ...[
-                const SizedBox(height: 10),
-                TextField(
-                  controller: keyController,
-                  obscureText: true,
-                  style: AppTextStyle.footnote
-                      .of(context)
-                      .copyWith(fontFamily: 'DejaVuSansMono', fontSize: 13),
-                  decoration: const InputDecoration(
-                    filled: true,
-                    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                  ),
+              ExpandVisibility(
+                visible: authKey,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: keyController,
+                      obscureText: true,
+                      style: AppTextStyle.footnote.of(context).copyWith(
+                        fontFamily: 'DejaVuSansMono',
+                        fontSize: 13,
+                      ),
+                      decoration: const InputDecoration(
+                        filled: true,
+                        contentPadding: EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 12,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    LoadingButton(
+                      label: l10n.connect,
+                      loading: busy,
+                      onPressed: connectEnabled ? onConnect : null,
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 10),
-                LoadingButton(
-                  label: l10n.connect,
-                  loading: busy,
-                  onPressed: connectEnabled ? onConnect : null,
-                ),
-              ],
+              ),
             ],
           ),
         ),
@@ -420,8 +433,9 @@ class _Choices extends StatelessWidget {
             ],
           ),
         ),
-        if (advanced)
-          Padding(
+        ExpandVisibility(
+          visible: advanced,
+          child: Padding(
             padding: const EdgeInsets.only(top: 4),
             child: TextField(
               controller: controlController,
@@ -429,10 +443,14 @@ class _Choices extends StatelessWidget {
               decoration: const InputDecoration(
                 hintText: 'https://controlplane.tailscale.com',
                 filled: true,
-                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                contentPadding: EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 12,
+                ),
               ),
             ),
           ),
+        ),
       ],
     );
   }
@@ -491,6 +509,46 @@ class _OptionRow extends StatelessWidget {
             ),
             ?trailing,
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Login's stage switch (Compose's AnimatedContent with a vertical slide of a
+/// sixth of the height, a fade, and a size transform that does not clip).
+class _StageSwap extends StatelessWidget {
+  const _StageSwap({required this.waiting, required this.child});
+
+  final bool waiting;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedContentSize(
+      child: AnimatedSwitcher(
+        duration: motionDuration(context, slowSpatial),
+        switchInCurve: context.disableAnimations
+            ? Curves.linear
+            : slowSpatial.curve,
+        switchOutCurve: fadeFast.curve,
+        layoutBuilder: (current, previous) => Stack(
+          alignment: AlignmentDirectional.topCenter,
+          children: [...previous, ?current],
+        ),
+        transitionBuilder: (child, animation) {
+          final slide = Tween<Offset>(
+            begin: const Offset(0, 1 / 6),
+            end: Offset.zero,
+          ).animate(animation);
+          return FadeTransition(
+            opacity: CurvedAnimation(parent: animation, curve: fade.curve),
+            child: SlideTransition(position: slide, child: child),
+          );
+        },
+        child: KeyedSubtree(
+          key: ValueKey(waiting),
+          child: child,
         ),
       ),
     );

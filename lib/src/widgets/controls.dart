@@ -5,6 +5,7 @@ import 'package:prism_ui/icons/icons.dart';
 import 'package:prism_ui/prism_ui.dart';
 
 import '../l10n.dart';
+import '../motion.dart';
 
 /// A pressable surface with the state layer [PressRegion] leaves out by
 /// default: a tint on press and focus, and an optional slight scale for
@@ -150,7 +151,6 @@ class AnimatedGroupCard extends StatefulWidget {
 
 class _AnimatedGroupCardState extends State<AnimatedGroupCard>
     with TickerProviderStateMixin {
-  static const _duration = Duration(milliseconds: 220);
 
   late final _transitions = EntryTransitions<Key>(
     vsync: this,
@@ -176,7 +176,7 @@ class _AnimatedGroupCardState extends State<AnimatedGroupCard>
       _entries,
       next,
       (row) => row.key!,
-      context.motionDuration(_duration),
+      motionDuration(context, placement),
     );
     _entries = _keepPlace(_entries, next, merged);
   }

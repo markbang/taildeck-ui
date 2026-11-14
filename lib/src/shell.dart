@@ -13,6 +13,7 @@ import 'herdr.dart';
 import 'preview_env.dart';
 import 'glyphs.dart';
 import 'l10n.dart';
+import 'motion.dart';
 import 'notifications.dart';
 import 'pages/agent_chat.dart';
 import 'pages/agents.dart';
@@ -64,6 +65,9 @@ class _TaildeckShellState extends State<TaildeckShell>
   // The terminal page currently open; its session lives on in [_terminals].
   SshTerminal? _attached;
   final bool _sshDemo = previewParam('ssh') == 'demo';
+  /// Depth of the scene on screen, so the next swap knows its direction.
+  int _sceneDepth = 0;
+  String _sceneKey = 'login';
   bool _previewSheetOpened = false;
   AgentNotifications? _alerts;
 
@@ -164,8 +168,12 @@ class _TaildeckShellState extends State<TaildeckShell>
       final fade = _animation == TabAnimation.fade;
       _pageController.animateToPage(
         index,
-        duration: fade ? fadeTabDuration : kTabScrollDuration,
-        curve: fade ? fadeTabCurve : Curves.easeOut,
+        duration: fade
+            ? fadeTabDuration
+            : motionDuration(context, slowSpatial),
+        curve: fade
+            ? fadeTabCurve
+            : (context.disableAnimations ? Curves.linear : slowSpatial.curve),
       );
     } else {
       _pageController.jumpToPage(index);
@@ -320,7 +328,9 @@ class _TaildeckShellState extends State<TaildeckShell>
     );
   }
 
-  Widget _content(BuildContext context) {
+  /// A full-screen scene and where it sits in the stack: 0 login, 1 the tab
+  /// shell, 2 the pages opened over it.
+  ({String key, int depth, Widget child}) _scene(BuildContext context) {
     final scheme = context.colorScheme;
     final mobile = ViewScope.isMobileOf(context);
     final backend = BackendScope.of(context);
@@ -328,8 +338,12 @@ class _TaildeckShellState extends State<TaildeckShell>
         ? _previewSignedIn
         : (backend.available ? backend.signedIn : _previewSignedIn);
     if (!signedIn) {
-      return LoginPage(
-        onSignedIn: () => setState(() => _previewSignedIn = true),
+      return (
+        key: 'login',
+        depth: 0,
+        child: LoginPage(
+          onSignedIn: () => setState(() => _previewSignedIn = true),
+        ),
       );
     }
     // `?chat=<pane>`: open a pane's chat on the preview build. Without a
@@ -338,37 +352,45 @@ class _TaildeckShellState extends State<TaildeckShell>
     final previewChat = previewParam('chat');
     final herdr = backend.herdr;
     if (previewChat != null && herdr != null) {
-      return AgentChatPage(
-        agent: HerdrAgent(
-          paneId: previewChat,
-          kind: previewParam('kind') ?? 'claude',
-          label: previewChat,
-          status: HerdrStatus.of(previewParam('status') ?? ''),
-          workspace: '',
+      return (
+        key: 'chat',
+        depth: 2,
+        child: AgentChatPage(
+          agent: HerdrAgent(
+            paneId: previewChat,
+            kind: previewParam('kind') ?? 'claude',
+            label: previewChat,
+            status: HerdrStatus.of(previewParam('status') ?? ''),
+            workspace: '',
+          ),
+          herdr: herdr,
+          demoQueue: [
+            for (final text in (previewParam('queue') ?? '').split('|'))
+              if (text.trim().isNotEmpty) text.trim(),
+          ],
         ),
-        herdr: herdr,
-        demoQueue: [
-          for (final text in (previewParam('queue') ?? '').split('|'))
-            if (text.trim().isNotEmpty) text.trim(),
-        ],
       );
     }
     final terminal = _attached;
     if (terminal != null) {
-      return CallbackShortcuts(
-        bindings: {
-          const SingleActivator(LogicalKeyboardKey.escape): _handleEscape,
-        },
-        child: TerminalPage(
-          node: terminal.node,
-          user: terminal.user,
-          port: terminal.port,
-          terminal: terminal,
-          demo: _sshDemo,
-          onClose: _leaveTerminal,
-          onDisconnect: terminal.live
-              ? () => _disconnectTerminal(terminal)
-              : null,
+      return (
+        key: 'terminal',
+        depth: 2,
+        child: CallbackShortcuts(
+          bindings: {
+            const SingleActivator(LogicalKeyboardKey.escape): _handleEscape,
+          },
+          child: TerminalPage(
+            node: terminal.node,
+            user: terminal.user,
+            port: terminal.port,
+            terminal: terminal,
+            demo: _sshDemo,
+            onClose: _leaveTerminal,
+            onDisconnect: terminal.live
+                ? () => _disconnectTerminal(terminal)
+                : null,
+          ),
         ),
       );
     }
@@ -382,7 +404,7 @@ class _TaildeckShellState extends State<TaildeckShell>
     final dockInset = mobile && _floating
         ? NavigationDock.insetOf(context)
         : 0.0;
-    return Surface(
+    return (key: 'shell', depth: 1, child: Surface(
       color: SurfaceLevel.page.colorOf(scheme),
       child: Row(
         children: [
@@ -476,6 +498,25 @@ class _TaildeckShellState extends State<TaildeckShell>
           ),
           const _StatusLive(),
         ],
+      ),
+    ));
+  }
+
+  /// Scenes swap like routes: a push comes in from the right, a pop from the
+  /// left. The depth is read during build only to decide the direction.
+  Widget _content(BuildContext context) {
+    final scene = _scene(context);
+    final forward = scene.depth >= _sceneDepth;
+    // Signing in scales the shell up instead of sliding it in.
+    final fadeThrough = scene.key == 'shell' && _sceneKey == 'login';
+    _sceneDepth = scene.depth;
+    _sceneKey = scene.key;
+    return MotionSwitcher(
+      forward: forward,
+      fadeThrough: fadeThrough,
+      child: KeyedSubtree(
+        key: ValueKey(scene.key),
+        child: scene.child,
       ),
     );
   }
@@ -576,10 +617,14 @@ class _TabPage extends StatelessWidget {
     return AnimatedBuilder(
       animation: controller,
       builder: (context, child) {
-        final delta = fade ? _offset : 0.0;
+        final delta = _offset;
+        // A tab switch moves a tab by an eighth of the page, not the whole
+        // page: the rest of the travel is taken back so both tabs meet in the
+        // middle and cross-fade, as the Kotlin app's tab AnimatedContent does.
+        final shift = fade ? -delta : -delta * 7 / 8;
         return FractionalTranslation(
-          translation: Offset(-delta, 0),
-          child: Opacity(opacity: 1 - delta.abs(), child: child),
+          translation: Offset(shift, 0),
+          child: Opacity(opacity: (1 - delta.abs()).clamp(0.0, 1.0), child: child),
         );
       },
       child: child,

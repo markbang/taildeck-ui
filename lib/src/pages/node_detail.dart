@@ -8,6 +8,7 @@ import '../backend.dart';
 import '../data.dart';
 import '../l10n.dart';
 import '../glyphs.dart';
+import '../motion.dart';
 import '../native/bridge.dart';
 import '../service_open.dart';
 import '../services.dart';
@@ -244,23 +245,29 @@ class _NodeDetailPageState extends State<NodeDetailPage> {
           const SizedBox(height: 12),
           InlineNotice(text: _notice, tint: scheme.onSurfaceVariant),
         ],
-        if (_pinging || _ping != null) ...[
-          const SizedBox(height: 10),
-          _PingLabel(
-            pinging: _pinging,
-            result: _ping,
-            onRetry: () => unawaited(_runPing()),
+        ExpandVisibility(
+          visible: _pinging || _ping != null,
+          child: Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: _PingLabel(
+              pinging: _pinging,
+              result: _ping,
+              onRetry: () => unawaited(_runPing()),
+            ),
           ),
-        ],
-        if (_scanning || _ports != null || _scanError.isNotEmpty) ...[
-          const SizedBox(height: 14),
-          _ScanResult(
-            scanning: _scanning,
-            ports: _ports,
-            error: _scanError,
-            onAdd: (port) => unawaited(_addScanned(port)),
+        ),
+        ExpandVisibility(
+          visible: _scanning || _ports != null || _scanError.isNotEmpty,
+          child: Padding(
+            padding: const EdgeInsets.only(top: 14),
+            child: _ScanResult(
+              scanning: _scanning,
+              ports: _ports,
+              error: _scanError,
+              onAdd: (port) => unawaited(_addScanned(port)),
+            ),
           ),
-        ],
+        ),
         if (services.isNotEmpty) ...[
           const SizedBox(height: 14),
           SectionLabel(l10n.tabServices),
@@ -592,13 +599,14 @@ class _PingLabel extends StatelessWidget {
       child: Row(
         children: [
           Flexible(
-            child: Text(
-              text,
-              style: AppTextStyle.footnote
-                  .of(context)
-                  .copyWith(
-                    color: failed ? scheme.error : scheme.onSurfaceVariant,
-                  ),
+            child: FadeThrough(
+              child: Text(
+                key: ValueKey(text),
+                text,
+                style: AppTextStyle.footnote.of(context).copyWith(
+                  color: failed ? scheme.error : scheme.onSurfaceVariant,
+                ),
+              ),
             ),
           ),
           if (failed) ...[

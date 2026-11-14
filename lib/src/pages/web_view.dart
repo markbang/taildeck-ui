@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../backend.dart';
 import '../glyphs.dart';
 import '../l10n.dart';
+import '../motion.dart';
 import '../services.dart';
 import '../widgets/foundation.dart';
 import '../webview/web_page.dart';
@@ -153,12 +154,14 @@ class _ServiceWebViewPageState extends State<ServiceWebViewPage> {
                         ],
                       ),
                     ),
-                    if (_canGoBack)
-                      IconButton(
+                    ExpandVisibility(
+                      visible: _canGoBack,
+                      child: IconButton(
                         onPressed: _goBack,
                         icon: const GlyphIcon(Glyphs.chevronBack),
                         tooltip: l10n.back,
                       ),
+                    ),
                     IconButton(
                       onPressed: _reload,
                       icon: const GlyphIcon(Glyphs2.refresh),
@@ -172,12 +175,14 @@ class _ServiceWebViewPageState extends State<ServiceWebViewPage> {
                   ],
                 ),
               ),
-              if (_progress < 100 && _error.isEmpty)
-                LinearProgressIndicator(
+              ExpandVisibility(
+                visible: _progress < 100 && _error.isEmpty,
+                child: LinearProgressIndicator(
                   value: _progress / 100,
                   minHeight: 3,
                   backgroundColor: scheme.surfaceContainerHigh,
                 ),
+              ),
               if (_notice.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
