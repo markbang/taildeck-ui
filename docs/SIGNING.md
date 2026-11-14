@@ -10,7 +10,7 @@ installs over it as an upgrade instead of a second app.
 | `applicationId` | `top.bangwu.taildeck` (unchanged from the Kotlin app) |
 | `namespace` | `top.bangwu.taildeck_ui` (Kotlin package, unrelated to app identity) |
 | `minSdk` | 26 (same as the Kotlin app) |
-| version | from `pubspec.yaml`: `0.2.6+26` → `versionName=0.2.6`, `versionCode=26` |
+| version | from `pubspec.yaml`: `0.2.7+27` → `versionName=0.2.7`, `versionCode=27` |
 | key alias | `taildeck` |
 | certificate SHA-256 | starts with `A7:6A:FE:7F`; identical to the published Kotlin v0.1.0 APK |
 
@@ -76,7 +76,8 @@ aapt2 dump badging build/app/outputs/flutter-apk/app-arm64-v8a-release.apk | hea
 | `ANDROID_KEY_ALIAS` | `taildeck` |
 | `ANDROID_KEY_PASSWORD` | `keyPassword` |
 
-The job writes the keystore to `android/release.jks` (mode `600`) and `android/key.properties` from those secrets,
+The job writes the keystore to `android/app/release.jks` (mode `600`) and `android/key.properties` from those secrets
+(`storeFile=release.jks` resolves from `android/app/`, where the app module lives),
 builds the three split APKs, the universal APK and the AAB, then fails if any signature does not match
 `ANDROID_CERT_SHA256`. The key exists only for the length of the job; nothing is committed.
 

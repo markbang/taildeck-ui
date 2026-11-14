@@ -16,9 +16,12 @@ val keystoreProperties =
             FileInputStream(keystorePropertiesFile).use { load(it) }
         }
     }
-val releaseSigningError =
+// storeFile resolves from this module's directory, not from android/.
+val releaseStoreFile = keystoreProperties.getProperty("storeFile")?.let { file(it) }
+val releaseSigningHelp =
     "Release builds need android/key.properties with storeFile, storePassword, keyAlias and keyPassword " +
-        "(see docs/SIGNING.md). Debug builds keep working without it."
+        "(see docs/SIGNING.md). storeFile resolves from $projectDir, so release.jks means $projectDir/release.jks. " +
+        "Debug builds keep working without it."
 
 android {
     namespace = "top.bangwu.taildeck_ui"
@@ -49,7 +52,7 @@ android {
     signingConfigs {
         if (keystorePropertiesFile.exists()) {
             create("release") {
-                storeFile = file(keystoreProperties.getProperty("storeFile"))
+                storeFile = releaseStoreFile
                 storePassword = keystoreProperties.getProperty("storePassword")
                 keyAlias = keystoreProperties.getProperty("keyAlias")
                 keyPassword = keystoreProperties.getProperty("keyPassword")
@@ -77,8 +80,12 @@ gradle.taskGraph.whenReady {
         allTasks.any {
             it.project == project && it.name.matches(Regex("(assemble|bundle|package|sign).*Release.*"))
         }
-    if (releaseTaskRequested && !keystorePropertiesFile.exists()) {
-        throw GradleException(releaseSigningError)
+    if (releaseTaskRequested) {
+        if (!keystorePropertiesFile.exists()) throw GradleException(releaseSigningHelp)
+        val store = releaseStoreFile
+        if (store == null || !store.isFile) {
+            throw GradleException("Keystore $store does not exist. $releaseSigningHelp")
+        }
     }
 }
 
