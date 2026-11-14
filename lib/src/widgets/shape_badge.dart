@@ -16,11 +16,11 @@ class BlobShape {
   final double lobes;
   final double amplitude;
 
-  static const cookie4 = BlobShape(4, 0.045);
-  static const cookie6 = BlobShape(6, 0.06);
-  static const cookie7 = BlobShape(7, 0.07);
-  static const cookie9 = BlobShape(9, 0.075);
-  static const softBurst = BlobShape(12, 0.16);
+  static const cookie4 = BlobShape(4, 0.09);
+  static const cookie6 = BlobShape(6, 0.1);
+  static const cookie7 = BlobShape(7, 0.11);
+  static const cookie9 = BlobShape(9, 0.115);
+  static const softBurst = BlobShape(12, 0.2);
 
   static BlobShape lerp(BlobShape a, BlobShape b, double t) => BlobShape(
     a.lobes + (b.lobes - a.lobes) * t,
