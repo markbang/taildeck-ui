@@ -1,6 +1,7 @@
+import 'dart:async';
 import 'dart:math' as math;
-import 'dart:typed_data';
 
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
 import '../native/term.dart';
@@ -124,18 +125,52 @@ class _TerminalCanvasState extends State<TerminalCanvas> {
         return ClipRect(
           child: ListenableBuilder(
             listenable: widget.session,
-            builder: (context, _) => CustomPaint(
-              painter: _GridPainter(
-                snapshot: widget.session.snapshot,
-                metrics: _metrics,
-                origin: Offset(widget.padding.left, widget.padding.top),
+            builder: (context, _) => GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              // Kotlin's TerminalView selects the word under a long press and
+              // fires the long-press haptic.
+              onLongPressStart: _selectWord,
+              child: CustomPaint(
+                painter: _GridPainter(
+                  snapshot: widget.session.snapshot,
+                  metrics: _metrics,
+                  origin: Offset(widget.padding.left, widget.padding.top),
+                ),
+                size: Size.infinite,
               ),
-              size: Size.infinite,
             ),
           ),
         );
       },
     );
+  }
+
+  /// Selects the word under [details] in one row, as a terminal does.
+  void _selectWord(LongPressStartDetails details) {
+    final snapshot = widget.session.snapshot;
+    final cols = widget.session.term.cols;
+    if (snapshot.rows == 0 || cols == 0) return;
+    final x = ((details.localPosition.dx - widget.padding.left) /
+            _metrics.cellWidth)
+        .floor()
+        .clamp(0, cols - 1);
+    final y = ((details.localPosition.dy - widget.padding.top) /
+            _metrics.cellHeight)
+        .floor()
+        .clamp(0, snapshot.rows - 1);
+    final cells = snapshot.cells;
+    bool isWord(int column) => cells[(y * cols + column) * 4] > 0x20;
+    if (!isWord(x)) return;
+    var from = x;
+    while (from > 0 && isWord(from - 1)) {
+      from--;
+    }
+    var to = x;
+    while (to < cols - 1 && isWord(to + 1)) {
+      to++;
+    }
+    widget.session.term.select(from, y, to, y);
+    unawaited(HapticFeedback.mediumImpact());
   }
 
   void _scheduleResize(int cols, int rows) {
@@ -215,8 +250,9 @@ class _GridPainter extends CustomPainter {
           : snapshot.defaultBg;
     }
     if (flags & TermFlags.selected != 0) return _selectionFg;
-    if (flags & TermFlags.faint != 0)
+    if (flags & TermFlags.faint != 0) {
       return Color(value & 0xFFFFFF).withValues(alpha: 0.6);
+    }
     return Color(value);
   }
 

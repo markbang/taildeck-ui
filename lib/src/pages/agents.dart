@@ -497,7 +497,14 @@ class _LiveAgentRow extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(width: 6),
-                      StatusPill(label: label, tint: tint, dot: true),
+                      StatusPill(
+                        label: label,
+                        tint: tint,
+                        dot: true,
+                        pulse:
+                            agent.status == HerdrStatus.working ||
+                            agent.status == HerdrStatus.blocked,
+                      ),
                     ],
                   ),
                   if (detail.isNotEmpty)

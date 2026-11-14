@@ -389,8 +389,9 @@ class _FfiTerm implements NativeTerm {
         : calloc<Uint8>(bytes.isEmpty ? 1 : bytes.length);
     final len = calloc<IntPtr>();
     try {
-      if (bytes != null)
+      if (bytes != null) {
         ptr.cast<Uint8>().asTypedList(bytes.length).setAll(0, bytes);
+      }
       return _copy(
         _lib.encodeKey(
           _term,
