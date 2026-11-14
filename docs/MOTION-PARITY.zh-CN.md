@@ -58,7 +58,7 @@ Flutter 侧全部走 `context.motionDuration(spec)`（`prism_ui`），因此系�
 | 22 | `AgentsUi.kt:749` | 输入区切换为“被阻塞”面板，垂直滑动 1/3 | 默认规格 | `agent_chat.dart:858` `SlideFadeSwitcher` | 已对齐 | 需要在线 Agent |
 | 23 | `AgentsUi.kt:845` | 回到底部按钮淡入并放大 | 默认淡入 | `agent_chat.dart:1700` `_ScrollToBottom` | 已对齐 | 需要在线 Agent |
 | 24 | `AgentExtras.kt:518` | 子 Agent 数量胶囊淡入 | 默认淡入 | `agent_chat.dart:1784` `MotionVisibility` in `_WorkingBar` | 已对齐 | 需要在线 Agent |
-| 25 | `AgentExtras.kt:217`, `:254`, `:324`, `AgentTimeline.kt:246`, `:448`, `AgentsUi.kt:765`, `:982`, `SettingsScreen.kt:94`, `NodeScreen.kt:224` | 内容随布局增减尺寸 | 慢空间 | `motion.dart:56` `AnimatedContentSize` (`agent_chat.dart:1850`, `:2116`, `:2155`, `:2208`, `:2260`, `login.dart:532`) | Partial | 聊天记录与设置页不做尺寸动画 |
+| 25 | `AgentExtras.kt:217`, `:254`, `:324`, `AgentTimeline.kt:246`, `:448`, `AgentsUi.kt:765`, `:982`, `SettingsScreen.kt:94`, `NodeScreen.kt:224` | 内容随布局增减尺寸 | 慢空间 | `motion.dart:56` `AnimatedContentSize` (`agent_chat.dart:1850`, `:2116`, `:2155`, `:2208`, `:2260`, `login.dart:534`) | Partial | 聊天记录与设置页不做尺寸动画 |
 | 26 | `Expressive.kt:198`, `HomeScreen.kt:272`, `AgentsUi.kt:289`, `:711`, `NodeScreen.kt:224` | 列表行加入时归位、移除时收起 | animateItem（淡入 + 归位弹簧） | `controls.dart:139` `AnimatedGroupCard` (`motion.dart:48` placement) | 已对齐 | 没有片段拍到行的加入或移除 |
 | 27 | `AgentTimeline.kt:244`, `:445` | 工具组与待办箭头旋转 180° | `animateFloatAsState` 默认 | `motion.dart:541` `RotatingChevron` (`agent_chat.dart:1887`, `:2146`, `:2251`) | 已对齐 | 需要在线 Agent |
 | 28 | `AgentsUi.kt:977` | 可展开卡片：箭头旋转、内容改变高度 | 默认 | `RotatingChevron` + `AnimatedContentSize` | 已对齐 | 需要在线 Agent |
