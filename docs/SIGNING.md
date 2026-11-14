@@ -10,7 +10,7 @@ installs over it as an upgrade instead of a second app.
 | `applicationId` | `top.bangwu.taildeck` (unchanged from the Kotlin app) |
 | `namespace` | `top.bangwu.taildeck_ui` (Kotlin package, unrelated to app identity) |
 | `minSdk` | 26 (same as the Kotlin app) |
-| version | from `pubspec.yaml`: `0.2.7+27` → `versionName=0.2.7`, `versionCode=27` |
+| version | from `pubspec.yaml`: `0.2.8+28` → `versionName=0.2.8`, `versionCode=28` |
 | key alias | `taildeck` |
 | certificate SHA-256 | starts with `A7:6A:FE:7F`; identical to the published Kotlin v0.1.0 APK |
 
