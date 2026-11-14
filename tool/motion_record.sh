@@ -77,6 +77,21 @@ tapxy() { # 'x y'
   sleep 0.5
 }
 
+# A plain tap event, for navigation: `input swipe` in place is enough for
+# Compose, and this is the form every toolkit treats as a click.
+tap_xy() { # 'x y'
+  # shellcheck disable=SC2086
+  adb shell input tap $1 > /dev/null 2>&1 || true
+  sleep 0.6
+}
+
+# Keeps the state of the screen in the artifact when something does not react.
+shot() { adb exec-out screencap -p > "$out/$1.png" 2> /dev/null || true; }
+
+state() { # <label>
+  note "$1: $(adb shell dumpsys power 2> /dev/null | grep -m1 -oE 'Display Power: state=[A-Z]+' || echo 'display ?') $(adb shell dumpsys window 2> /dev/null | grep -m1 -oE 'mCurrentFocus=Window\{[^}]*\}' || true)"
+}
+
 hold_long() { # 'x y' <ms>: the finger stays down for the whole clip
   # shellcheck disable=SC2086
   adb shell input swipe $1 $1 "${2:-3000}" > /dev/null 2>&1 || true
@@ -191,8 +206,30 @@ tap_point() { tapxy "$1"; }
 tap_label() { # <text>
   local point
   point=$(find_or_scroll "$1") || { note "no node for '$1'"; return 1; }
-  tapxy "$point"
+  tap_xy "$point"
   sleep 0.8
+}
+
+field_count() { ui edits 2> /dev/null | wc -l | tr -d ' '; }
+
+# Opens a section that reveals text fields. A row's hit area can be narrower
+# than the box semantics reports, so the neighbours of the centre are tried
+# before giving up.
+tap_until_fields() { # <text> <expected field count>
+  local point x y dx
+  point=$(find_or_scroll "$1") || { note "no node for '$1'"; return 1; }
+  tap_xy "$point"
+  sleep 1
+  [ "$(field_count)" -ge "$2" ] && return 0
+  x=${point% *}
+  y=${point#* }
+  for dx in -300 -150 150 300; do
+    tap_xy "$((x + dx)) $y"
+    sleep 1
+    [ "$(field_count)" -ge "$2" ] && return 0
+  done
+  note "'$1' did not open $2 text field(s), $(field_count) on screen"
+  return 1
 }
 
 # Records one gesture on an element found just before the recording starts, so
@@ -296,15 +333,17 @@ pull_down() {
 
 flutter_login_scene() {
   local point
-  tap_label "Control server"
-  fill_edit 0 "$control_url" || return 0
-  tap_label "Use an auth key"
-  fill_edit 0 "${auth_key:-tskey-test}" || return 0
+  state "flutter-login"
+  tap_until_fields "Control server" 1 || { shot flutter-no-field; return 0; }
+  fill_edit 0 "$control_url" || { shot flutter-control; return 0; }
+  tap_until_fields "Use an auth key" 2 || { shot flutter-no-key; return 0; }
+  fill_edit 0 "${auth_key:-tskey-test}" || { shot flutter-key; return 0; }
+  shot flutter-filled
   # Press: the filled button held, its pill squashing to CornerSmall while the
   # ripple stays; the release signs the node in, past the end of the clip.
   point=$(find_or_scroll "Connect") || { note "flutter-press: no Connect"; return 0; }
   record flutter-press 3 hold_long "$point" 4200
-  wait_for "Search nodes" 40 || note "flutter login: still on the login screen"
+  wait_for "Search nodes" 40 || { shot flutter-after-press; note "flutter login: still on the login screen"; }
 }
 
 flutter_scene() {
@@ -323,6 +362,8 @@ flutter_scene() {
   dump flutter-detail
   # The ping result block grows in under the buttons.
   record_tap flutter-size 6 "Ping" tap "ms"
+  # A held button keeps the ink circle and the pressed shape on screen.
+  record_tap flutter-ripple 3 "Ping" hold
   # The scan block joins the list and resizes with the found port.
   record_tap flutter-scan 14 "Scan common ports" tap "3000" scroll
   dump flutter-scan
@@ -334,8 +375,7 @@ flutter_scene() {
   flutter_settings
 }
 
-# Settings carries the two modal and pressed effects: the key sheet rising
-# over the scrim, and the ink ripple on a full-width row.
+# Settings carries the modal effect: the key sheet rising over the scrim.
 flutter_settings() {
   local point
   point=$(ui tap "Settings") || { note "flutter: no Settings tab"; return 0; }
@@ -343,11 +383,6 @@ flutter_settings() {
   sleep 1.5
   record_tap flutter-sheet 4 "Import key" tap "Import key" scroll
   dump flutter-sheet
-  adb shell input keyevent 4 > /dev/null 2>&1 || true
-  sleep 1
-  # A held row keeps the ink circle on screen while the drag is drawn.
-  record_tap flutter-ripple 3 "Logs" hold "" scroll
-  dump flutter-ripple
   adb shell input keyevent 4 > /dev/null 2>&1 || true
   sleep 1
 }
@@ -389,6 +424,7 @@ kotlin_scene() {
   record kotlin-detail 6 tap_point "$point"
   dump kotlin-detail
   record_tap kotlin-size 6 "Ping" tap "ms"
+  record_tap kotlin-ripple 3 "Ping" hold
   record_tap kotlin-scan 14 "Scan ports" tap "3000" scroll
   dump kotlin-scan
   adb shell input keyevent 4 > /dev/null 2>&1 || true
@@ -405,10 +441,6 @@ kotlin_settings() {
   sleep 1.5
   record_tap kotlin-sheet 4 "Import key" tap "Import key" scroll
   dump kotlin-sheet
-  adb shell input keyevent 4 > /dev/null 2>&1 || true
-  sleep 1
-  record_tap kotlin-ripple 3 "Logs" hold "" scroll
-  dump kotlin-ripple
   adb shell input keyevent 4 > /dev/null 2>&1 || true
   sleep 1
 }
@@ -428,8 +460,11 @@ fi
 install_app "$flutter_apk" || true
 # Neither the browser flow nor an external page needs a browser on the device.
 adb shell pm disable-user --user 0 com.android.chrome > /dev/null 2>&1 || true
-launch "$flutter_apk" "$app" "taildeck://preview/?login=1&lang=en"
+adb shell input keyevent 224 > /dev/null 2>&1 || true
+launch "$flutter_apk" "$app" "taildeck://preview/?login=1&lang=en&splash=0"
 if [ -n "$control_url" ]; then
+  shot flutter-launch
+  state flutter-launch
   flutter_login_scene
   flutter_scene
 else
