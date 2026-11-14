@@ -223,6 +223,9 @@ swipe_down() { # <x> <y1> <y2> [ms]
   sleep 0.6
 }
 
+# Pull the list down from its top, the gesture both apps' refresh boxes watch.
+pull_refresh() { swipe_down "$((W / 2))" 420 1000; }
+
 app_uid() {
   adb shell dumpsys package "$app" 2> /dev/null |
     sed -n 's/.*userId=\([0-9]*\).*/\1/p' | head -1 | tr -d '\r'
@@ -365,7 +368,7 @@ kotlin_tailnet() { # <key>
   record kotlin-tabs 6 tap_tabs Services Nodes Services
   check kotlin-tabs "Services"
   point=$(ui tap "Nodes") && { tapxy "$point"; sleep 1.5; }
-  record kotlin-refresh 6 swipe_down "$((W / 2)) 420 1000"
+  record kotlin-refresh 6 pull_refresh
   # The scan block joins the list and resizes: one gesture recorded once for
   # the row and once for the content size.
   for clip in kotlin-scan-row kotlin-content-size; do
@@ -409,7 +412,7 @@ flutter_tailnet() { # <key>
   record flutter-tabs 6 tap_tabs Services Agents Nodes
   check flutter-tabs "Nodes"
   point=$(ui tap "Nodes") && { tapxy "$point"; sleep 1.5; }
-  record flutter-refresh 6 swipe_down "$((W / 2)) 420 1000"
+  record flutter-refresh 6 pull_refresh
   for clip in flutter-scan-row flutter-content-size; do
     launch "$flutter_apk" "$app"
     sleep 3
@@ -447,7 +450,7 @@ signed_out_kotlin "$hang_url"
 
 if [ -n "$control_url" ]; then
   seed_kotlin_settings "$control_url"
-  kotlin_tailnet "$key"
+  kotlin_tailnet "$key" || note "kotlin scenarios stopped early"
 else
   note "no control server: the screens behind login stay unrecorded"
 fi
@@ -457,7 +460,7 @@ signed_out_flutter "$hang_url"
 
 if [ -n "$control_url" ]; then
   seed_flutter_config "$control_url"
-  flutter_tailnet "$key"
+  flutter_tailnet "$key" || note "flutter scenarios stopped early"
 else
   note "no control server: the screens behind login stay unrecorded"
 fi
