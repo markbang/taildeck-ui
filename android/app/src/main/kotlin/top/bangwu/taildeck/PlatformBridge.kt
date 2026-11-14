@@ -16,6 +16,8 @@ import java.net.NetworkInterface
  * interface and DNS lookups come from here through the JNI shim in
  * native/bridge/cmd/cshared/platform_jni.c.
  */
+// The three callbacks below are instance methods on purpose: platform_jni.c
+// finds them with GetMethodID, which never matches a static method.
 object PlatformBridge {
     private const val TAG = "TaildeckPlatform"
 
@@ -73,7 +75,6 @@ object PlatformBridge {
     }
 
     /** JSON array of {name,index,mtu,up,loopback,addrs:["ip/bits"]}. */
-    @JvmStatic
     fun interfacesJson(): String {
         val array = JSONArray()
         val list = runCatching { NetworkInterface.getNetworkInterfaces()?.toList() }
@@ -102,12 +103,10 @@ object PlatformBridge {
             .put("addrs", addrs)
     }
 
-    @JvmStatic
     fun defaultInterface(): String = manager?.let { cm ->
         runCatching { cm.getLinkProperties(cm.activeNetwork)?.interfaceName }.getOrNull()
     }.orEmpty()
 
-    @JvmStatic
     fun lookup(host: String): String = try {
         InetAddress.getAllByName(host).joinToString(",") { it.hostAddress?.substringBefore('%') ?: "" }
     } catch (e: Exception) {

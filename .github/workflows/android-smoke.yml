@@ -1,0 +1,213 @@
+# Cold-start smoke test: installs a release APK on an emulator, launches it
+# fresh and fails when the process dies or AndroidRuntime reports a crash.
+name: android-smoke
+
+on:
+  workflow_call:
+    inputs:
+      apk-artifact:
+        description: Artifact holding a taildeck-android-x64-*.apk (empty to skip)
+        type: string
+        default: android
+      apk-run-id:
+        description: Run that holds the artifact (empty for the caller's run)
+        type: string
+        default: ''
+      application-id:
+        description: Package to install, launch and watch
+        type: string
+        default: top.bangwu.taildeck
+  workflow_dispatch:
+    inputs:
+      apk-url:
+        description: APK to download and smoke
+        type: string
+        default: https://github.com/markbang/taildeck-ui/releases/download/v0.2.8/taildeck-android-x64-v0.2.8.apk
+      apk-run-id:
+        description: Run whose 'android' artifact holds the x86_64 APK (empty for this run)
+        type: string
+        default: ''
+      build:
+        description: Build a release-signed x86_64 APK from this ref instead of downloading one
+        type: boolean
+        default: false
+      apk-artifact:
+        description: Artifact holding the x86_64 APK (skips apk-url)
+        type: string
+        default: ''
+      application-id:
+        description: Package to install, launch and watch
+        type: string
+        default: top.bangwu.taildeck
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GOPROXY: https://proxy.golang.org,direct
+  GOTOOLCHAIN: auto
+  APP_ID: ${{ inputs.application-id || 'top.bangwu.taildeck' }}
+
+jobs:
+  smoke:
+    name: cold start
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Build mode: a signed x86_64 APK from this ref, for iterating on a fix.
+      - uses: actions/setup-java@v4
+        if: inputs.build
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+      - uses: actions/setup-go@v6
+        if: inputs.build
+        with:
+          go-version: 1.27.x
+          cache-dependency-path: native/bridge/go.sum
+      - uses: mlugg/setup-zig@v2
+        if: inputs.build
+        with:
+          version: 0.17.1
+      - name: Pin the Android NDK
+        if: inputs.build
+        run: |
+          sdk="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+          ndk="$sdk/ndk/28.2.13676358"
+          if [ ! -d "$ndk" ]; then
+            sdkmanager_bin="$(ls "$sdk"/cmdline-tools/*/bin/sdkmanager | sort -V | tail -1)"
+            yes | "$sdkmanager_bin" --licenses > /dev/null 2>&1 || true
+            "$sdkmanager_bin" --install "ndk;28.2.13676358"
+          fi
+          test -d "$ndk"
+          echo "ANDROID_NDK_HOME=$ndk" >> "$GITHUB_ENV"
+      - uses: subosito/flutter-action@v2
+        if: inputs.build
+        with:
+          flutter-version: 3.47.9
+          channel: stable
+          cache: true
+      - name: Build the native libs (x86_64)
+        if: inputs.build
+        run: |
+          set -o pipefail
+          flutter pub get
+          tool/build_native.sh android-x86_64 | tee /tmp/build_native.log
+          tool/build_term.sh android-x86_64 | tee /tmp/build_term.log
+          for lib in libtaildeck_bridge.so libtaildeck_term.so; do
+            test -s "android/app/src/main/jniLibs/x86_64/$lib" \
+              || { echo "::error::android/app/src/main/jniLibs/x86_64/$lib missing"; exit 1; }
+          done
+      - name: Configure Android signing
+        if: inputs.build
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          for name in KEYSTORE_BASE64 KEYSTORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
+            if [ -z "${!name}" ]; then
+              echo "::error::$name is empty; the smoke test needs the release keystore (see docs/SIGNING.md)"
+              exit 1
+            fi
+          done
+          umask 077
+          echo "$KEYSTORE_BASE64" | base64 -d > android/app/release.jks
+          {
+            echo "storeFile=release.jks"
+            printf 'storePassword=%s\n' "$KEYSTORE_PASSWORD"
+            printf 'keyAlias=%s\n' "$KEY_ALIAS"
+            printf 'keyPassword=%s\n' "$KEY_PASSWORD"
+          } > android/key.properties
+          chmod 600 android/app/release.jks android/key.properties
+      - name: Build the release APK (x86_64)
+        if: inputs.build
+        run: |
+          flutter build apk --release --target-platform android-x64 --split-per-abi
+          cp build/app/outputs/flutter-apk/app-x86_64-release.apk build/smoke.apk
+          "$(ls -d "${ANDROID_SDK_ROOT:-$ANDROID_HOME}"/build-tools/*/ | sort -V | tail -1)/aapt2" \
+            dump badging build/smoke.apk | head -1
+      - name: Drop the signing material
+        if: always()
+        run: rm -f android/app/release.jks android/key.properties
+
+      - name: Download the APK
+        if: ${{ !inputs.build && (inputs.apk-artifact || '') == '' && (inputs.apk-url || '') != '' }}
+        run: |
+          mkdir -p build
+          curl -fsSL -o build/smoke.apk "${{ inputs.apk-url }}"
+          "$(ls -d "${ANDROID_SDK_ROOT:-$ANDROID_HOME}"/build-tools/*/ | sort -V | tail -1)/aapt2" \
+            dump badging build/smoke.apk | head -1
+      - name: Download the APK artifact
+        if: inputs.apk-artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.apk-artifact }}
+          path: build/artifact
+          run-id: ${{ inputs.apk-run-id || github.run_id }}
+          github-token: ${{ github.token }}
+      - name: Resolve the APK under test
+        run: |
+          set -euo pipefail
+          apk=build/smoke.apk
+          if [ ! -s "$apk" ]; then
+            apk="$(ls build/artifact/taildeck-android-x64-*.apk 2>/dev/null | head -1 || true)"
+          fi
+          if [ -z "$apk" ] || [ ! -s "$apk" ]; then
+            apk="$(ls build/artifact/*.apk 2>/dev/null | head -1 || true)"
+          fi
+          test -s "$apk" || { echo "::error::no APK to smoke"; exit 1; }
+          echo "APK=$PWD/$apk" >> "$GITHUB_ENV"
+          mkdir -p smoke
+          aapt2="$(ls -d "${ANDROID_SDK_ROOT:-$ANDROID_HOME}"/build-tools/*/ | sort -V | tail -1)/aapt2"
+          "$aapt2" dump badging "$apk" | grep -E "^(package|application-label:|launchable-activity)" \
+            | tee smoke/badging.txt
+          echo "smoking $apk ($(stat -c%s "$apk") bytes)"
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          ls -l /dev/kvm
+
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: bash tool/smoke_android.sh "$APK" "$APP_ID" smoke
+
+      - name: Job summary
+        if: always()
+        run: |
+          {
+            echo "### Android cold start"
+            echo
+            echo '```'
+            cat smoke/summary.txt 2>/dev/null || echo 'no summary'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: android-smoke
+          path: smoke/
+          if-no-files-found: warn
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: android-smoke-apk
+          path: build/smoke.apk
+          if-no-files-found: warn

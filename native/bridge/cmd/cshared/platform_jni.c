@@ -107,6 +107,14 @@ static char *platform_lookup(char *host, void *ctx) {
   return out;
 }
 
+// A failed lookup leaves a pending exception; the next JNI call would abort the
+// process (ART: "unexpected pending exception"), so clear it per lookup.
+static jmethodID method_id(JNIEnv *env, jclass cls, const char *name, const char *sig) {
+  jmethodID id = (*env)->GetMethodID(env, cls, name, sig);
+  if (id == NULL && (*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
+  return id;
+}
+
 int td_jni_attach(JNIEnv *env, jobject helper) {
   JavaVM *vm = NULL;
   jclass cls;
@@ -118,11 +126,12 @@ int td_jni_attach(JNIEnv *env, jobject helper) {
   if ((*env)->GetJavaVM(env, &vm) != JNI_OK || vm == NULL) return 0;
   cls = (*env)->GetObjectClass(env, helper);
   if (cls == NULL) return 0;
-  m_ifaces = (*env)->GetMethodID(env, cls, "interfacesJson", "()Ljava/lang/String;");
-  m_default = (*env)->GetMethodID(env, cls, "defaultInterface", "()Ljava/lang/String;");
-  m_lookup = (*env)->GetMethodID(env, cls, "lookup", "(Ljava/lang/String;)Ljava/lang/String;");
+  // Instance methods: PlatformBridge.kt must not mark them @JvmStatic, because
+  // GetMethodID never matches a static method.
+  m_ifaces = method_id(env, cls, "interfacesJson", "()Ljava/lang/String;");
+  m_default = method_id(env, cls, "defaultInterface", "()Ljava/lang/String;");
+  m_lookup = method_id(env, cls, "lookup", "(Ljava/lang/String;)Ljava/lang/String;");
   if (m_ifaces == NULL || m_default == NULL || m_lookup == NULL) {
-    (*env)->ExceptionClear(env);
     (*env)->DeleteLocalRef(env, cls);
     return 0;
   }

@@ -252,6 +252,13 @@ jobs:
             build/taildeck-android-*.aab
           if-no-files-found: error
 
+  android_smoke:
+    name: android cold start
+    needs: android
+    uses: ./.github/workflows/android-smoke.yml
+    with:
+      apk-artifact: android
+
   linux:
     name: linux bundle
     runs-on: ubuntu-latest
@@ -484,7 +491,7 @@ jobs:
 
   release:
     name: github release
-    needs: [android, linux, package]
+    needs: [android, android_smoke, linux, package]
     runs-on: ubuntu-latest
     permissions:
       contents: write
