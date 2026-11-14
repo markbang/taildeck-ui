@@ -88,6 +88,17 @@ tap_xy() { # 'x y'
 # Keeps the state of the screen in the artifact when something does not react.
 shot() { adb exec-out screencap -p > "$out/$1.png" 2> /dev/null || true; }
 
+# Thread stacks plus logcat, for a screen that ignores input.
+stacks() { # <name>
+  local pid
+  pid=$(adb shell pidof "$app" 2> /dev/null | tr -d '\r' | awk '{print $1}')
+  if [ -n "${pid:-}" ]; then
+    adb shell kill -3 "$pid" > /dev/null 2>&1 || true
+    sleep 2
+  fi
+  adb logcat -d > "$out/logcat-$1.txt" 2>&1 || true
+}
+
 state() { # <label>
   note "$1: $(adb shell dumpsys power 2> /dev/null | grep -m1 -oE 'Display Power: state=[A-Z]+' || echo 'display ?') $(adb shell dumpsys window 2> /dev/null | grep -m1 -oE 'mCurrentFocus=Window\{[^}]*\}' || true)"
 }
@@ -331,10 +342,31 @@ pull_down() {
 
 # ---- this build ----
 
+# Does this build take a tap at all? The preview shell needs no native node,
+# so it separates a dead input path from a blocked sign-in.
+flutter_probe() {
+  local point
+  launch "$flutter_apk" "$app" "taildeck://preview/?preview=1&lang=en&splash=0"
+  sleep 3
+  if point=$(ui tap "Agents"); then
+    tap_xy "$point"
+    sleep 2
+    if ui has "herdr" > /dev/null 2>&1; then
+      note "flutter input: a tap on the preview shell landed"
+    else
+      note "flutter input: the preview shell ignored a tap"
+      shot flutter-preview-ignored
+      stacks flutter-preview
+    fi
+  else
+    note "flutter input: no dock label to tap"
+  fi
+}
+
 flutter_login_scene() {
   local point
   state "flutter-login"
-  tap_until_fields "Control server" 1 || { shot flutter-no-field; return 0; }
+  tap_until_fields "Control server" 1 || { shot flutter-no-field; stacks flutter-no-field; return 0; }
   fill_edit 0 "$control_url" || { shot flutter-control; return 0; }
   tap_until_fields "Use an auth key" 2 || { shot flutter-no-key; return 0; }
   fill_edit 0 "${auth_key:-tskey-test}" || { shot flutter-key; return 0; }
@@ -461,8 +493,9 @@ install_app "$flutter_apk" || true
 # Neither the browser flow nor an external page needs a browser on the device.
 adb shell pm disable-user --user 0 com.android.chrome > /dev/null 2>&1 || true
 adb shell input keyevent 224 > /dev/null 2>&1 || true
-launch "$flutter_apk" "$app" "taildeck://preview/?login=1&lang=en&splash=0"
 if [ -n "$control_url" ]; then
+  flutter_probe
+  launch "$flutter_apk" "$app" "taildeck://preview/?login=1&lang=en&splash=0"
   shot flutter-launch
   state flutter-launch
   flutter_login_scene
@@ -470,6 +503,7 @@ if [ -n "$control_url" ]; then
 else
   note "no control server: this build stays on its login screen"
 fi
+stacks flutter-end
 adb shell pm enable com.android.chrome > /dev/null 2>&1 || true
 
 # ---- put them side by side: Kotlin on the left, this build on the right ----
