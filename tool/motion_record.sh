@@ -154,6 +154,7 @@ _record_once() { # <name> <seconds> <command...>
 
 tap_point() { tapxy "$1"; }
 hold_point() { holdxy "$1" 900; sleep 1; }
+
 # BACK closes the keyboard; ESC is the fallback when no keyboard is up, so a
 # field that never took focus cannot send the app back a screen.
 ime_hide() {
@@ -165,31 +166,7 @@ ime_hide() {
   sleep 0.5
 }
 
-clear_field() { # <anchor> <below|above>
-  local point
-  point=$(ui field"$2" "$1") || return 1
-  tapxy "$point"
-  adb shell input keyevent 123 > /dev/null 2>&1 || true
-  for _ in $(seq 1 48); do adb shell input keyevent 67 > /dev/null 2>&1; done
-  ime_hide
-}
-
 scroll_down_screen() { adb shell input swipe 540 1700 540 1000 400 > /dev/null 2>&1 || true; sleep 0.8; }
-
-# Writes the app's own config so the control server is already filled in: the
-# sign-in then only needs the key.
-seed_flutter_config() { # <control-url>
-  local uid
-  adb root > /dev/null 2>&1 || true
-  sleep 1
-  uid=$(adb shell dumpsys package "$app" 2> /dev/null | sed -n 's/.*userId=\([0-9]*\).*/\1/p' | head -1 | tr -d '\r')
-  printf '{"controlURL":"%s","hostname":"pixel-motion"}\n' "$1" > /tmp/config.json
-  adb shell "mkdir -p /data/data/$app/files" > /dev/null 2>&1 || true
-  adb push /tmp/config.json "/data/data/$app/files/config.json" > /dev/null 2>&1 || { note "seed: push failed"; return 1; }
-  adb shell "chown ${uid:-0}:${uid:-0} /data/data/$app/files/config.json" > /dev/null 2>&1 || true
-  adb shell "restorecon /data/data/$app/files/config.json" > /dev/null 2>&1 || true
-  note "seed: control server $1"
-}
 
 # Keeps the last dump beside a clip that could not find its control, so the
 # artifact says what the screen really showed.
@@ -209,8 +186,8 @@ record_tap() { # <name> <seconds> <text> [hold]
   return 0
 }
 
-# A press and hold that is let go in place: the ripple runs, the surface
-# squashes, and the tap it ends with opens the same section in both apps.
+# A press and hold let go in place: the ripple runs, the surface squashes, and
+# the tap it ends with opens the same section in both apps.
 record_hold() { # <name> <seconds> <text>
   local name=$1 seconds=$2 text=$3 point
   point=$(ui tap "$text") || { note "$name: no node for '$text'"; keep_ui "$name"; return 0; }
@@ -246,22 +223,56 @@ swipe_down() { # <x> <y1> <y2> [ms]
   sleep 0.6
 }
 
-# ---- the two sign-in flows, so both apps reach the same screens ----
+app_uid() {
+  adb shell dumpsys package "$app" 2> /dev/null |
+    sed -n 's/.*userId=\([0-9]*\).*/\1/p' | head -1 | tr -d '\r'
+}
 
-kotlin_login() { # <control-url> <key>
+# Writes the app's own settings before it starts, so the control server is
+# already filled in and the sign-in only needs the key.
+seed_flutter_config() { # <control-url>
+  local uid
+  adb root > /dev/null 2>&1 || true
+  adb wait-for-device > /dev/null 2>&1 || true
+  sleep 1
+  uid=$(app_uid)
+  printf '{"controlURL":"%s","hostname":"pixel-motion"}\n' "$1" > /tmp/config.json
+  adb shell "mkdir -p /data/data/$app/files" > /dev/null 2>&1 || true
+  adb push /tmp/config.json "/data/data/$app/files/config.json" > /dev/null 2>&1 || { note "seed: push failed"; return 1; }
+  adb shell "chown ${uid:-0}:${uid:-0} /data/data/$app/files/config.json" > /dev/null 2>&1 || true
+  adb shell "restorecon /data/data/$app/files/config.json" > /dev/null 2>&1 || true
+  note "seed: $app control server $1"
+}
+
+seed_kotlin_settings() { # <control-url>
+  local uid
+  adb root > /dev/null 2>&1 || true
+  adb wait-for-device > /dev/null 2>&1 || true
+  sleep 1
+  uid=$(app_uid)
+  cat > /tmp/taildeck.xml <<XML
+<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<map>
+    <string name="hostname">pixel-motion</string>
+    <string name="controlUrl">$1</string>
+</map>
+XML
+  adb shell "mkdir -p /data/data/$app/shared_prefs" > /dev/null 2>&1 || true
+  adb push /tmp/taildeck.xml "/data/data/$app/shared_prefs/taildeck.xml" > /dev/null 2>&1 || { note "seed: push failed"; return 1; }
+  adb shell "chown ${uid:-0}:${uid:-0} /data/data/$app/shared_prefs/taildeck.xml" > /dev/null 2>&1 || true
+  adb shell "restorecon /data/data/$app/shared_prefs/taildeck.xml" > /dev/null 2>&1 || true
+  note "seed: $app control server $1"
+}
+
+# ---- sign-in: only the key is left to type ----
+
+kotlin_login() { # <key>
   local point i
-  if point=$(ui tap "Device name"); then
-    tapxy "$point"; type_text "pixel-motion"; ime_hide
+  if ! ui has "Auth key" > /dev/null 2>&1; then
+    point=$(ui tap Advanced) && { tapxy "$point"; sleep 1; }
   fi
-  point=$(ui tap Advanced) && { tapxy "$point"; sleep 1; }
-  point=$(ui tap "Control server") || { keep_ui kotlin-login; return 1; }
-  tapxy "$point"
-  adb shell input keyevent 123 > /dev/null 2>&1 || true
-  for _ in $(seq 1 48); do adb shell input keyevent 67 > /dev/null 2>&1; done
-  type_text "$1"; ime_hide
   point=$(ui tap "Auth key") || { keep_ui kotlin-login; return 1; }
-  tapxy "$point"; type_text "$2"; ime_hide
-  # With the section open, Sign in sits below the fold.
+  tapxy "$point"; type_text "$1"; ime_hide
   point=
   for i in 1 2 3; do
     point=$(ui tap "Sign in") && break
@@ -287,9 +298,10 @@ flutter_login() { # <key>
 signed_out_kotlin() { # <hanging-url>
   local point i
   launch "$kotlin_apk" "$app"
-  record_hold kotlin-ripple 3 Advanced
+  sleep 3
+  record_hold kotlin-ripple 4 Advanced
   check kotlin-ripple "Control server"
-  record_hold kotlin-press 3 "Control server"
+  record_hold kotlin-press 4 "Control server"
   sleep 1
   # A control server that never answers keeps the app on its loading stage.
   if point=$(ui tap "Control server"); then
@@ -306,20 +318,21 @@ signed_out_kotlin() { # <hanging-url>
       note "kotlin-loading: no Sign in button"
       keep_ui kotlin-loading
     fi
-    if point=$(ui tap Cancel); then tapxy "$point"; sleep 2; fi
   else
     note "kotlin-loading: no control server field"
     keep_ui kotlin-loading
   fi
+  adb shell am force-stop "$app" > /dev/null 2>&1 || true
+  sleep 1
 }
 
 signed_out_flutter() { # <hanging-url>
   local point
-  # The control URL is seeded, so the clips only need the key field.
   seed_flutter_config "$1"
   launch "$flutter_apk" "$app"
-  record_hold flutter-ripple 3 "Control server"
-  record_hold flutter-press 3 "Control server"
+  sleep 3
+  record_hold flutter-ripple 4 "Control server"
+  record_hold flutter-press 4 "Control server"
   sleep 1
   if point=$(ui tap "Use an auth key"); then tapxy "$point"; sleep 1; fi
   if point=$(ui fieldbelow "Use an auth key"); then
@@ -339,24 +352,26 @@ signed_out_flutter() { # <hanging-url>
 
 # ---- signed-in clips ----
 
-kotlin_tailnet() { # <control-url> <key>
+kotlin_tailnet() { # <key>
   local point
-  if ! kotlin_login "$1" "$2"; then
+  launch "$kotlin_apk" "$app"
+  sleep 3
+  if ! kotlin_login "$1"; then
     note "kotlin sign in: still on the login screen"
     return 0
   fi
   note "kotlin sign in: signed in"
   read_size
   record kotlin-tabs 6 tap_tabs Services Nodes Services
-  check kotlin-tabs "Nodes"
+  check kotlin-tabs "Services"
   point=$(ui tap "Nodes") && { tapxy "$point"; sleep 1.5; }
   record kotlin-refresh 6 swipe_down "$((W / 2)) 420 1000"
-  # The scan block joins the list and resizes: the same gesture is recorded
-  # once for the row and once for the content size.
+  # The scan block joins the list and resizes: one gesture recorded once for
+  # the row and once for the content size.
   for clip in kotlin-scan-row kotlin-content-size; do
     launch "$kotlin_apk" "$app"
-    sleep 2
-    point=$(ui tap "This device") || point=$(ui tap "pixel-motion") || point=
+    sleep 3
+    point=$(ui tap "pixel-motion") || point=$(ui tap "This device") || point=
     if [ -n "$point" ]; then
       tapxy "$point"; sleep 2
       record_tap "$clip" 10 "Scan ports"
@@ -364,9 +379,9 @@ kotlin_tailnet() { # <control-url> <key>
       sleep 1.5
     else
       note "$clip: no node row to open"
+      keep_ui "$clip"
     fi
   done
-  # Dialog motion: the sign-out confirm, opened and cancelled.
   if point=$(ui tap Settings); then
     tapxy "$point"; sleep 2
     point=$(ui tap "Sign out") || point=
@@ -376,13 +391,16 @@ kotlin_tailnet() { # <control-url> <key>
       point=$(ui tap Cancel) && tapxy "$point"
     else
       note "kotlin-dialog: no sign-out row"
+      keep_ui kotlin-dialog
     fi
   fi
 }
 
-flutter_tailnet() { # <control-url> <key>
+flutter_tailnet() { # <key>
   local point
-  if ! flutter_login "$2"; then
+  launch "$flutter_apk" "$app"
+  sleep 3
+  if ! flutter_login "$1"; then
     note "flutter sign in: did not reach the shell"
     return 0
   fi
@@ -403,6 +421,7 @@ flutter_tailnet() { # <control-url> <key>
       sleep 1.5
     else
       note "$clip: no node row to open"
+      keep_ui "$clip"
     fi
   done
   if point=$(ui tap Settings); then
@@ -414,18 +433,21 @@ flutter_tailnet() { # <control-url> <key>
       point=$(ui tap Cancel) && tapxy "$point"
     else
       note "flutter-dialog: no sign-out row"
+      keep_ui flutter-dialog
     fi
   fi
 }
 
 W= H=
 hang_url=${HANG_URL:-http://10.0.2.2:9}
+key=${AUTH_KEY:-tskey-test}
 
 install_app "$kotlin_apk" || true
 signed_out_kotlin "$hang_url"
 
 if [ -n "$control_url" ]; then
-  kotlin_tailnet "$control_url" "${auth_key:-tskey-test}"
+  seed_kotlin_settings "$control_url"
+  kotlin_tailnet "$key"
 else
   note "no control server: the screens behind login stay unrecorded"
 fi
@@ -435,7 +457,7 @@ signed_out_flutter "$hang_url"
 
 if [ -n "$control_url" ]; then
   seed_flutter_config "$control_url"
-  flutter_tailnet "$control_url" "${auth_key:-tskey-test}"
+  flutter_tailnet "$key"
 else
   note "no control server: the screens behind login stay unrecorded"
 fi
