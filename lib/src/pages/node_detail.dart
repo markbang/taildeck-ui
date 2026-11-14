@@ -11,6 +11,7 @@ import '../glyphs.dart';
 import '../native/bridge.dart';
 import '../service_open.dart';
 import '../services.dart';
+import '../terminal_store.dart';
 import '../webview/web_page.dart';
 import '../widgets/controls.dart';
 import '../widgets/foundation.dart';
@@ -23,12 +24,18 @@ class NodeDetailPage extends StatefulWidget {
     required this.onBack,
     required this.onOpenAgents,
     required this.onOpenSsh,
+    this.session,
+    this.onDisconnectSsh,
   });
 
   final NodeItem node;
   final VoidCallback onBack;
   final VoidCallback onOpenAgents;
   final VoidCallback onOpenSsh;
+
+  /// A shell still running on this node, left open by the terminal page.
+  final SshTerminal? session;
+  final VoidCallback? onDisconnectSsh;
 
   @override
   State<NodeDetailPage> createState() => _NodeDetailPageState();
@@ -199,6 +206,14 @@ class _NodeDetailPageState extends State<NodeDetailPage> {
             ),
           ],
         ),
+        if (widget.session case final session?) ...[
+          const SizedBox(height: 12),
+          _SessionCard(
+            session: session,
+            onResume: widget.onOpenSsh,
+            onDisconnect: widget.onDisconnectSsh,
+          ),
+        ],
         if (_notice.isNotEmpty) ...[
           const SizedBox(height: 12),
           InlineNotice(text: _notice, tint: scheme.onSurfaceVariant),
@@ -343,6 +358,73 @@ class _NodeDetailPageState extends State<NodeDetailPage> {
       ],
     );
     return Reveal(key: ValueKey('node-${node.name}'), child: body);
+  }
+}
+
+/// The SSH shell keeps running after its page closes; this reopens it.
+class _SessionCard extends StatelessWidget {
+  const _SessionCard({
+    required this.session,
+    required this.onResume,
+    required this.onDisconnect,
+  });
+
+  final SshTerminal session;
+  final VoidCallback onResume;
+  final VoidCallback? onDisconnect;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = context.colorScheme;
+    final l10n = AppLocalizations.of(context);
+    return Card(
+      radius: AppCorner.xxl,
+      onPressed: onResume,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 12, 6, 12),
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              alignment: Alignment.center,
+              decoration: ShapeDecoration(
+                color: scheme.primary.withValues(alpha: 0.16),
+                shape: AppShape.all(12),
+              ),
+              child: GlyphIcon(
+                Glyphs2.terminal,
+                size: 20,
+                color: scheme.primary,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    l10n.sshSessionRunning,
+                    style: AppTextStyle.body.of(context, emphasized: true),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '${session.user}@${session.node.name}:${session.port}',
+                    style: context.listCaptionStyle,
+                  ),
+                ],
+              ),
+            ),
+            TextButton(onPressed: onResume, child: Text(l10n.resume)),
+            IconButton(
+              onPressed: onDisconnect,
+              icon: const GlyphIcon(Glyphs.close, size: 18),
+              tooltip: l10n.disconnect,
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 

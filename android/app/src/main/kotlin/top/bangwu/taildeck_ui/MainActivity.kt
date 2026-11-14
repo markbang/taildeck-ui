@@ -19,6 +19,14 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+        // The launch link's query, read once by the Dart preview parameters.
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "taildeck/link")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "initialQuery" -> result.success(intent?.data?.query)
+                    else -> result.notImplemented()
+                }
+            }
         // The Flutter backend starts this around its own node lifecycle.
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "taildeck/service")
             .setMethodCallHandler { call, result ->

@@ -6,23 +6,27 @@ import 'package:prism_ui/icons/icons.dart';
 import 'package:prism_ui/prism_ui.dart';
 
 import 'a11y.dart';
+import 'back.dart';
 import 'backend.dart';
 import 'data.dart';
 import 'herdr.dart';
 import 'preview_env.dart';
 import 'glyphs.dart';
 import 'l10n.dart';
-import 'native/ssh.dart';
 import 'notifications.dart';
 import 'pages/agent_chat.dart';
 import 'pages/agents.dart';
+import 'pages/key_sheet.dart';
+import 'pages/new_agent_sheet.dart';
 import 'pages/node_detail.dart';
 import 'pages/nodes.dart';
+import 'pages/service_sheet.dart';
 import 'pages/services.dart';
 import 'pages/ssh_sheet.dart';
 import 'pages/login.dart';
 import 'pages/settings.dart';
 import 'pages/terminal.dart';
+import 'terminal_store.dart';
 import 'theme.dart';
 
 enum TabAnimation { slide, fade }
@@ -55,11 +59,12 @@ class _TaildeckShellState extends State<TaildeckShell>
   // `?preview=1`: show the signed-in shell without a live node, so pages that
   // need a tailnet (settings, logs) can be reviewed on a desk.
   final bool _previewShell = previewParam('preview') == '1';
-  NodeItem? _sshNode = _querySsh();
-  bool _sshDemo = previewParam('ssh') == 'demo';
-  String _sshUser = 'root';
-  int _sshPort = 22;
-  SshSession? _sshSession;
+  final _terminals = TerminalStore();
+  final _exit = ExitGuard();
+  // The terminal page currently open; its session lives on in [_terminals].
+  SshTerminal? _attached;
+  final bool _sshDemo = previewParam('ssh') == 'demo';
+  bool _previewSheetOpened = false;
   AgentNotifications? _alerts;
 
   late final PageController _pageController = PageController(initialPage: _tab);
@@ -84,6 +89,20 @@ class _TaildeckShellState extends State<TaildeckShell>
   }
 
   @override
+  void initState() {
+    super.initState();
+    _terminals.addListener(_onTerminalsChanged);
+    final node = _querySsh();
+    if (node != null) {
+      _attached = _terminals.open(node: node, user: 'root', port: 22);
+    }
+  }
+
+  void _onTerminalsChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     final alerts = BackendScope.of(context).notifications;
@@ -91,12 +110,18 @@ class _TaildeckShellState extends State<TaildeckShell>
       _alerts?.removeListener(_openTappedPane);
       _alerts = alerts..addListener(_openTappedPane);
     }
-    WidgetsBinding.instance.addPostFrameCallback((_) => _openTappedPane());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _openTappedPane();
+      unawaited(_openPreviewSheet());
+    });
   }
 
   @override
   void dispose() {
     _alerts?.removeListener(_openTappedPane);
+    _terminals
+      ..removeListener(_onTerminalsChanged)
+      ..dispose();
     _pageController.dispose();
     super.dispose();
   }
@@ -150,27 +175,152 @@ class _TaildeckShellState extends State<TaildeckShell>
   /// Esc leaves the terminal and node detail, the two pages the shell opens
   /// over itself; sheets and dialogs answer Esc on their own routes.
   void _handleEscape() {
-    if (_sshNode != null) {
-      setState(() {
-        _sshNode = null;
-        _sshSession = null;
-      });
+    if (_attached != null) {
+      _leaveTerminal();
       return;
     }
     if (_node != null) setState(() => _node = null);
   }
 
+  /// The system back button: keyboard, then the tab's open page, then the
+  /// first tab, then a second press to leave. Sheets, dialogs and popup menus
+  /// are routes above this one, so they pop before the shell hears the press.
+  void _handleBack() {
+    if (hideKeyboard(context)) {
+      logBack(BackStep.keyboard);
+      return;
+    }
+    if (_attached != null) {
+      logBack(BackStep.page);
+      _leaveTerminal();
+      return;
+    }
+    if (_node != null) {
+      logBack(BackStep.page);
+      setState(() => _node = null);
+      return;
+    }
+    if (_tab != 0) {
+      logBack(BackStep.tab);
+      _toPage(0);
+      return;
+    }
+    if (_exit.press()) {
+      logBack(BackStep.exit);
+      unawaited(leaveApp());
+      return;
+    }
+    logBack(BackStep.askExit);
+    showExitHint(context);
+  }
+
+  void _attach(SshTerminal terminal) => setState(() => _attached = terminal);
+
+  /// Leaving the terminal keeps the shell running; back from it reattaches.
+  void _leaveTerminal() {
+    final terminal = _attached;
+    if (terminal == null) return;
+    setState(() => _attached = null);
+    if (!terminal.live) _terminals.disconnect(terminal);
+  }
+
+  void _disconnectTerminal(SshTerminal terminal) {
+    if (_attached == terminal) setState(() => _attached = null);
+    _terminals.disconnect(terminal);
+  }
+
+  Future<void> _openSsh(NodeItem node) async {
+    final existing = _terminals.forNode(node.name);
+    if (existing != null && !existing.closed) {
+      _attach(existing);
+      return;
+    }
+    final choice = await showSshSheet(context, node);
+    if (choice == null || !mounted) return;
+    _attach(
+      _terminals.open(
+        node: node,
+        user: choice.user,
+        port: choice.port,
+        session: choice.session,
+      ),
+    );
+  }
+
+  /// `?sheet=ssh|service|agent|key|dialog` opens one sheet on the preview
+  /// build, so the back key can be tried without tapping the page.
+  Future<void> _openPreviewSheet() async {
+    final which = previewParam('sheet');
+    if (which == null || _previewSheetOpened || !mounted) return;
+    final backend = BackendScope.of(context);
+    if (!_previewShell && backend.available && !backend.signedIn) return;
+    _previewSheetOpened = true;
+    final node = _node ?? selfNode;
+    final l10n = AppLocalizations.of(context);
+    debugPrint('taildeck preview: sheet=$which');
+    switch (which) {
+      case 'ssh':
+        await showSshSheet(context, node);
+      case 'service':
+        await showServiceSheet(context, nodes: [node]);
+      case 'agent':
+        await showNewAgentSheet(context);
+      case 'key':
+        await showKeySheet(context, BackendScope.of(context));
+      case 'dialog':
+        await showFloatingDialog<bool>(
+          context: context,
+          child: AlertDialog(
+            title: l10n.delete,
+            destructive: true,
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: Text(l10n.cancel),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: Text(l10n.delete),
+              ),
+            ],
+            child: Text(l10n.deleteKeyConfirm('taildeck')),
+          ),
+        );
+    }
+    debugPrint('taildeck preview: sheet closed');
+  }
+
   void _signOut() {
     unawaited(BackendScope.of(context).signOut());
+    final terminals = _terminals.all.toList();
     setState(() {
       _previewSignedIn = false;
       _tab = 0;
       _node = null;
+      _attached = null;
     });
+    for (final terminal in terminals) {
+      _terminals.disconnect(terminal);
+    }
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => _backScope(_content(context));
+
+  /// One place for the system back button: [canPop] stays false so every
+  /// press comes here, and [_handleBack] decides how far it goes.
+  Widget _backScope(Widget child) {
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        _handleBack();
+      },
+      child: child,
+    );
+  }
+
+  Widget _content(BuildContext context) {
     final scheme = context.colorScheme;
     final mobile = ViewScope.isMobileOf(context);
     final backend = BackendScope.of(context);
@@ -203,22 +353,22 @@ class _TaildeckShellState extends State<TaildeckShell>
         ],
       );
     }
-    final sshNode = _sshNode;
-    if (sshNode != null) {
+    final terminal = _attached;
+    if (terminal != null) {
       return CallbackShortcuts(
         bindings: {
           const SingleActivator(LogicalKeyboardKey.escape): _handleEscape,
         },
         child: TerminalPage(
-          node: sshNode,
-          user: _sshUser,
-          port: _sshPort,
-          ssh: _sshSession,
+          node: terminal.node,
+          user: terminal.user,
+          port: terminal.port,
+          terminal: terminal,
           demo: _sshDemo,
-          onClose: () => setState(() {
-            _sshNode = null;
-            _sshSession = null;
-          }),
+          onClose: _leaveTerminal,
+          onDisconnect: terminal.live
+              ? () => _disconnectTerminal(terminal)
+              : null,
         ),
       );
     }
@@ -380,21 +530,16 @@ class _TaildeckShellState extends State<TaildeckShell>
             onToggleTheme: widget.theme.toggle,
           );
         }
+        final session = _terminals.forNode(node.name);
         return NodeDetailPage(
           node: node,
+          session: session == null || session.closed ? null : session,
           onBack: () => setState(() => _node = null),
           onOpenAgents: () => _toPage(2),
-          onOpenSsh: () async {
-            final choice = await showSshSheet(context, node);
-            if (choice == null) return;
-            setState(() {
-              _sshUser = choice.user;
-              _sshPort = choice.port;
-              _sshSession = choice.session;
-              _sshNode = node;
-              _sshDemo = false;
-            });
-          },
+          onOpenSsh: () => unawaited(_openSsh(node)),
+          onDisconnectSsh: session == null
+              ? null
+              : () => _disconnectTerminal(session),
         );
     }
   }
