@@ -87,8 +87,9 @@ String _runHerdrUploadIsolate(String libPath, String name, Uint8List data) {
   try {
     buffer.asTypedList(data.length).setAll(0, data);
     final result = upload(cname, buffer, data.length);
-    if (result.address == 0)
+    if (result.address == 0) {
       throw const BridgeException('bridge returned null');
+    }
     final text = result.cast<Utf8>().toDartString();
     free(result);
     return text;
