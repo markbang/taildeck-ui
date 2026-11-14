@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="app_name">Taildeck</string>
     <string name="notif_channel">Tailnet node</string>
     <string name="notif_title">Taildeck node running</string>
     <string name="notif_text">Keeps the tailnet node connected in the background</string>

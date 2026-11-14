@@ -65,6 +65,11 @@ android {
 
     buildTypes {
         release {
+            // AGP 9 shrinks and obfuscates release builds unless told otherwise;
+            // the JNI bridge is resolved by name, so keep R8 off (see proguard-rules.pro).
+            isMinifyEnabled = false
+            isShrinkResources = false
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfig = signingConfigs.findByName("release")
         }
     }
