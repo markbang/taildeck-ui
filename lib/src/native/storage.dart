@@ -12,6 +12,7 @@ class StoredConfig {
     this.herdrPort = 22,
     this.herdrAuth = 'tailscale',
     this.herdrIdentity = '',
+    this.sshUsers = const {},
   });
 
   factory StoredConfig.fromJson(Map<String, dynamic> json) => StoredConfig(
@@ -25,6 +26,14 @@ class StoredConfig {
     herdrPort: (json['herdrPort'] as num?)?.toInt() ?? 22,
     herdrAuth: json['herdrAuth'] as String? ?? 'tailscale',
     herdrIdentity: json['herdrIdentity'] as String? ?? '',
+    sshUsers: switch (json['sshUsers']) {
+      final Map<String, dynamic> map => {
+        for (final entry in map.entries)
+          if (entry.value case final String user when user.isNotEmpty)
+            entry.key: user,
+      },
+      _ => const {},
+    },
   );
 
   final String hostname;
@@ -47,6 +56,9 @@ class StoredConfig {
   final String herdrAuth;
   final String herdrIdentity;
 
+  /// Last SSH login per target (`sshLoginKey`); passwords are never written.
+  final Map<String, String> sshUsers;
+
   Map<String, dynamic> toJson() => {
     'hostname': hostname,
     'controlURL': controlURL,
@@ -58,8 +70,13 @@ class StoredConfig {
     'herdrPort': herdrPort,
     'herdrAuth': herdrAuth,
     'herdrIdentity': herdrIdentity,
+    'sshUsers': sshUsers,
   };
 }
+
+/// Config key for a saved SSH login: the node, or one service on it.
+String sshLoginKey(String node, {String service = ''}) =>
+    service.isEmpty ? node : '$node/$service';
 
 abstract class BackendStorage {
   /// tsnet state dir; created on demand.

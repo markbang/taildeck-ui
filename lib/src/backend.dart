@@ -87,6 +87,7 @@ class TaildeckBackend extends ChangeNotifier {
   int _herdrPort = 22;
   String _herdrAuth = 'tailscale';
   String _herdrIdentity = '';
+  Map<String, String> _sshUsers = const {};
   bool _foreground = true;
   bool _serviceRunning = false;
 
@@ -121,6 +122,20 @@ class TaildeckBackend extends ChangeNotifier {
 
   /// herdr link, agent list and pane calls; null without a native backend.
   HerdrController? get herdr => _herdr;
+
+  /// Last SSH user dialed for [target] (`sshLoginKey`), or '' when none was
+  /// saved yet.
+  String sshUserFor(String target) => _sshUsers[target] ?? '';
+
+  /// Remembers the login for [target]; the password stays in memory only.
+  Future<void> rememberSshUser(String target, String user) async {
+    final trimmed = user.trim();
+    if (target.isEmpty || trimmed.isEmpty || _sshUsers[target] == trimmed) {
+      return;
+    }
+    _sshUsers = {..._sshUsers, target: trimmed};
+    await _persist();
+  }
 
   /// What the Agents page prefills the connection form with.
   ({String node, String user, int port, String auth, String identity})
@@ -164,6 +179,7 @@ class TaildeckBackend extends ChangeNotifier {
       _herdrPort = config.herdrPort;
       _herdrAuth = config.herdrAuth;
       _herdrIdentity = config.herdrIdentity;
+      _sshUsers = config.sshUsers;
       // The tsnet state dir keeps the node key, so a previous session can
       // reconnect without a new key.
       if (config.signedIn) await _start('');
@@ -704,6 +720,7 @@ class TaildeckBackend extends ChangeNotifier {
           herdrPort: _herdrPort,
           herdrAuth: _herdrAuth,
           herdrIdentity: _herdrIdentity,
+          sshUsers: _sshUsers,
         ),
       );
     } on Object catch (error) {

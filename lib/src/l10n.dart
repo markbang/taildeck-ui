@@ -134,6 +134,10 @@ class AppLocalizations implements UiLocalizations {
   String get sshUser => _zh ? '用户' : 'User';
   String get sshPort => _zh ? '端口' : 'Port';
   String get sshAuth => _zh ? '认证方式' : 'Authentication';
+  String get sshUserRequired => _zh ? '请输入用户名' : 'Enter a username';
+  String get sshUserInvalid => _zh
+      ? '只能包含字母、数字和 . _ -，最多 32 个字符'
+      : 'Letters, digits and . _ - only, up to 32 characters';
   String get authTailscale => _zh ? 'Tailscale SSH' : 'Tailscale SSH';
   String get authPassword => _zh ? '密码' : 'Password';
   String get authKey => _zh ? '密钥' : 'Key';

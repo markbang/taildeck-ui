@@ -9,34 +9,54 @@ import '../data.dart';
 import '../l10n.dart';
 import '../native/bridge.dart';
 import '../native/ssh.dart';
+import '../native/storage.dart';
+import '../services.dart';
 import '../ssh_identities.dart';
 
 typedef SshChoice = ({String user, int port, SshSession? session});
 
-Future<SshChoice?> showSshSheet(BuildContext context, NodeItem node) {
+/// [service] scopes the remembered login to one service on [node], so both
+/// targets can keep their own user.
+Future<SshChoice?> showSshSheet(
+  BuildContext context,
+  NodeItem node, {
+  Service? service,
+}) {
   // The sheet lives on its own route, above the BackendScope in the page tree,
   // so the backend is handed in from here.
   final backend = BackendScope.of(context);
   return showFormSheet<SshChoice>(
     context: context,
-    builder: (context) => _SshSheet(node: node, backend: backend),
+    builder: (context) => _SshSheet(
+      node: node,
+      backend: backend,
+      loginKey: sshLoginKey(node.name, service: service?.id ?? ''),
+    ),
   );
 }
 
 enum _Auth { tailscale, password, key }
 
 class _SshSheet extends StatefulWidget {
-  const _SshSheet({required this.node, required this.backend});
+  const _SshSheet({
+    required this.node,
+    required this.backend,
+    required this.loginKey,
+  });
 
   final NodeItem node;
   final TaildeckBackend backend;
+
+  /// Config key the last login for this target is saved under.
+  final String loginKey;
 
   @override
   State<_SshSheet> createState() => _SshSheetState();
 }
 
 class _SshSheetState extends State<_SshSheet> {
-  String _user = 'root';
+  late final _user = TextEditingController(text: _initialUser());
+  String _userError = '';
   int _port = 22;
   _Auth _auth = _Auth.tailscale;
   final _password = TextEditingController();
@@ -49,7 +69,32 @@ class _SshSheetState extends State<_SshSheet> {
   @override
   void initState() {
     super.initState();
+    _user.addListener(_validate);
     if (widget.backend.available) unawaited(_loadKeys(widget.backend));
+  }
+
+  /// Remembered login first, then what Tailscale SSH would suggest, then root.
+  String _initialUser() {
+    final remembered = widget.backend.sshUserFor(widget.loginKey);
+    if (remembered.isNotEmpty) return remembered;
+    final suggested = widget.node.suggestedSshUser;
+    return suggested.isEmpty ? 'root' : suggested;
+  }
+
+  static final _userPattern = RegExp(r'^[A-Za-z0-9_][A-Za-z0-9._-]{0,31}$');
+
+  static bool _isValidUser(String user) => _userPattern.hasMatch(user);
+
+  void _validate() {
+    if (!mounted) return;
+    final l10n = AppLocalizations.of(context);
+    final value = _user.text.trim();
+    final error = value.isEmpty
+        ? l10n.sshUserRequired
+        : _isValidUser(value)
+        ? ''
+        : l10n.sshUserInvalid;
+    if (error != _userError) setState(() => _userError = error);
   }
 
   Future<void> _loadKeys(TaildeckBackend backend) async {
@@ -79,15 +124,18 @@ class _SshSheetState extends State<_SshSheet> {
 
   @override
   void dispose() {
+    _user.dispose();
     _password.dispose();
     super.dispose();
   }
 
   Future<void> _connect() async {
-    if (_busy) return;
+    _validate();
+    if (_busy || _userError.isNotEmpty) return;
+    final user = _user.text.trim();
     final backend = widget.backend;
     if (!backend.available) {
-      Navigator.of(context).pop((user: _user, port: _port, session: null));
+      Navigator.of(context).pop((user: user, port: _port, session: null));
       return;
     }
     FocusScope.of(context).unfocus();
@@ -96,9 +144,10 @@ class _SshSheetState extends State<_SshSheet> {
       _error = '';
     });
     try {
+      await backend.rememberSshUser(widget.loginKey, user);
       final session = await backend.openSshSession(
         host: widget.node.name,
-        user: _user,
+        user: user,
         port: _port,
         password: _auth == _Auth.password ? _password.text : '',
         identityId: _identityId,
@@ -107,7 +156,7 @@ class _SshSheetState extends State<_SshSheet> {
         session.close();
         return;
       }
-      Navigator.of(context).pop((user: _user, port: _port, session: session));
+      Navigator.of(context).pop((user: user, port: _port, session: session));
     } on Object catch (error) {
       if (mounted) {
         setState(() {
@@ -171,15 +220,11 @@ class _SshSheetState extends State<_SshSheet> {
               padding: EdgeInsets.zero,
               child: Column(
                 children: [
-                  _SelectRow<String>(
+                  _UserRow(
+                    controller: _user,
                     label: l10n.sshUser,
-                    value: _user,
-                    options: const [
-                      ('root', 'root'),
-                      ('ubuntu', 'ubuntu'),
-                      ('pi', 'pi'),
-                    ],
-                    onChanged: (value) => setState(() => _user = value),
+                    errorText: _userError,
+                    enabled: !_busy,
                   ),
                   const _RowDivider(),
                   _SelectRow<int>(
@@ -325,11 +370,70 @@ class _SshSheetState extends State<_SshSheet> {
             ],
             const SizedBox(height: 16),
             FilledButton(
-              onPressed: _busy ? null : _connect,
+              onPressed: _busy || _userError.isNotEmpty ? null : _connect,
               child: Text(_busy ? l10n.connecting : l10n.connect),
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Editable login row: the field keeps the sheet's grouped card rhythm while
+/// the value stays free text.
+class _UserRow extends StatelessWidget {
+  const _UserRow({
+    required this.controller,
+    required this.label,
+    required this.errorText,
+    required this.enabled,
+  });
+
+  final TextEditingController controller;
+  final String label;
+  final String errorText;
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = context.colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: context.listCaptionStyle.copyWith(
+              color: scheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Semantics(
+            label: label,
+            child: TextField(
+              controller: controller,
+              enabled: enabled,
+              autocorrect: false,
+              enableSuggestions: false,
+              keyboardType: TextInputType.text,
+              autofillHints: const [AutofillHints.username],
+              style: context.listTitleStyle,
+              decoration: InputDecoration(
+                hintText: 'root',
+                hintStyle: context.listCaptionStyle,
+                errorText: errorText.isEmpty ? null : errorText,
+                filled: true,
+                fillColor: SurfaceLevel.block.colorOf(scheme),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 11,
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
