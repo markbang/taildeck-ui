@@ -27,7 +27,7 @@ adb install -g "$apk" > "$out/install.txt" 2>&1 || fail "adb install failed, see
 activity=$(adb shell cmd package resolve-activity --brief "$app" 2>/dev/null | tail -n 1 | tr -d '\r')
 [ -n "$activity" ] || fail "no launcher activity for $app"
 
-adb logcat -c
+adb logcat -b all -c
 adb shell am start -W -n "$activity" > "$out/launch.txt" 2>&1 || fail "am start failed, see launch.txt"
 sleep "$wait_s"
 
@@ -47,15 +47,30 @@ focus=$(adb shell dumpsys window 2>/dev/null | grep -m1 mCurrentFocus | tr -d '\
 
 [ -n "$pid" ] || fail "process $app is gone; the app died within ${wait_s}s of launch"
 
-# The crash buffer keeps the last crash only; scan both buffers for this launch.
-crash=$(grep -hE 'FATAL EXCEPTION|Fatal signal|Abort message|JNI DETECTED ERROR|AndroidRuntime.*Process: ' \
-  "$out/logcat.txt" "$out/logcat-crash.txt" 2>/dev/null | head -n 5 || true)
+# Only our process counts: unrelated system apps crash on this emulator (a TCG
+# googlequicksearchbox SIGILL) and must not fail the gate while we are alive.
+main_pid=${pid%% *}
+adb logcat -d --pid="$main_pid" > "$out/logcat-app.txt" 2>&1 || true
+adb logcat -b crash -d --pid="$main_pid" >> "$out/logcat-app.txt" 2>&1 || true
+# --pid drops what the system logs for us under another pid: the stack-trace
+# header and the native tombstone. Keep those too, a crash can also restart us.
+grep -hE "Process: $app|pid: $main_pid\b|PID: $main_pid\b|>>> $app <<<|Cmdline: $app" \
+  "$out/logcat.txt" "$out/logcat-crash.txt" 2>/dev/null >> "$out/logcat-app.txt" || true
+
+crash=$(grep -hE -e 'FATAL EXCEPTION' -e 'Fatal signal' -e 'Abort message' \
+  -e 'JNI DETECTED ERROR' -e 'AndroidRuntime.*Process: ' -e '^\*\*\* ' \
+  -e 'signal [0-9]+\(SIG' -e ">>> $app <<<" -e "Cmdline: $app" \
+  "$out/logcat-app.txt" 2>/dev/null | head -n 5 || true)
 if [ -n "$crash" ]; then
   printf '%s\n' "$crash" | tee -a "$out/summary.txt"
-  fail "crash in logcat"
+  fail "crash in $app (pid $main_pid)"
 fi
 
+# ANR reports come from the system, so this stays a global scan for our package.
 anr=$(grep -hE "ANR in $app" "$out/logcat.txt" 2>/dev/null | head -n 3 || true)
+case "$focus" in
+  *"Not Responding: $app"*) anr="${anr:-$focus}" ;;
+esac
 if [ -n "$anr" ]; then
   printf '%s\n' "$anr" | tee -a "$out/summary.txt"
   fail "ANR in $app"

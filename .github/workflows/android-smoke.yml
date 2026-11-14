@@ -1,6 +1,6 @@
 # Cold-start smoke test: installs a release APK on an emulator, launches it
-# fresh and fails when the process dies or AndroidRuntime reports a crash. Then
-# the back key: a sheet, the page under it, a tab and the exit hint.
+# fresh and fails when our process dies, crashes or ANRs (system apps ignored).
+# Then the back key: a sheet, the page under it, a tab and the exit hint.
 name: android-smoke
 
 on:
