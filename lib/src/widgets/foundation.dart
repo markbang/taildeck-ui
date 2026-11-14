@@ -1,4 +1,3 @@
-import 'package:flutter/material.dart' show RefreshIndicator;
 import 'package:flutter/widgets.dart';
 import 'package:prism_ui/icons/icons.dart';
 import 'package:prism_ui/prism_ui.dart';
@@ -9,8 +8,9 @@ import '../glyphs.dart';
 import '../motion.dart';
 import '../services.dart';
 import 'controls.dart';
+import 'pull_to_refresh.dart';
 import 'service_avatar.dart';
-import 'wavy.dart';
+import 'loading.dart';
 
 class PageBody extends StatelessWidget {
   const PageBody({
@@ -23,6 +23,7 @@ class PageBody extends StatelessWidget {
     this.maxWidth = 720,
     this.padding,
     this.onRefresh,
+    this.animateSize = false,
   });
 
   final String title;
@@ -35,6 +36,10 @@ class PageBody extends StatelessWidget {
 
   /// Pull to refresh, as the Kotlin app's `RefreshBox` offers on lists.
   final Future<void> Function()? onRefresh;
+
+  /// Resizes the page's sections with `animateContentSize(Motion.slow())`, as
+  /// the Kotlin settings page does.
+  final bool animateSize;
 
   @override
   Widget build(BuildContext context) {
@@ -95,7 +100,15 @@ class PageBody extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 16),
-              ...?children,
+              if (animateSize)
+                AnimatedContentSize(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [...?children],
+                  ),
+                )
+              else
+                ...?children,
             ],
           ),
         ),
@@ -106,17 +119,7 @@ class PageBody extends StatelessWidget {
   Widget _refreshable(BuildContext context, Widget list) {
     final onRefresh = this.onRefresh;
     if (onRefresh == null) return list;
-    return RefreshIndicator(
-      color: context.colorScheme.primary,
-      backgroundColor: context.colorScheme.surfaceContainerHigh,
-      onRefresh: () async {
-        await Future.wait([
-          onRefresh(),
-          Future<void>.delayed(const Duration(milliseconds: 600)),
-        ]);
-      },
-      child: list,
-    );
+    return PullToRefresh(onRefresh: onRefresh, child: list);
   }
 }
 
@@ -493,7 +496,7 @@ class ActionPill extends StatelessWidget {
     final fg = selected ? scheme.onPrimary : scheme.onSurface;
     return TapFeedback(
       onTap: loading ? null : onPressed,
-      scale: true,
+      squish: true,
       shape: AppShape.full,
       child: Container(
         constraints: const BoxConstraints(minHeight: 44),
@@ -509,7 +512,7 @@ class ActionPill extends StatelessWidget {
             SizedBox.square(
               dimension: 15,
               child: loading
-                  ? WavyActivityIndicator(size: 15, color: fg)
+                  ? LoadingIndicator(size: 15, color: fg)
                   : GlyphIcon(glyph, size: 15, color: fg),
             ),
             const SizedBox(width: 6),

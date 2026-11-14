@@ -30,14 +30,14 @@ const double _pressPull = 3;
 const double _pressedFillShare = 0.4;
 const double _pressedDarkDefaultShare = 0.5;
 
-// UIAlertController on iOS 27 grows in from 1.2 times its size and only fades
-// out, both on one critically damped spring that settles in 0.404 s.
-const _alertDuration = Duration(milliseconds: 404);
-const double _alertEntryScale = 1.2;
+// Material 3's dialog grows in from 0.8 times its size while it fades, on the
+// default spatial spring (0.8/380, 440 ms), and leaves on the fast effects one
+// (150 ms).
+const _alertDuration = Duration(milliseconds: 440);
+const _alertExitDuration = Duration(milliseconds: 150);
+const double _alertEntryScale = 0.8;
 final _alertSpring = SpringCurve(
-  SpringDescription.withDurationAndBounce(
-    duration: const Duration(milliseconds: 275),
-  ),
+  SpringDescription.withDampingRatio(mass: 1, stiffness: 380, ratio: 0.8),
   seconds: _alertDuration.inMicroseconds / Duration.microsecondsPerSecond,
 );
 
@@ -121,6 +121,10 @@ mixin AlertMotionRouteMixin<T> on PopupRoute<T> {
   @override
   Duration get transitionDuration =>
       _reduceMotion ? Duration.zero : _alertDuration;
+
+  @override
+  Duration get reverseTransitionDuration =>
+      _reduceMotion ? Duration.zero : _alertExitDuration;
 
   @override
   Widget buildModalBarrier() {

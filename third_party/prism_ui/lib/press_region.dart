@@ -1,5 +1,6 @@
 import 'package:flutter/widgets.dart';
 import 'package:prism_ui/context.dart';
+import 'package:prism_ui/ripple.dart';
 
 /// Makes a widget pressable: tap, hover, focus and keyboard activation, with
 /// the plain state layer [overlay] paints over [fill] inside [shape]. A widget
@@ -79,7 +80,8 @@ class _StateOverlay implements WidgetStateProperty<Color?> {
   }
 }
 
-class _PressRegionState extends State<PressRegion> {
+class _PressRegionState extends State<PressRegion>
+    with SingleTickerProviderStateMixin {
   static const _overlayFade = Duration(milliseconds: 50);
 
   late final _actions = <Type, Action<Intent>>{
@@ -91,6 +93,13 @@ class _PressRegionState extends State<PressRegion> {
     ),
   };
   final _states = <WidgetState>{};
+  late final _ripple = PressRipple(vsync: this);
+
+  @override
+  void dispose() {
+    _ripple.dispose();
+    super.dispose();
+  }
 
   bool get _enabled => widget.onTap != null;
 
@@ -147,8 +156,15 @@ class _PressRegionState extends State<PressRegion> {
     final overlay = TweenAnimationBuilder<Color?>(
       tween: ColorTween(end: _overlayColor(context) ?? const Color(0x00000000)),
       duration: _overlayFade,
-      builder: (context, color, child) =>
-          CustomPaint(painter: _OverlayPainter(color, shape), child: child),
+      builder: (context, color, child) => RippleLayer(
+        ripple: _ripple,
+        color: context.colorScheme.onSurface.withValues(alpha: 0.1),
+        shape: shape,
+        child: CustomPaint(
+          painter: _OverlayPainter(color, shape),
+          child: child,
+        ),
+      ),
       child: widget.child,
     );
     return widget.fill == null
@@ -178,9 +194,26 @@ class _PressRegionState extends State<PressRegion> {
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         excludeFromSemantics: true,
-        onTapDown: _enabled ? (_) => _setPressed(true) : null,
-        onTapUp: _enabled ? (_) => _setPressed(false) : null,
-        onTapCancel: _enabled ? () => _setPressed(false) : null,
+        onTapDown: _enabled
+            ? (details) {
+                _setPressed(true);
+                _ripple
+                  ..still = context.disableAnimations
+                  ..press(details.localPosition);
+              }
+            : null,
+        onTapUp: _enabled
+            ? (_) {
+                _setPressed(false);
+                _ripple.release();
+              }
+            : null,
+        onTapCancel: _enabled
+            ? () {
+                _setPressed(false);
+                _ripple.release();
+              }
+            : null,
         onTap: _enabled ? _activate : null,
         child: _painted(context),
       ),

@@ -10,7 +10,7 @@ import '../glyphs.dart';
 import '../l10n.dart';
 import '../motion.dart';
 import '../services.dart';
-import '../widgets/foundation.dart';
+import '../widgets/snackbar.dart';
 import '../webview/web_page.dart';
 
 /// A service's page inside the app, through the loopback gateway. Android and
@@ -42,7 +42,6 @@ class _ServiceWebViewPageState extends State<ServiceWebViewPage> {
   int _progress = 0;
   bool _canGoBack = false;
   String _error = '';
-  String _notice = '';
 
   @override
   void didChangeDependencies() {
@@ -77,7 +76,6 @@ class _ServiceWebViewPageState extends State<ServiceWebViewPage> {
   void _reload() {
     setState(() {
       _error = '';
-      _notice = '';
       _progress = 0;
     });
     unawaited(_page?.reload());
@@ -92,7 +90,7 @@ class _ServiceWebViewPageState extends State<ServiceWebViewPage> {
       mode: LaunchMode.externalApplication,
     );
     if (!opened && mounted) {
-      setState(() => _notice = l10n.serviceOpenFailed);
+      showMotionSnack(context, l10n.serviceOpenFailed);
     }
   }
 
@@ -183,11 +181,6 @@ class _ServiceWebViewPageState extends State<ServiceWebViewPage> {
                   backgroundColor: scheme.surfaceContainerHigh,
                 ),
               ),
-              if (_notice.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                  child: InlineNotice(text: _notice),
-                ),
               Expanded(
                 child: page == null
                     ? _Fallback(onOpenExternal: _openExternal)

@@ -19,7 +19,7 @@ import '../widgets/controls.dart';
 import '../widgets/foundation.dart';
 import '../widgets/shape_badge.dart';
 import 'service_sheet.dart';
-import '../widgets/wavy.dart';
+import '../widgets/loading.dart';
 
 class NodeDetailPage extends StatefulWidget {
   const NodeDetailPage({
@@ -273,15 +273,19 @@ class _NodeDetailPageState extends State<NodeDetailPage> {
             ),
           ),
         ),
-        ExpandVisibility(
+        // The scan block joins the list as Kotlin's `animateItem()` row does,
+        // and resizes with `animateContentSize(Motion.slow())`.
+        PlacementVisibility(
           visible: _scanning || _ports != null || _scanError.isNotEmpty,
           child: Padding(
             padding: const EdgeInsets.only(top: 14),
-            child: _ScanResult(
-              scanning: _scanning,
-              ports: _ports,
-              error: _scanError,
-              onAdd: (port) => unawaited(_addScanned(port)),
+            child: AnimatedContentSize(
+              child: _ScanResult(
+                scanning: _scanning,
+                ports: _ports,
+                error: _scanError,
+                onAdd: (port) => unawaited(_addScanned(port)),
+              ),
             ),
           ),
         ),
@@ -517,7 +521,7 @@ class _ScanResult extends StatelessWidget {
       return Row(
         children: [
           const SizedBox(width: 4),
-          const WavyActivityIndicator(size: 16),
+          const LoadingIndicator(size: 16),
           const SizedBox(width: 10),
           Text(
             l10n.scanning,

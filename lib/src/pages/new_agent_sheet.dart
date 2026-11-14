@@ -9,6 +9,7 @@ import '../l10n.dart';
 import '../widgets/controls.dart';
 import '../widgets/entry_row.dart';
 import '../widgets/select_row.dart';
+import '../widgets/bottom_sheet.dart';
 
 typedef NewAgentChoice = ({
   String harness,
@@ -24,7 +25,7 @@ Future<NewAgentChoice?> showNewAgentSheet(
   HerdrController? herdr,
   List<({String id, String label})> workspaces = const [],
 }) {
-  return showFormSheet<NewAgentChoice>(
+  return showMotionSheet<NewAgentChoice>(
     context: context,
     builder: (context) => _NewAgentSheet(herdr: herdr, workspaces: workspaces),
   );

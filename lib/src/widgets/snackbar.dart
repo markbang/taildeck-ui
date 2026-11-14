@@ -5,8 +5,10 @@ import 'package:prism_ui/prism_ui.dart';
 
 import '../motion.dart';
 
-/// Material's snackbar, as the Kotlin app reports finished actions: it slides
-/// up over the page, waits, and slides away.
+/// Material's snackbar, as the Kotlin app reports finished actions
+/// (`SnackbarHost`): it fades in over the fast effects spring while scaling up
+/// from 0.8 on the fast spatial one, waits [SnackbarDuration.Short]'s 4 s, and
+/// fades away.
 void showMotionSnack(BuildContext context, String text) {
   final overlay = Overlay.of(context, rootOverlay: true);
   late OverlayEntry entry;
@@ -33,7 +35,7 @@ class _MotionSnack extends StatefulWidget {
 
 class _MotionSnackState extends State<_MotionSnack>
     with SingleTickerProviderStateMixin {
-  static const _wait = Duration(milliseconds: 3500);
+  static const _wait = Duration(milliseconds: 4000);
 
   late final _controller = AnimationController(vsync: this);
   late final _opacity = CurvedAnimation(
@@ -41,14 +43,13 @@ class _MotionSnackState extends State<_MotionSnack>
     curve: fade.curve,
     reverseCurve: fadeFast.curve,
   );
-  late final _offset =
-      Tween<Offset>(begin: const Offset(0, 0.4), end: Offset.zero).animate(
-        CurvedAnimation(
-          parent: _controller,
-          curve: slowSpatial.curve,
-          reverseCurve: slowSpatial.curve,
-        ),
-      );
+  late final _scale = Tween<double>(begin: 0.8, end: 1).animate(
+    CurvedAnimation(
+      parent: _controller,
+      curve: fastSpatial.curve,
+      reverseCurve: fastSpatial.curve,
+    ),
+  );
   Timer? _timer;
 
   @override
@@ -63,7 +64,7 @@ class _MotionSnackState extends State<_MotionSnack>
     if (_controller.isAnimating || _timer != null) return;
     final still = context.disableAnimations;
     _controller
-      ..duration = still ? Duration.zero : slowSpatial.duration
+      ..duration = still ? Duration.zero : fadeFast.duration
       ..reverseDuration = still ? Duration.zero : fadeFast.duration;
     if (still) {
       _controller.value = 1;
@@ -103,14 +104,15 @@ class _MotionSnackState extends State<_MotionSnack>
           alignment: Alignment.bottomCenter,
           child: FadeTransition(
             opacity: _opacity,
-            child: SlideTransition(
-              position: _offset,
+            child: ScaleTransition(
+              scale: _scale,
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 520),
                 child: DecoratedBox(
                   decoration: ShapeDecoration(
                     color: scheme.inverseSurface,
-                    shape: AppShape.all(AppCorner.md),
+                    // SnackbarTokens.ContainerShape: CornerExtraSmall.
+                    shape: AppShape.all(AppCorner.xs),
                     shadows: [
                       BoxShadow(
                         color: scheme.shadow.withValues(alpha: 0.24),

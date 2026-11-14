@@ -9,6 +9,7 @@ import '../widgets/controls.dart';
 import '../widgets/entry_row.dart';
 import '../widgets/foundation.dart';
 import '../widgets/select_row.dart';
+import '../widgets/bottom_sheet.dart';
 
 /// Adds a service, or edits [initial]. Returns null when dismissed.
 Future<Service?> showServiceSheet(
@@ -19,7 +20,7 @@ Future<Service?> showServiceSheet(
   int? initialPort,
   Future<void> Function(Service service)? onSave,
 }) {
-  return showFormSheet<Service>(
+  return showMotionSheet<Service>(
     context: context,
     builder: (context) => _ServiceSheet(
       nodes: nodes,
