@@ -506,54 +506,18 @@ shot swipe-arrows
 record hold-arrow 8 hold_arrow
 shot hold-arrow
 
-# 3. pinch zoom (raw multi-touch where the image allows it)
-before=$(grid_cells || true)
-pinch_step
-shot pinch-out
-after=$(grid_cells || true)
-note "pinch: grid $before -> $after"
-launch "$settings_url" || true
-font=$(ui text 'pinch the grid' || true)
-note "pinch: settings reads ${font:-nothing}"
-launch "$demo_url" || true
-note "pinch: grid after relaunch $(grid_cells || echo unknown)"
-
-# 3b. the same size from Settings, kept across a relaunch
-font_step() {
-  launch "$settings_url" || return 0
-  local point x y
-  if point=$(scroll_clear 'Larger font'); then
-    read -r x y <<< "$point"
-    adb shell input tap "$x" "$y" > /dev/null 2>&1 || true
-    sleep 1
-    adb shell input tap "$x" "$y" > /dev/null 2>&1 || true
-    sleep 1.5
-    note "font: settings reads $(ui text 'pinch the grid' || echo unreadable)"
-  else
-    note "font: no Larger font button"
-  fi
-  shot settings-font
-  launch "$demo_url" || true
-  note "font: grid after the step $(grid_cells || echo unknown)"
-}
-
-record font-step 12 font_step
-shot font-step
-
-# 4. selection, copy and paste
+# 3. selection, copy and paste
 record selection 10 select_word
 shot selection
 record copy 7 copy_selection
 shot copy
-record raw-touch 8 raw_probe
-shot raw-touch
 record paste 8 paste_clipboard
 shot paste
 
-# 5. open the link a selection holds
+# 4. open the link a selection holds
 record open-link 12 open_link
 
-# 6. landscape, then back to portrait
+# 5. landscape, then back to portrait
 record landscape 9 landscape
 shot landscape
 note "landscape: grid $(grid_cells || echo unknown)"
@@ -565,15 +529,26 @@ if ! ui has 'Terminal output' > /dev/null 2>&1; then
 fi
 note "portrait: grid $(grid_cells || echo unknown)"
 
-# 7. soft keyboard show and hide
+# 6. soft keyboard show and hide
 record keyboard 13 show_keyboard
 record keyboard-hide 9 hide_keyboard
 
-# 8. hardware keys
+# 7. hardware keys
 if ! ui has 'Terminal output' > /dev/null 2>&1; then
   launch "$demo_url" || true
 fi
 record hardware 10 hardware_keys
 shot hardware
+
+# 8. the font size from Settings, kept across a relaunch
+record font-step 12 font_step
+shot font-step
+
+# 9. pinch zoom: the emulator's touch devices take one contact each, so this
+# is reported either way and runs last, after the other evidence is taken.
+before=$(grid_cells || true)
+pinch_step
+shot pinch-out
+note "pinch: grid $before -> $(grid_cells || echo unknown)"
 
 note "ok: terminal gestures recorded"
