@@ -47,6 +47,9 @@ record() { # <label> <apk> <night yes|no>
     | tail -n 1 | tr -d '\r')
   [ -n "$activity" ] || { note "$label: no launcher activity"; return 1; }
   adb shell am force-stop "$app" > /dev/null 2>&1 || true
+  # The recording must start on the launcher, not on whatever the previous
+  # step left in front, or the first cut in it is not the launch screen.
+  adb shell input keyevent KEYCODE_HOME > /dev/null 2>&1 || true
   sleep 3
   adb logcat -c > /dev/null 2>&1 || true
   adb shell rm -f /sdcard/rec.mp4 > /dev/null 2>&1 || true
@@ -66,19 +69,27 @@ record() { # <label> <apk> <night yes|no>
   note "$label: ${total:-TotalTime missing} | ${displayed:-Displayed missing}"
   [ -n "$displayed" ] || return 1
 
-  start=$(scene_start "$out/$label.mp4" || true)
-  [ -n "$start" ] || start=1.5
-  note "$label: launch screen at ${start}s"
+  # am start runs 1.5s into the recording; the launch screen follows within a
+  # few hundred ms. Trust the first cut only when it lands in that window.
+  start=$(awk -v d="$(scene_start "$out/$label.mp4" || true)" \
+    'BEGIN{print (d > 0.8 && d < 3.5) ? d : 1.7}')
+  # am start's TotalTime is where the launch screen ends in the recording.
+  first=$(awk -v t="${total#*: }" 'BEGIN{print t/1000}')
+  note "$label: launch screen at ${start}s, first frame ${first}s later"
 
-  for shot in "splash:0.20" "app:1.60"; do
-    local name=${shot%%:*} offset=${shot#*:}
-    ffmpeg -loglevel error -y -ss "$(awk -v a="$start" -v b="$offset" 'BEGIN{print a+b}')" \
-      -i "$out/$label.mp4" -frames:v 1 "$out/$label-$name.png" || true
-  done
+  grab() { # <seconds after the launch screen> <name>
+    ffmpeg -loglevel error -y \
+      -ss "$(awk -v a="$start" -v b="$1" 'BEGIN{print a+b}')" \
+      -i "$out/$label.mp4" -frames:v 1 "$out/$label-$2.png" || true
+  }
+  grab 0.25 splash
+  grab "$(awk -v t="$first" 'BEGIN{print t+0.6}')" app
   [ -s "$out/$label-splash.png" ] && note "$label: mark $(mark_box "$out/$label-splash.png")"
 
-  ffmpeg -loglevel error -y -ss "$(awk -v a="$start" -v b=0.3 'BEGIN{print (a>b?a-b:0)}')" \
-    -i "$out/$label.mp4" -t 3 -an -vf 'scale=405:-2' "$out/$label-3s.mp4" || true
+  # From the launch screen through the first frame of the app.
+  ffmpeg -loglevel error -y -ss "$(awk -v a="$start" 'BEGIN{print a+0.1}')" \
+    -i "$out/$label.mp4" -t 3.2 -an -vf 'fps=10,scale=406:-2' \
+    -c:v libx264 -pix_fmt yuv420p -crf 24 "$out/$label-3s.mp4" || true
 }
 
 ok=0
@@ -113,9 +124,10 @@ pair kotlin-dark-splash flutter-dark-splash kotlin-vs-flutter-dark
 
 hstack() { # <left> <right> <dest>
   [ -s "$out/$1-3s.mp4" ] && [ -s "$out/$2-3s.mp4" ] || return 0
-  ffmpeg -loglevel error -y -i "$out/$1-3s.mp4" -i "$out/$2-3s.mp4" \
-    -filter_complex '[0:v]scale=405:-2,pad=405:ih+0:0:0:color=0x101214[l];[1:v]scale=405:-2[r];[l][r]hstack=inputs=2' \
-    -an "$out/$3.mp4" || true
+  ffmpeg -loglevel error -y \
+    -i "$out/$1-3s.mp4" -i "$out/$2-3s.mp4" \
+    -filter_complex '[0:v][1:v]hstack=inputs=2[out]' -map '[out]' \
+    -an -t 3.2 "$out/$3.mp4" || true
 }
 
 hstack flutter-light flutter-dark flutter-light-dark
@@ -124,16 +136,20 @@ hstack kotlin-dark flutter-dark kotlin-vs-flutter-dark
 
 # A GIF is what a pull request can show inline; the mp4s go in the artifact.
 [ -s "$out/flutter-light-dark.mp4" ] && ffmpeg -loglevel error -y \
-  -i "$out/flutter-light-dark.mp4" -vf 'fps=10,scale=640:-1:flags=lanczos,split[a][b];[a]palettegen[p];[b][p]paletteuse' \
+  -i "$out/flutter-light-dark.mp4" -vf 'fps=8,scale=560:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=128[p];[b][p]paletteuse' \
   "$out/flutter-light-dark.gif" || true
 [ -s "$out/kotlin-vs-flutter-light.mp4" ] && ffmpeg -loglevel error -y \
-  -i "$out/kotlin-vs-flutter-light.mp4" -vf 'fps=10,scale=640:-1:flags=lanczos,split[a][b];[a]palettegen[p];[b][p]paletteuse' \
+  -i "$out/kotlin-vs-flutter-light.mp4" -vf 'fps=8,scale=560:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=128[p];[b][p]paletteuse' \
   "$out/kotlin-vs-flutter-light.gif" || true
 
 for f in "$out"/*-splash.png "$out"/*.gif; do
   [ -s "$f" ] || continue
   note "$(basename "$f"): $(stat -c%s "$f") bytes"
 done
+
+# Leave the build under test installed: the Kotlin app shares its application
+# id, so a later step would otherwise smoke the wrong app.
+adb install -r -g "$apk" > "$out/reinstall.txt" 2>&1 || true
 
 [ "$ok" -ge 2 ] || { note "FAIL: this build did not reach a first frame"; exit 1; }
 note "ok: cold start recorded light and dark"
