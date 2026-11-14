@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The launch screen: the app background with the launcher mark at its
-     Android 12 splash size. Must stay in step with lib/src/splash.dart. -->
+<!-- The launch screen: the app background with the dot grid at the size and
+     place Android 12 draws its splash icon. Must stay in step with splash.dart. -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:drawable="@color/bg" />
-    <item android:width="96dp" android:height="96dp" android:gravity="center">
+    <item android:width="150dp" android:height="150dp" android:gravity="center">
         <bitmap android:gravity="center" android:src="@drawable/splash_logo" />
     </item>
 </layer-list>

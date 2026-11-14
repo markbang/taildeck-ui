@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Android 12+ draws the splash before our window exists. Same background
-         and mark as drawable/launch_background; the icon is the launcher
-         foreground on its ic_bg disc, as in the adaptive icon. -->
+         and mark as drawable/launch_background. The icon is the adaptive
+         launcher icon, which is also what the Kotlin app gets by default, so
+         both draw the same dots at the same size. -->
     <style name="LaunchTheme" parent="LaunchTheme.Base">
         <item name="android:windowSplashScreenBackground">@color/bg</item>
-        <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_launcher_fg</item>
-        <item name="android:windowSplashScreenIconBackgroundColor">@color/ic_bg</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
     </style>
 </resources>

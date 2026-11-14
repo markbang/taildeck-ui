@@ -7,26 +7,31 @@ import 'preview_env.dart';
 /// Colours of the launch screen; the Android (colors.xml, launch_background),
 /// iOS (LaunchScreen.storyboard) and desktop runners use the same values.
 const splashBackground = Color(0xFF101214);
-const splashMarkBackground = Color(0xFF15181B);
 const splashMarkForeground = Color(0xFFE8EAED);
 const splashMarkAccent = Color(0xFF5FD08A);
 
-/// The launcher mark, drawn at [size] like the adaptive icon: a disc of
-/// [splashMarkBackground] with the 3x3 node grid scaled to its 72dp crop.
+/// The launch mark: the 3x3 node grid alone, at the 118dp span Android 12's
+/// splash icon draws, on the [splashBackground] of the window behind it.
 class SplashMark extends StatelessWidget {
-  const SplashMark({super.key, this.size = 96});
+  const SplashMark({super.key, this.dotsSpan = 118});
 
-  final double size;
+  /// Width and height of the whole grid, dot edge to dot edge.
+  final double dotsSpan;
 
   @override
-  Widget build(BuildContext context) =>
-      CustomPaint(size: Size.square(size), painter: const _SplashMarkPainter());
+  Widget build(BuildContext context) => CustomPaint(
+    // The launcher grid spans 44 of the 56 units its icon canvas keeps, so the
+    // paint box leaves half a dot of margin around the dots.
+    size: Size.square(dotsSpan * 56 / 44),
+    painter: _SplashMarkPainter(dotsSpan),
+  );
 }
 
 class _SplashMarkPainter extends CustomPainter {
-  const _SplashMarkPainter();
+  const _SplashMarkPainter(this.dotsSpan);
 
-  // Positions and radius in the 108dp adaptive-icon viewport.
+  final double dotsSpan;
+
   static const _dots = [
     (38.0, 38.0, 1.0, splashMarkForeground),
     (54.0, 38.0, 1.0, splashMarkForeground),
@@ -41,15 +46,13 @@ class _SplashMarkPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final unit = size.width / 72; // the 108dp viewport cut to its 72dp crop
-    canvas.drawCircle(
-      size.center(Offset.zero),
-      size.width / 2,
-      Paint()..color = splashMarkBackground,
-    );
+    // One launcher unit is a dot's radius here; the grid runs 38..70 around
+    // its middle dot at 54.
+    final unit = dotsSpan / 44;
+    final center = size.center(Offset.zero);
     for (final (x, y, alpha, color) in _dots) {
       canvas.drawCircle(
-        Offset((x - 18) * unit, (y - 18) * unit),
+        center + Offset((x - 54) * unit, (y - 54) * unit),
         6 * unit,
         Paint()..color = color.withValues(alpha: alpha),
       );
@@ -57,7 +60,8 @@ class _SplashMarkPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _SplashMarkPainter oldDelegate) => false;
+  bool shouldRepaint(covariant _SplashMarkPainter oldDelegate) =>
+      oldDelegate.dotsSpan != dotsSpan;
 }
 
 /// Holds the launch screen over the app until the first frame is painted, then
@@ -67,13 +71,13 @@ class SplashGate extends StatefulWidget {
   const SplashGate({
     super.key,
     required this.child,
-    this.iconSize = 96,
+    this.dotsSpan = 118,
     this.dwell = const Duration(milliseconds: 80),
     this.fade = const Duration(milliseconds: 260),
   });
 
   final Widget child;
-  final double iconSize;
+  final double dotsSpan;
   final Duration dwell;
   final Duration fade;
 
@@ -127,7 +131,7 @@ class _SplashGateState extends State<SplashGate> {
                 curve: Curves.easeOut,
                 child: ColoredBox(
                   color: splashBackground,
-                  child: Center(child: SplashMark(size: widget.iconSize)),
+                  child: Center(child: SplashMark(dotsSpan: widget.dotsSpan)),
                 ),
               ),
             ),
