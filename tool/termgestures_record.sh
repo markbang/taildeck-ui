@@ -56,19 +56,19 @@ scroll_to() { # <needle> [tries]
   return 1
 }
 
-scroll_clear() { # <needle> [tries]: stop when the target is above the dock
-  local attempt point x y height
+scroll_clear() { # <needle> [tries]: keep the target above the floating dock
+  local needle=$1 tries=${2:-24} attempt point x y height
   height=$(adb shell wm size 2> /dev/null | sed -n 's/.*: [0-9]*x\([0-9]*\).*/\1/p' | tr -d '\r')
   height=${height:-2400}
-  for attempt in $(seq 1 "${2:-10}"); do
-    if point=$(ui tap "$1"); then
+  for attempt in $(seq 1 "$tries"); do
+    if point=$(ui tap "$needle"); then
       read -r x y <<< "$point"
-      if [ "$y" -lt $((height - $(dp 160))) ]; then
+      if [ "$y" -lt $((height - $(dp 170))) ]; then
         echo "$point"
         return 0
       fi
     fi
-    adb shell input swipe 540 1700 540 900 300 > /dev/null 2>&1 || true
+    adb shell input swipe 540 1500 540 1150 200 > /dev/null 2>&1 || true
     sleep 1
   done
   return 1
@@ -299,22 +299,17 @@ ctrl_c() {
 landscape() { rotate 1; }
 title='Key row with a hardware keyboard'
 
-enable_key_row() {
-  # The emulator has a physical keyboard, so the row hides by default. The
-  # row's own label is a semantics action, not a pointer target: tap the
-  # switch at its right edge.
+settings_shot() {
+  # The emulator reports a physical keyboard, so the row hides by default; the
+  # preview's ?keys=1 keeps it for the recording. Settings still shows the
+  # switch that a phone owner would use.
   launch "$settings_url" || return 0
-  local x y
-  if ! scroll_clear "$title" > "$out/row-point.txt"; then
-    note "key row with a hardware keyboard: row not found"
-    return 0
+  if scroll_clear "$title" > /dev/null; then
+    shot settings-row
+    note "settings: the key row switch and the font size are on screen"
+  else
+    note "settings: the key row switch did not come into view"
   fi
-  read -r x y < "$out/row-point.txt"
-  shot settings-row
-  adb shell input tap "$x" "$y" > /dev/null 2>&1 || true
-  sleep 2
-  shot settings-row-on
-  note "key row with a hardware keyboard: tapped its switch at $x,$y"
 }
 
 prepare_ime() {
@@ -492,7 +487,7 @@ hardware_keys() {
 install_app "$apk" || exit 0
 adb shell getevent -pl > "$out/getevent.txt" 2>&1 || true
 prepare_ime
-enable_key_row
+settings_shot
 
 launch "$demo_url" || exit 0
 if ui has 'Extra key row' > /dev/null 2>&1; then
@@ -511,7 +506,7 @@ shot swipe-arrows
 record hold-arrow 8 hold_arrow
 shot hold-arrow
 
-# 3. pinch zoom, then the persisted size
+# 3. pinch zoom (raw multi-touch where the image allows it)
 before=$(grid_cells || true)
 pinch_step
 shot pinch-out
