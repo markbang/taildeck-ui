@@ -56,6 +56,24 @@ scroll_to() { # <needle> [tries]
   return 1
 }
 
+scroll_clear() { # <needle> [tries]: stop when the target is above the dock
+  local attempt point x y height
+  height=$(adb shell wm size 2> /dev/null | sed -n 's/.*: [0-9]*x\([0-9]*\).*/\1/p' | tr -d '\r')
+  height=${height:-2400}
+  for attempt in $(seq 1 "${2:-10}"); do
+    if point=$(ui tap "$1"); then
+      read -r x y <<< "$point"
+      if [ "$y" -lt $((height - $(dp 160))) ]; then
+        echo "$point"
+        return 0
+      fi
+    fi
+    adb shell input swipe 540 1700 540 900 300 > /dev/null 2>&1 || true
+    sleep 1
+  done
+  return 1
+}
+
 shot() { # <name>
   adb exec-out screencap -p > "$out/$1.png" 2> /dev/null || rm -f "$out/$1.png"
   [ -s "$out/$1.png" ] && note "$1: $(stat -c%s "$out/$1.png") bytes"
@@ -183,15 +201,16 @@ pinch() { # <out|in> <slots|devices> [centre "x y"]
     sx2=$(scale $((cx + d)) 32767 "$w")
     sy=$(scale "$cy" 32767 "$h")
     if [ "$scheme" = "slots" ]; then
-      script+="sendevent $dev1 3 47 0; sendevent $dev1 3 57 1; sendevent $dev1 3 53 $sx1; sendevent $dev1 3 54 $sy; sendevent $dev1 3 48 5; sendevent $dev1 0 0 0; "
-      script+="sendevent $dev1 3 47 1; sendevent $dev1 3 57 2; sendevent $dev1 3 53 $sx2; sendevent $dev1 3 54 $sy; sendevent $dev1 3 48 5; sendevent $dev1 0 0 0; sleep 0.04; "
+      [ "$i" -eq 0 ] && script+="sendevent $dev1 1 330 1; "
+      script+="sendevent $dev1 3 47 0; sendevent $dev1 3 57 1; sendevent $dev1 3 53 $sx1; sendevent $dev1 3 54 $sy; sendevent $dev1 3 48 5; sendevent $dev1 3 58 50; sendevent $dev1 0 0 0; "
+      script+="sendevent $dev1 3 47 1; sendevent $dev1 3 57 2; sendevent $dev1 3 53 $sx2; sendevent $dev1 3 54 $sy; sendevent $dev1 3 48 5; sendevent $dev1 3 58 50; sendevent $dev1 0 0 0; sleep 0.04; "
     else
       script+="sendevent $dev1 3 47 0; sendevent $dev1 3 57 1; sendevent $dev1 3 53 $sx1; sendevent $dev1 3 54 $sy; sendevent $dev1 3 48 5; sendevent $dev1 0 0 0; "
       script+="sendevent $dev2 3 47 0; sendevent $dev2 3 57 2; sendevent $dev2 3 53 $sx2; sendevent $dev2 3 54 $sy; sendevent $dev2 3 48 5; sendevent $dev2 0 0 0; sleep 0.04; "
     fi
   done
   if [ "$scheme" = "slots" ]; then
-    script+="sendevent $dev1 3 47 0; sendevent $dev1 3 57 -1; sendevent $dev1 3 47 1; sendevent $dev1 3 57 -1; sendevent $dev1 0 0 0"
+    script+="sendevent $dev1 3 47 0; sendevent $dev1 3 57 -1; sendevent $dev1 3 47 1; sendevent $dev1 3 57 -1; sendevent $dev1 1 330 0; sendevent $dev1 0 0 0"
   else
     script+="sendevent $dev1 3 57 -1; sendevent $dev1 0 0 0; sendevent $dev2 3 57 -1; sendevent $dev2 0 0 0"
   fi
@@ -208,6 +227,30 @@ pinch_only() { # <scheme>
 }
 
 pinch_slots() { pinch_only slots; }
+
+raw_tap() { # one contact through the touch device, no InputManager
+  local dev cx cy w h sx sy
+  dev=$(mindev virtio_input_multi_touch_1)
+  dev=${dev:-/dev/input/event2}
+  read -r cx cy <<< "$(cell 30 20)" || return 0
+  read -r w h <<< "$(adb shell wm size | sed -n 's/.*: \([0-9]*\)x\([0-9]*\).*/\1 \2/p' | tr -d '\r')"
+  sx=$(awk -v v="$cx" -v max=32767 -v span="${w:-1080}" 'BEGIN { printf "%d", v * max / span }')
+  sy=$(awk -v v="$cy" -v max=32767 -v span="${h:-2400}" 'BEGIN { printf "%d", v * max / span }')
+  adb shell "sendevent $dev 1 330 1; sendevent $dev 3 47 0; sendevent $dev 3 57 1; sendevent $dev 3 53 $sx; sendevent $dev 3 54 $sy; sendevent $dev 3 48 5; sendevent $dev 3 58 50; sendevent $dev 0 0 0; sleep 0.1; sendevent $dev 3 57 -1; sendevent $dev 1 330 0; sendevent $dev 0 0 0" > "$out/raw-tap.txt" 2>&1 || true
+}
+
+raw_probe() { # root, one contact, unroot: the copy selection is still up
+  root_on
+  raw_tap
+  sleep 1
+  root_off
+  sleep 1
+  if ui has 'Copy' > /dev/null 2>&1; then
+    note "raw touch: an injected contact did not reach the app"
+  else
+    note "raw touch: an injected contact reached the app (selection cleared)"
+  fi
+}
 
 pinch_step() {
   local before after
@@ -262,7 +305,7 @@ enable_key_row() {
   # switch at its right edge.
   launch "$settings_url" || return 0
   local x y
-  if ! scroll_to "$title" > "$out/row-point.txt"; then
+  if ! scroll_clear "$title" > "$out/row-point.txt"; then
     note "key row with a hardware keyboard: row not found"
     return 0
   fi
@@ -484,7 +527,7 @@ note "pinch: grid after relaunch $(grid_cells || echo unknown)"
 font_step() {
   launch "$settings_url" || return 0
   local point x y
-  if point=$(scroll_to 'Larger font'); then
+  if point=$(scroll_clear 'Larger font'); then
     read -r x y <<< "$point"
     adb shell input tap "$x" "$y" > /dev/null 2>&1 || true
     sleep 1
@@ -507,6 +550,8 @@ record selection 10 select_word
 shot selection
 record copy 7 copy_selection
 shot copy
+record raw-touch 8 raw_probe
+shot raw-touch
 record paste 8 paste_clipboard
 shot paste
 
