@@ -478,6 +478,26 @@ class AppLocalizations implements UiLocalizations {
   String get inAppDesktopOnlyNoGateway => _zh
       ? '应用内网页仅支持 Android 和 iOS；这里会用浏览器打开，但网关未运行。'
       : 'In-app pages are Android and iOS only; this would open in your browser, but the gateway is not running.';
+  String get notificationsSection => _zh ? '通知' : 'Notifications';
+  String get agentNotifications => _zh ? '代理通知' : 'Agent notifications';
+  String get agentNotificationsOn => _zh
+      ? '代理需要你或完成任务时提醒，仅应用在后台时发送。'
+      : 'Alerts when an agent needs you or finishes; only while the app is away.';
+  String get agentNotificationsOff => _zh
+      ? '已关闭。开启后代理需要你时提醒。'
+      : 'Off. Turn on to be told when an agent needs you.';
+  String get notificationsUnsupported => _zh
+      ? '通知需要 Android 或 iOS 构建，这里只保留预览。'
+      : 'Notifications need the Android or iOS build.';
+  String get notificationsDenied => _zh
+      ? '系统已阻止通知，请在系统设置里允许 Taildeck 的通知。'
+      : 'Blocked in system settings. Allow notifications for Taildeck.';
+  String get nodeNotificationHint => _zh
+      ? '节点运行时，Taildeck 会常驻一条低优先级通知让 Android 保持进程存活，它无法关闭。'
+      : 'While the node runs, Taildeck keeps a low-priority notification so Android leaves it alive; it cannot be turned off.';
+  String a11yAgentNotifications(bool enabled, bool denied) => _zh
+      ? '代理通知，${denied ? '被系统阻止' : (enabled ? '已开启' : '已关闭')}'
+      : 'Agent notifications, ${denied ? 'blocked by the system' : (enabled ? 'on' : 'off')}';
   String get reload => _zh ? '重新加载' : 'Reload';
   String get openInBrowser => _zh ? '在浏览器中打开' : 'Open in browser';
   String get retry => _zh ? '重试' : 'Retry';

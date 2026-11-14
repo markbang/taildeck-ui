@@ -3,6 +3,11 @@
          PlatformBridge reads the default network from ConnectivityManager. -->
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <!-- The node's foreground service outlives the UI, and agents may post
+         attention notifications. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>
     <!-- Service pages load over http:// via the loopback gateway. -->
     <application
         android:label="taildeck_ui"
@@ -31,6 +36,11 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <!-- Only keeps the process alive; the Go node is started by the app. -->
+        <service
+            android:name=".TailnetService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync"/>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

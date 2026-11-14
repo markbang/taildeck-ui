@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="notif_channel">Tailnet 节点</string>
+    <string name="notif_title">Taildeck 节点运行中</string>
+    <string name="notif_text">在后台保持 Tailnet 节点在线</string>
+</resources>

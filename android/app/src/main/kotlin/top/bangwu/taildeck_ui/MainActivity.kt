@@ -1,5 +1,7 @@
 package top.bangwu.taildeck_ui
 
+import android.content.Intent
+import android.os.Build
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -14,6 +16,26 @@ class MainActivity : FlutterActivity() {
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "init" -> result.success(PlatformBridge.register(this))
+                    else -> result.notImplemented()
+                }
+            }
+        // The Flutter backend starts this around its own node lifecycle.
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "taildeck/service")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "start" -> {
+                        val intent = Intent(this, TailnetService::class.java)
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            startForegroundService(intent)
+                        } else {
+                            startService(intent)
+                        }
+                        result.success(null)
+                    }
+                    "stop" -> {
+                        stopService(Intent(this, TailnetService::class.java))
+                        result.success(null)
+                    }
                     else -> result.notImplemented()
                 }
             }

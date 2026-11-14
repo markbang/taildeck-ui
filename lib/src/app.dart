@@ -17,7 +17,8 @@ class TaildeckApp extends StatefulWidget {
   State<TaildeckApp> createState() => _TaildeckAppState();
 }
 
-class _TaildeckAppState extends State<TaildeckApp> {
+class _TaildeckAppState extends State<TaildeckApp>
+    with WidgetsBindingObserver {
   final theme = TaildeckTheme();
   final backend = TaildeckBackend();
   final services = ServiceStore.open();
@@ -25,12 +26,31 @@ class _TaildeckAppState extends State<TaildeckApp> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    theme.addListener(_syncNotificationLanguage);
+    _syncNotificationLanguage();
     unawaited(backend.init());
     unawaited(services.load());
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Agent alerts are for a user who is not looking at the app.
+    backend.setForeground(state == AppLifecycleState.resumed);
+  }
+
+  /// One copy of the notification text, in the app's language.
+  void _syncNotificationLanguage() {
+    backend.setNotificationLanguage(
+      theme.locale?.languageCode ??
+          WidgetsBinding.instance.platformDispatcher.locale.languageCode,
+    );
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    theme.removeListener(_syncNotificationLanguage);
     backend.dispose();
     services.dispose();
     theme.dispose();

@@ -35,14 +35,14 @@ Flutter 客户端对 [markbang/taildeck](https://github.com/markbang/taildeck)�
 | 应用内 WebView | 支持代理覆盖的 WebView，tailnet 主机走网关 | `webview_flutter` 加载网关地址，带返回/刷新、进度与重试 | 部分 | 仅 Android 与 iOS；桌面和网页仍用系统浏览器并就地说明。未在真机上跑过；下载、文件选择与 HTTP 认证尚未接入 |
 | Agents 列表 | 按工作区的 herdr pane、状态、错误 | 经 SSH 读取真实 `agent.list`，工作区分区、状态胶囊、连接卡片 | 部分 | 已实现，错误状态验证过；真实 pane 未测 |
 | Agent 聊天 | 会话记录、输入、重启、模型切换、更多历史 | 会话记录或屏幕文本、输入、重启、`/model` 与 effort 选择、翻页 | 部分 | 同样没有真实 herdr；缺的东西见下面几行 |
-| 通知 | 在通知里允许 / 拒绝 / 回复 | — | 未做 | 没有通知渠道和操作接收器 |
+| 通知 | 在通知里允许 / 拒绝 / 回复 | `flutter_local_notifications`，应用在后台时 pane 变为 `blocked` 或 `done` 就提醒，点按打开该 pane 的聊天；设置里有中英文开关 | 部分 | 目前只能点按打开，还没有允许 / 拒绝 / 回复按钮。Android 与 iOS 已构建；没有真机，投递与权限弹窗未验证 |
 | 消息队列 | 代理忙时排队发送 | 本地排队，代理空闲后逐条发出，可取消或立即发送 | 部分 | 代理工作时入队、`done`/`idle` 后发出；没有真实 herdr 观察代理侧表现 |
 | 子代理会话 | 打开子代理的调用记录 | `td_herdr_subagent` 读取 pane 会话里的子代理文件，带类型、描述和完成状态 | 部分 | 只支持 Claude，且只验证了错误路径；没有跑过真实子代理 |
 | 图片 | 显示会话里的图片和代理点名的文件 | `td_herdr_image` 取 `img:` 引用，会话里显示缩略图，全屏可缩放，`td_herdr_upload` 上传选中的文件 | 部分 | 渲染和全屏已实现；输入框还没有附件按钮，节点上的文件路径目前显示占位 |
 | 斜杠命令 | `/` 命令补全 | 每个 harness 的内置命令，加上从节点读到的 `/` 命令和技能，↑↓/Esc 选择并插入 | 部分 | 内置列表验证过；没有节点，节点命令未验证 |
 | 设置与日志 | Tailnet、设备、服务、SSH 密钥、日志 | Tailnet/设备信息、服务打开方式、导航、切页动画、语言、日志页 | 已完成 | 已截图（M3b、无障碍一轮） |
 | 退出登录 | 停止并登出节点 | `td_logout`，带确认 | 未验证 | 需要已登录的节点 |
-| Android 前台服务 | 退到后台时保持节点存活 | — | 未做 | manifest 里没有 service；进程结束节点就停 |
+| Android 前台服务 | 退到后台时保持节点存活 | `dataSync` 前台服务加一条低优先级通知，节点进入 `Running` 时启动，停止或退出登录时结束 | 未验证 | 已进合并后的 manifest 和 debug APK；没有真机确认进程退到后台后仍存活 |
 | Android 网络钩子 | 基于 ConnectivityManager 的网卡和 DNS | `PlatformBridge.kt` + JNI（`platform_jni.c`），`"platform": "host"` | 已完成 | #16 合入；CI 能构建，尚未在真机运行 |
 | 无障碍 | Compose 语义 | 读屏标签、Esc 关闭、减少动态效果、文字缩放限制在 0.9–1.3 | 已完成 | #15 合入；有减少动态效果和缩放的截图 |
 | Linux 桌面 | — | 带两个原生库的产物，CI 在 Xvfb 里运行 | 已完成 | Kotlin 版之外新增 |

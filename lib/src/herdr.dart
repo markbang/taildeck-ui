@@ -290,6 +290,11 @@ class HerdrController extends ChangeNotifier {
   HerdrController(this._bridge);
 
   final NativeBridge? _bridge;
+
+  /// Called when a pane turns blocked or done; the backend decides whether the
+  /// user has to be told.
+  void Function(HerdrAgent agent)? onAttention;
+
   HerdrLink _link = HerdrLink.idle;
   String _detail = '';
   String _node = '';
@@ -394,6 +399,7 @@ class HerdrController extends ChangeNotifier {
         // Workspace labels are a nicety; agent.list still succeeds.
       }
       final reply = await _call(bridge, 'agent.list', const {});
+      final before = {for (final agent in _agents) agent.paneId: agent.status};
       _agents = [
         for (final item in reply['agents'] as List? ?? const [])
           if (item is Map<String, dynamic>)
@@ -402,6 +408,13 @@ class HerdrController extends ChangeNotifier {
       _detail = '';
       notifyListeners();
       for (final agent in _agents) {
+        final was = before[agent.paneId];
+        final needsYou =
+            agent.status == HerdrStatus.blocked ||
+            agent.status == HerdrStatus.done;
+        if (needsYou && was != null && was != agent.status) {
+          onAttention?.call(agent);
+        }
         if (agent.status.settled && queued(agent.paneId).isNotEmpty) {
           unawaited(_flush(agent.paneId));
         }
