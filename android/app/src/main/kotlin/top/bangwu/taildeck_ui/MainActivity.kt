@@ -1,6 +1,7 @@
 package top.bangwu.taildeck_ui
 
 import android.content.Intent
+import android.content.res.Configuration
 import android.os.Build
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -24,6 +25,16 @@ class MainActivity : FlutterActivity() {
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "initialQuery" -> result.success(intent?.data?.query)
+                    else -> result.notImplemented()
+                }
+            }
+        // The terminal hides its extra key row behind a physical keyboard.
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "taildeck/keyboard")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "attached" -> result.success(
+                        resources.configuration.keyboard != Configuration.KEYBOARD_NOKEYS
+                    )
                     else -> result.notImplemented()
                 }
             }

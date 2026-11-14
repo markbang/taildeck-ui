@@ -1,3 +1,4 @@
+import '../terminal_gestures.dart';
 import '../terminal_keys.dart';
 import 'storage_stub.dart' if (dart.library.io) 'storage_io.dart';
 
@@ -11,6 +12,9 @@ class StoredConfig {
     this.agentNotifications = false,
     this.terminalKeyHaptics = true,
     this.terminalKeyPages,
+    this.terminalFontSize = terminalFontDefault,
+    this.terminalSwipeArrows = true,
+    this.terminalKeyRowWithKeyboard = false,
     this.herdrNode = '',
     this.herdrUser = 'root',
     this.herdrPort = 22,
@@ -31,6 +35,12 @@ class StoredConfig {
     terminalKeyPages: json['terminalKeyPages'] == null
         ? null
         : parseTerminalKeyPages(json['terminalKeyPages']),
+    terminalFontSize: clampTerminalFont(
+      (json['terminalFontSize'] as num?)?.toDouble() ?? terminalFontDefault,
+    ),
+    terminalSwipeArrows: json['terminalSwipeArrows'] as bool? ?? true,
+    terminalKeyRowWithKeyboard:
+        json['terminalKeyRowWithKeyboard'] as bool? ?? false,
     herdrNode: json['herdrNode'] as String? ?? '',
     herdrUser: json['herdrUser'] as String? ?? 'root',
     herdrPort: (json['herdrPort'] as num?)?.toInt() ?? 22,
@@ -75,6 +85,15 @@ class StoredConfig {
   /// Keys per page of the extra key row; null until the user edits it.
   final List<List<String>>? terminalKeyPages;
 
+  /// Grid font size in points, kept across launches.
+  final double terminalFontSize;
+
+  /// Whether a one-finger swipe on the grid sends arrow keys.
+  final bool terminalSwipeArrows;
+
+  /// Whether the extra key row stays while a hardware keyboard is attached.
+  final bool terminalKeyRowWithKeyboard;
+
   /// Node, user and auth the Agents page reconnects to herdr with. The
   /// password itself is never written.
   final String herdrNode;
@@ -97,6 +116,9 @@ class StoredConfig {
     'agentNotifications': agentNotifications,
     'terminalKeyHaptics': terminalKeyHaptics,
     if (terminalKeyPages != null) 'terminalKeyPages': terminalKeyPages,
+    'terminalFontSize': terminalFontSize,
+    'terminalSwipeArrows': terminalSwipeArrows,
+    'terminalKeyRowWithKeyboard': terminalKeyRowWithKeyboard,
     'herdrNode': herdrNode,
     'herdrUser': herdrUser,
     'herdrPort': herdrPort,

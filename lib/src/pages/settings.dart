@@ -523,6 +523,63 @@ class _SettingsPageState extends State<SettingsPage> {
                 ),
               ),
             ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          l10n.terminalFontSize,
+                          style: context.listTitleStyle,
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          l10n.terminalFontSizeHint(backend.terminalFontSize),
+                          style: context.listCaptionStyle,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  _FontStep(
+                    glyph: 'A-',
+                    label: l10n.terminalFontSmaller,
+                    onTap: () => unawaited(
+                      backend.setTerminalFontSize(backend.terminalFontSize - 1),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  _FontStep(
+                    glyph: 'A+',
+                    label: l10n.terminalFontLarger,
+                    onTap: () => unawaited(
+                      backend.setTerminalFontSize(backend.terminalFontSize + 1),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            _TerminalToggleRow(
+              label: l10n.terminalSwipeArrows,
+              caption: backend.terminalSwipeArrows
+                  ? l10n.terminalSwipeArrowsOn
+                  : l10n.terminalSwipeArrowsOff,
+              value: backend.terminalSwipeArrows,
+              onChanged: (value) =>
+                  unawaited(backend.setTerminalSwipeArrows(value)),
+            ),
+            _TerminalToggleRow(
+              label: l10n.terminalKeyRowWithKeyboard,
+              caption: backend.terminalKeyRowWithKeyboard
+                  ? l10n.terminalKeyRowWithKeyboardOn
+                  : l10n.terminalKeyRowWithKeyboardOff,
+              value: backend.terminalKeyRowWithKeyboard,
+              onChanged: (value) =>
+                  unawaited(backend.setTerminalKeyRowWithKeyboard(value)),
+            ),
             TapFeedback(
               onTap: () => unawaited(showTerminalKeysSheet(context, backend)),
               child: ListRow(
@@ -845,6 +902,87 @@ class IconBadge extends StatelessWidget {
         shape: AppShape.all(10),
       ),
       child: GlyphIcon(glyph, size: 18, color: color),
+    );
+  }
+}
+
+/// A small square button that steps one number, used for the font size.
+class _FontStep extends StatelessWidget {
+  const _FontStep({
+    required this.glyph,
+    required this.label,
+    required this.onTap,
+  });
+
+  final String glyph;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = context.colorScheme;
+    return Semantics(
+      button: true,
+      label: label,
+      child: TapFeedback(
+        onTap: onTap,
+        shape: AppShape.all(8),
+        child: Container(
+          width: 34,
+          height: 30,
+          alignment: Alignment.center,
+          decoration: ShapeDecoration(
+            color: scheme.surfaceContainerHighest,
+            shape: AppShape.all(8),
+          ),
+          child: Text(
+            glyph,
+            style: context.listTitleStyle.copyWith(fontSize: 13),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A titled switch row in the Terminal section.
+class _TerminalToggleRow extends StatelessWidget {
+  const _TerminalToggleRow({
+    required this.label,
+    required this.caption,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final String label;
+  final String caption;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      child: RowSemantics(
+        label: AppLocalizations.of(context).a11ySwitch(label, value),
+        onTap: () => onChanged(!value),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(label, style: context.listTitleStyle),
+                  const SizedBox(height: 2),
+                  Text(caption, style: context.listCaptionStyle),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            Switch(value: value, onChanged: onChanged, semanticLabel: label),
+          ],
+        ),
+      ),
     );
   }
 }

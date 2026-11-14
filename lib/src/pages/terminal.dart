@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:prism_ui/icons/icons.dart';
 import 'package:prism_ui/prism_ui.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../a11y.dart';
 import '../backend.dart';
@@ -15,9 +16,11 @@ import '../data.dart';
 import '../l10n.dart';
 import '../motion.dart';
 import '../native/bridge.dart';
+import '../native/hardware_keyboard.dart';
 import '../native/keys.dart';
 import '../native/term.dart';
 import '../native/term_demo.dart';
+import '../terminal_gestures.dart';
 import '../terminal_keys.dart';
 import '../terminal_store.dart';
 import '../widgets/controls.dart';
@@ -77,7 +80,8 @@ class TerminalPage extends StatefulWidget {
   State<TerminalPage> createState() => _TerminalPageState();
 }
 
-class _TerminalPageState extends State<TerminalPage> {
+class _TerminalPageState extends State<TerminalPage>
+    with WidgetsBindingObserver {
   static const _bgTop = Color(0xFF090A0C);
   static const _bgBottom = Color(0xFF101319);
   static const _fg = Color(0xFFE7E9ED);
@@ -111,6 +115,14 @@ class _TerminalPageState extends State<TerminalPage> {
   String _sent = '';
   final _mods = TerminalMods();
 
+  /// Pinch size while the finger is down; the backend value lands after the
+  /// debounce, then this falls back to it.
+  double? _pinchFont;
+  Timer? _fontSave;
+
+  /// Android's `Configuration.keyboard`; null when the platform cannot say.
+  bool? _physicalKeyboard;
+
   @override
   void initState() {
     super.initState();
@@ -131,13 +143,27 @@ class _TerminalPageState extends State<TerminalPage> {
         }
       }
     }
-    if (terminal.live) {
-      _focus.onKeyEvent = _onKey;
-      _output = terminal.frames.listen(_onOutput);
-    }
+    // Hardware keys go through the emulator's encoder in the demo too, so a
+    // keyboard can be tried without a tailnet.
+    if (_session != null) _focus.onKeyEvent = _onKey;
+    if (terminal.live) _output = terminal.frames.listen(_onOutput);
+    WidgetsBinding.instance.addObserver(this);
+    unawaited(_readKeyboard());
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _focus.requestFocus();
     });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // A keyboard can be plugged in while the app is in the background.
+    if (state == AppLifecycleState.resumed) unawaited(_readKeyboard());
+  }
+
+  Future<void> _readKeyboard() async {
+    final attached = await physicalKeyboardAttached();
+    if (!mounted || attached == null || attached == _physicalKeyboard) return;
+    setState(() => _physicalKeyboard = attached);
   }
 
   void _onOutput(SshOutput frame) {
@@ -164,9 +190,8 @@ class _TerminalPageState extends State<TerminalPage> {
   /// Hardware keys reach the emulator's encoder; printable characters come
   /// through the text field below and are encoded there.
   KeyEventResult _onKey(FocusNode node, KeyEvent event) {
-    final terminal = widget.terminal;
-    if (!terminal.live || _session == null) return KeyEventResult.ignored;
-    final session = _session!;
+    final session = _session;
+    if (session == null) return KeyEventResult.ignored;
     if (event is KeyUpEvent) return KeyEventResult.handled;
     final mods = ghosttyModsOf(HardwareKeyboard.instance);
     final text = event.character;
@@ -175,7 +200,7 @@ class _TerminalPageState extends State<TerminalPage> {
       return KeyEventResult.ignored;
     }
     final encoded = session.term.encodeKey(ghosttyKeyOf(event), mods);
-    if (encoded != null) terminal.write(encoded);
+    if (encoded != null) _deliver(encoded);
     return KeyEventResult.handled;
   }
 
@@ -244,6 +269,55 @@ class _TerminalPageState extends State<TerminalPage> {
     _focus.requestFocus();
   }
 
+  /// An arrow from a swipe carries the sticky modifiers like a row key.
+  void _onArrow(TerminalArrow arrow) {
+    _sendKey(switch (arrow) {
+      TerminalArrow.up => GhosttyKeys.arrowUp,
+      TerminalArrow.down => GhosttyKeys.arrowDown,
+      TerminalArrow.left => GhosttyKeys.arrowLeft,
+      TerminalArrow.right => GhosttyKeys.arrowRight,
+    });
+  }
+
+  void _sendKey(int code) {
+    final session = _session;
+    if (session == null) return;
+    _deliver(session.term.encodeKey(code, _mods.mask));
+    if (_mods.consume()) setState(() {});
+    _haptic();
+  }
+
+  /// Pastes through the emulator's encoder, so a program that asked for
+  /// bracketed paste gets its markers.
+  Future<void> _paste() async {
+    final session = _session;
+    if (session == null) return;
+    final data = await Clipboard.getData(Clipboard.kTextPlain);
+    final text = data?.text;
+    if (text == null || text.isEmpty) return;
+    _deliver(session.term.encodePaste(Uint8List.fromList(utf8.encode(text))));
+    _haptic();
+  }
+
+  /// Pinch zoom: the grid follows the finger, the config follows the release.
+  void _zoomTo(double size) {
+    final backend = BackendScope.of(context);
+    final next = clampTerminalFont(size);
+    if (next == (_pinchFont ?? backend.terminalFontSize)) return;
+    setState(() => _pinchFont = next);
+    _fontSave?.cancel();
+    _fontSave = Timer(const Duration(milliseconds: 400), () {
+      unawaited(backend.setTerminalFontSize(next));
+      if (mounted) setState(() => _pinchFont = null);
+    });
+  }
+
+  Future<bool> _openUrl(String url) async {
+    final uri = Uri.tryParse(url);
+    if (uri == null) return false;
+    return launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+
   void _haptic() {
     if (!BackendScope.of(context).terminalKeyHaptics) return;
     HapticFeedback.lightImpact();
@@ -298,6 +372,8 @@ class _TerminalPageState extends State<TerminalPage> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _fontSave?.cancel();
     // Detach only; the session stays up in the store and back reattaches.
     _output?.cancel();
     _focus.dispose();
@@ -420,6 +496,11 @@ class _TerminalPageState extends State<TerminalPage> {
         : session == null
         ? (l10n.connected, _green)
         : (l10n.notConnected, _dim);
+    final backend = BackendScope.of(context);
+    final fontSize = _pinchFont ?? backend.terminalFontSize;
+    // Landscape on a phone is short: the quick commands would cost half the
+    // rows the grid needs.
+    final compact = MediaQuery.sizeOf(context).height < 420;
     final grid = session?.snapshot;
     final subtitle = widget.demo
         ? (grid == null
@@ -468,14 +549,19 @@ class _TerminalPageState extends State<TerminalPage> {
                       hint: l10n.terminalReadOnly,
                       child: session == null
                           ? _simulated(wide, mono)
-                          : _emulator(session, wide ? 14.0 : 13.0),
+                          : _emulator(
+                              session,
+                              fontSize,
+                              backend.terminalSwipeArrows,
+                            ),
                     ),
                   ),
-                  _QuickBar(onRun: _run),
+                  if (!compact) _QuickBar(onRun: _run),
                   _InputBar(
                     controller: _input,
                     mono: mono,
                     focusNode: _focus,
+                    onPaste: session == null ? null : _paste,
                     onChanged: _session == null ? null : _onTextChanged,
                     onSubmitted: (value) {
                       if (widget.live) {
@@ -493,9 +579,9 @@ class _TerminalPageState extends State<TerminalPage> {
                       _input.clear();
                     },
                   ),
-                  if (_showKeyRow(wide))
+                  if (_showKeyRow(context))
                     TerminalKeyBar(
-                      pages: BackendScope.of(context).terminalKeyPages,
+                      pages: backend.terminalKeyPages,
                       mods: _mods,
                       onKey: _tapKey,
                       onModifier: (mod) {
@@ -512,31 +598,44 @@ class _TerminalPageState extends State<TerminalPage> {
     );
   }
 
-  /// A desktop window has a hardware keyboard, so the row would only take
-  /// room; phones and tablets keep it.
-  static bool _showKeyRow(bool wide) =>
-      !wide ||
-      switch (defaultTargetPlatform) {
-        TargetPlatform.android || TargetPlatform.iOS => true,
-        _ => false,
-      };
+  /// A desktop window always has a hardware keyboard, so the row would only
+  /// take room. On a phone it hides while a physical keyboard is attached,
+  /// unless Settings keeps it or the soft keyboard is up.
+  bool _showKeyRow(BuildContext context) {
+    if (BackendScope.of(context).terminalKeyRowWithKeyboard) return true;
+    final mobile = switch (defaultTargetPlatform) {
+      TargetPlatform.android || TargetPlatform.iOS => true,
+      _ => false,
+    };
+    if (!mobile) return false;
+    if ((_physicalKeyboard ?? false) &&
+        MediaQuery.viewInsetsOf(context).bottom == 0) {
+      return false;
+    }
+    return true;
+  }
 
   /// The keyboard reaches the page as a view inset on every platform: nothing
   /// above the terminal builds a Scaffold that would resize for it.
   static double _keyboardInset(BuildContext context) =>
       MediaQuery.viewInsetsOf(context).bottom;
 
-  Widget _emulator(TerminalSession session, double fontSize) {
+  Widget _emulator(TerminalSession session, double fontSize, bool swipeArrows) {
     return Listener(
       onPointerSignal: (event) {
         if (event is! PointerScrollEvent) return;
         final lines = (event.scrollDelta.dy / 20).round();
         if (lines != 0) session.scroll(lines);
       },
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: widget.live ? _focus.requestFocus : null,
-        child: TerminalCanvas(session: session, fontSize: fontSize),
+      child: TerminalCanvas(
+        session: session,
+        fontSize: fontSize,
+        swipeArrows: swipeArrows,
+        onArrow: _onArrow,
+        onFontSize: _zoomTo,
+        onFocus: widget.live ? _focus.requestFocus : null,
+        onOpenUrl: _openUrl,
+        onPaste: _paste,
       ),
     );
   }
@@ -834,6 +933,7 @@ class _InputBar extends StatelessWidget {
     required this.onSubmitted,
     this.focusNode,
     this.onChanged,
+    this.onPaste,
   });
 
   final TextEditingController controller;
@@ -841,6 +941,7 @@ class _InputBar extends StatelessWidget {
   final ValueChanged<String> onSubmitted;
   final FocusNode? focusNode;
   final ValueChanged<String>? onChanged;
+  final VoidCallback? onPaste;
 
   @override
   Widget build(BuildContext context) {
@@ -881,6 +982,23 @@ class _InputBar extends StatelessWidget {
                 ),
               ),
             ),
+            if (onPaste != null)
+              Semantics(
+                button: true,
+                label: AppLocalizations.of(context).paste,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: onPaste,
+                  child: const Padding(
+                    padding: EdgeInsets.only(left: 10),
+                    child: GlyphIcon(
+                      Glyphs.paste,
+                      size: 16,
+                      color: Color(0xFF7C838D),
+                    ),
+                  ),
+                ),
+              ),
           ],
         ),
       ),

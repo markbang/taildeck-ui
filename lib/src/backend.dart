@@ -14,6 +14,7 @@ import 'native/storage.dart';
 import 'services.dart';
 import 'notifications.dart';
 import 'ssh_identities.dart';
+import 'terminal_gestures.dart';
 import 'terminal_keys.dart';
 
 enum BackendState { unavailable, stopped, starting, needsLogin, running, error }
@@ -85,6 +86,9 @@ class TaildeckBackend extends ChangeNotifier {
   bool _serviceIcons = true;
   bool _terminalKeyHaptics = true;
   List<List<String>>? _terminalKeyPages;
+  double _terminalFontSize = terminalFontDefault;
+  bool _terminalSwipeArrows = true;
+  bool _terminalKeyRowWithKeyboard = false;
   String _platform = 'go';
   String _platformWarning = '';
   bool _herdrAutoTried = false;
@@ -139,6 +143,15 @@ class TaildeckBackend extends ChangeNotifier {
   /// Keys per page of the extra key row, defaults included.
   List<List<String>> get terminalKeyPages =>
       _terminalKeyPages ?? defaultTerminalKeyPages;
+
+  /// Grid font size in points, set by the pinch or Settings.
+  double get terminalFontSize => _terminalFontSize;
+
+  /// Whether a one-finger swipe on the grid sends arrow keys.
+  bool get terminalSwipeArrows => _terminalSwipeArrows;
+
+  /// Whether the extra key row stays while a hardware keyboard is attached.
+  bool get terminalKeyRowWithKeyboard => _terminalKeyRowWithKeyboard;
 
   /// herdr link, agent list and pane calls; null without a native backend.
   HerdrController? get herdr => _herdr;
@@ -215,6 +228,9 @@ class TaildeckBackend extends ChangeNotifier {
       _serviceIcons = config.serviceIcons;
       _terminalKeyHaptics = config.terminalKeyHaptics;
       _terminalKeyPages = config.terminalKeyPages;
+      _terminalFontSize = config.terminalFontSize;
+      _terminalSwipeArrows = config.terminalSwipeArrows;
+      _terminalKeyRowWithKeyboard = config.terminalKeyRowWithKeyboard;
       notifications.setEnabled(config.agentNotifications);
       _herdrNode = config.herdrNode;
       _herdrUser = config.herdrUser;
@@ -602,6 +618,28 @@ class TaildeckBackend extends ChangeNotifier {
     await _persist();
   }
 
+  Future<void> setTerminalFontSize(double size) async {
+    final next = clampTerminalFont(size);
+    if (next == _terminalFontSize) return;
+    _terminalFontSize = next;
+    notifyListeners();
+    await _persist();
+  }
+
+  Future<void> setTerminalSwipeArrows(bool value) async {
+    if (value == _terminalSwipeArrows) return;
+    _terminalSwipeArrows = value;
+    notifyListeners();
+    await _persist();
+  }
+
+  Future<void> setTerminalKeyRowWithKeyboard(bool value) async {
+    if (value == _terminalKeyRowWithKeyboard) return;
+    _terminalKeyRowWithKeyboard = value;
+    notifyListeners();
+    await _persist();
+  }
+
   /// Pages of the extra key row; unknown ids and duplicates are dropped.
   Future<void> setTerminalKeyPages(List<List<String>> pages) async {
     final next = parseTerminalKeyPages(pages);
@@ -856,6 +894,9 @@ class TaildeckBackend extends ChangeNotifier {
           serviceIcons: _serviceIcons,
           terminalKeyHaptics: _terminalKeyHaptics,
           terminalKeyPages: _terminalKeyPages,
+          terminalFontSize: _terminalFontSize,
+          terminalSwipeArrows: _terminalSwipeArrows,
+          terminalKeyRowWithKeyboard: _terminalKeyRowWithKeyboard,
           agentNotifications: notifications.enabled,
           herdrNode: _herdrNode,
           herdrUser: _herdrUser,

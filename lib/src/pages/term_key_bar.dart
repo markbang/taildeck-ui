@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/widgets.dart';
 import 'package:prism_ui/prism_ui.dart';
 
@@ -135,7 +137,7 @@ abstract final class _TerminalKeyColors {
   static const lockedLabel = Color(0xFF0B0D10);
 }
 
-class _KeyButton extends StatelessWidget {
+class _KeyButton extends StatefulWidget {
   const _KeyButton({
     required this.terminalKey,
     required this.mods,
@@ -149,70 +151,126 @@ class _KeyButton extends StatelessWidget {
   final ValueChanged<TerminalMod> onModifier;
 
   @override
+  State<_KeyButton> createState() => _KeyButtonState();
+}
+
+class _KeyButtonState extends State<_KeyButton> {
+  /// Arrows repeat while held, the way a hardware arrow does; the first
+  /// repeat comes before Flutter's own 500 ms long press.
+  static const _holdDelay = Duration(milliseconds: 380);
+  static const _holdInterval = Duration(milliseconds: 70);
+  static const _repeating = {'left', 'up', 'down', 'right'};
+
+  Timer? _repeat;
+  bool _held = false;
+
+  bool get _repeats =>
+      _repeating.contains(widget.terminalKey.id) &&
+      widget.terminalKey.modifier == null;
+
+  @override
+  void dispose() {
+    _repeat?.cancel();
+    super.dispose();
+  }
+
+  void _startHold() {
+    _held = false;
+    if (!_repeats) return;
+    _repeat?.cancel();
+    _repeat = Timer(_holdDelay, () {
+      if (!mounted) return;
+      _held = true;
+      _fire();
+      _repeat = Timer.periodic(_holdInterval, (_) {
+        if (mounted) _fire();
+      });
+    });
+  }
+
+  void _stopHold() {
+    _repeat?.cancel();
+    _repeat = null;
+  }
+
+  void _fire() => widget.onKey(widget.terminalKey);
+
+  @override
   Widget build(BuildContext context) {
+    final terminalKey = widget.terminalKey;
     final l10n = AppLocalizations.of(context);
     final mod = terminalKey.modifier;
-    final armed = mod != null && mods.isArmed(mod);
-    final locked = mod != null && mods.isLocked(mod);
+    final armed = mod != null && widget.mods.isArmed(mod);
+    final locked = mod != null && widget.mods.isLocked(mod);
     final active = armed || locked;
     final radius = BorderRadius.circular(7);
     void onTap() {
+      // A hold already sent its keys; the release must not send one more.
+      if (_held) {
+        _held = false;
+        return;
+      }
       if (mod == null) {
-        onKey(terminalKey);
+        widget.onKey(terminalKey);
       } else {
-        onModifier(mod);
+        widget.onModifier(mod);
       }
     }
 
-    return Semantics(
-      button: true,
-      selected: active,
-      label: l10n.terminalKeyName(terminalKey.id),
-      value: locked
-          ? l10n.terminalKeyLocked
-          : armed
-          ? l10n.terminalKeyArmed
-          : null,
-      onTap: onTap,
-      excludeSemantics: true,
-      child: TapFeedback(
+    return Listener(
+      onPointerDown: (_) => _startHold(),
+      onPointerUp: (_) => _stopHold(),
+      onPointerCancel: (_) => _stopHold(),
+      child: Semantics(
+        button: true,
+        selected: active,
+        label: l10n.terminalKeyName(terminalKey.id),
+        value: locked
+            ? l10n.terminalKeyLocked
+            : armed
+            ? l10n.terminalKeyArmed
+            : null,
         onTap: onTap,
-        excludeFromSemantics: true,
-        shape: RoundedRectangleBorder(borderRadius: radius),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 120),
-          curve: Curves.easeOut,
-          alignment: Alignment.center,
-          decoration: ShapeDecoration(
-            color: locked
-                ? _TerminalKeyColors.accent
-                : armed
-                ? _TerminalKeyColors.accent.withValues(alpha: 0.26)
-                : _TerminalKeyColors.fill,
-            shape: RoundedRectangleBorder(
-              borderRadius: radius,
-              side: BorderSide(
-                color: active
-                    ? _TerminalKeyColors.accent
-                    : _TerminalKeyColors.border,
-                width: active ? 1 : 0.5,
+        excludeSemantics: true,
+        child: TapFeedback(
+          onTap: onTap,
+          excludeFromSemantics: true,
+          shape: RoundedRectangleBorder(borderRadius: radius),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 120),
+            curve: Curves.easeOut,
+            alignment: Alignment.center,
+            decoration: ShapeDecoration(
+              color: locked
+                  ? _TerminalKeyColors.accent
+                  : armed
+                  ? _TerminalKeyColors.accent.withValues(alpha: 0.26)
+                  : _TerminalKeyColors.fill,
+              shape: RoundedRectangleBorder(
+                borderRadius: radius,
+                side: BorderSide(
+                  color: active
+                      ? _TerminalKeyColors.accent
+                      : _TerminalKeyColors.border,
+                  width: active ? 1 : 0.5,
+                ),
               ),
             ),
-          ),
-          child: Text(
-            terminalKey.label,
-            maxLines: 1,
-            overflow: TextOverflow.clip,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontFamily: 'DejaVuSansMono',
-              fontSize: 11.5,
-              height: 1.1,
-              fontWeight: active ? FontWeight.w700 : FontWeight.w500,
-              color: locked
-                  ? _TerminalKeyColors.lockedLabel
-                  : _TerminalKeyColors.label,
-              decoration: TextDecoration.none,
+            child: Text(
+              terminalKey.label,
+              maxLines: 1,
+              overflow: TextOverflow.clip,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontFamily: 'DejaVuSansMono',
+                fontSize: 11.5,
+                height: 1.1,
+                fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+                color: locked
+                    ? _TerminalKeyColors.lockedLabel
+                    : _TerminalKeyColors.label,
+                decoration: TextDecoration.none,
+              ),
             ),
           ),
         ),

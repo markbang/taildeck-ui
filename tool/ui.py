@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Finds a uiautomator node by text and prints its tap point.
 
-Usage: ui.py dump.xml tap <needle>   -> prints "x y" for the smallest match
-       ui.py dump.xml has <needle>   -> exit 0 when a match exists
-       ui.py dump.xml edits         -> prints every text-field point, top first
-       ui.py dump.xml edit <index>  -> prints "x y" for one of those fields
+Usage: ui.py dump.xml tap <needle>     -> prints "x y" for the smallest match
+       ui.py dump.xml has <needle>     -> exit 0 when a match exists
+       ui.py dump.xml text <needle>    -> prints the smallest match's label
+       ui.py dump.xml bounds <needle>  -> prints "x1 y1 x2 y2"
+       ui.py dump.xml edits            -> prints every text-field point, top first
+       ui.py dump.xml edit <index>     -> prints "x y" for one of those fields
 """
 import re
 import sys
@@ -46,12 +48,12 @@ def matches(path, needle):
         if box is None:
             continue
         x1, y1, x2, y2 = box
-        entry = ((x2 - x1) * (y2 - y1), center(box))
+        entry = ((x2 - x1) * (y2 - y1), box, " ".join(labels).strip())
         if any(label == wanted for label in labels):
             exact.append(entry)
         else:
             partial.append(entry)
-    return [point for _, point in sorted(exact) + sorted(partial)]
+    return [entry[1:] for entry in sorted(exact) + sorted(partial)]
 
 
 def edits(path):
@@ -83,13 +85,19 @@ def main():
         print(*fields[index])
         return 0
     needle = sys.argv[3]
-    points = matches(path, needle)
+    found = matches(path, needle)
     if command == "has":
-        return 0 if points else 1
-    if not points:
+        return 0 if found else 1
+    if not found:
         print(f"no node matches {needle!r}", file=sys.stderr)
         return 1
-    print(*points[0])
+    box, label = found[0]
+    if command == "text":
+        print(label)
+    elif command == "bounds":
+        print(*box)
+    else:
+        print(*center(box))
     return 0
 
 

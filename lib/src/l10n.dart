@@ -458,6 +458,34 @@ class AppLocalizations implements UiLocalizations {
   String get terminalKeyArmed => _zh ? '已激活，作用于下一个键' : 'armed';
   String get terminalKeyLocked => _zh ? '已锁定' : 'locked';
 
+  // Gestures, zoom and the keyboard-aware layout.
+  String get terminalSelection => _zh ? '选区操作' : 'Selection actions';
+  String get terminalOpenLink => _zh ? '打开链接' : 'Open link';
+  String get terminalCopied => _zh ? '已复制' : 'Copied';
+  String get terminalOpenFailed => _zh ? '打不开这个链接' : 'Could not open the link';
+  String get terminalFontSize => _zh ? '终端字号' : 'Terminal font size';
+  String terminalFontSizeHint(double size) => _zh
+      ? '${size.toStringAsFixed(1)} pt，双指捏合可缩放'
+      : '${size.toStringAsFixed(1)} pt; pinch the grid to zoom';
+  String get terminalFontSmaller => _zh ? '缩小字号' : 'Smaller font';
+  String get terminalFontLarger => _zh ? '放大字号' : 'Larger font';
+  String get terminalSwipeArrows => _zh ? '滑动发送方向键' : 'Swipe sends arrows';
+  String get terminalSwipeArrowsOn => _zh
+      ? '单指滑动发方向键，横竖方向自动判断。'
+      : 'One finger sends arrow keys along the axis you swipe.';
+  String get terminalSwipeArrowsOff =>
+      _zh ? '已关闭，上下滑动改为翻看回滚。' : 'Off. A vertical drag scrolls the buffer.';
+  String a11ySwitch(String label, bool on) =>
+      _zh ? '$label，${on ? '已开启' : '已关闭'}' : '$label, ${on ? 'on' : 'off'}';
+  String get terminalKeyRowWithKeyboard =>
+      _zh ? '外接键盘时显示键行' : 'Key row with a hardware keyboard';
+  String get terminalKeyRowWithKeyboardOn => _zh
+      ? '接着外接键盘也显示扩展键行。'
+      : 'Keeps the extra key row while a keyboard is attached.';
+  String get terminalKeyRowWithKeyboardOff => _zh
+      ? '接着外接键盘时隐藏，把屏幕留给终端。'
+      : 'Hidden while a keyboard is attached, to give the screen to the grid.';
+
   String terminalKeyName(String id) => switch (id) {
     'esc' => _zh ? 'Esc 键' : 'Escape',
     'tab' => 'Tab',

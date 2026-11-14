@@ -33,6 +33,8 @@ Uint8List demoSessionBytes({int rows = 24}) {
   );
   b.write('  \x1b[1m全角中文\x1b[0m  日本語  ハングル  ＦＵＬＬ　ＷＩＤＴＨ\r\n');
   b.write('\x1b[2m  双倍宽度字形：汉字、假名与全角标点，各占两个单元格。\x1b[0m\r\n');
+  b.write('\x1b[1;32mdevbox\x1b[0m:\x1b[1;34m~\x1b[0m\$ \x1b[1mcat docs.txt\x1b[0m\r\n');
+  b.write('  \x1b[4mhttps://tailscale.com/kb/1151/what-is-tailscale\x1b[0m\r\n');
   b.write('\x1b[1;32mdevbox\x1b[0m:\x1b[1;34m~\x1b[0m\$ ');
   return Uint8List.fromList(utf8.encode(b.toString()));
 }
