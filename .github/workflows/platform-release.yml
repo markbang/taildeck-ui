@@ -102,9 +102,14 @@ jobs:
             fi
           done
           umask 077
-          echo "$KEYSTORE_BASE64" | base64 -d > android/release.jks
-          chmod 600 android/release.jks
-          # storeFile is resolved against android/, and printf keeps '$' literal.
+          # Gradle resolves storeFile from android/app/, where the app module lives.
+          echo "$KEYSTORE_BASE64" | base64 -d > android/app/release.jks
+          chmod 600 android/app/release.jks
+          if [ ! -s android/app/release.jks ]; then
+            echo "::error::ANDROID_KEYSTORE_BASE64 did not decode to a keystore (see docs/SIGNING.md)"
+            exit 1
+          fi
+          # printf keeps '$' literal in the passwords.
           {
             echo "storeFile=release.jks"
             printf 'storePassword=%s\n' "$KEYSTORE_PASSWORD"
@@ -112,6 +117,11 @@ jobs:
             printf 'keyPassword=%s\n' "$KEY_PASSWORD"
           } > android/key.properties
           chmod 600 android/key.properties
+          store="$(sed -n 's/^storeFile=//p' android/key.properties)"
+          if [ ! -f "android/app/$store" ]; then
+            echo "::error::storeFile=$store resolves to android/app/$store, which is missing; the keystore must land there"
+            exit 1
+          fi
       - name: Build release APKs and the AAB
         env:
           # SHA-256 of the release certificate (same key as the Kotlin app v0.1.0).
@@ -150,7 +160,7 @@ jobs:
               *) echo "::error::$apk has the wrong applicationId: $badging"; exit 1 ;;
             esac
             case "$badging" in
-              *"versionName='0.2.6'"*) ;;
+              *"versionName='0.2.7'"*) ;;
               *) echo "::error::$apk has the wrong versionName: $badging"; exit 1 ;;
             esac
             code="$(echo "$badging" | sed -n "s/.*versionCode='\([0-9]*\)'.*/\1/p")"
@@ -198,7 +208,7 @@ jobs:
           ls -l build/taildeck-android-*
       - name: Drop the signing material
         if: always()
-        run: rm -f android/release.jks android/key.properties
+        run: rm -f android/app/release.jks android/key.properties
       - uses: actions/upload-artifact@v4
         with:
           name: android

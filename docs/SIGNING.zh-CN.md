@@ -9,7 +9,7 @@ Android 发布包与 Kotlin 版（`markbang/taildeck` v0.1.0）使用同一密�
 | `applicationId` | `top.bangwu.taildeck`（与 Kotlin 版一致） |
 | `namespace` | `top.bangwu.taildeck_ui`（Kotlin 包名，与应用身份无关） |
 | `minSdk` | 26（与 Kotlin 版一致） |
-| 版本 | 取自 `pubspec.yaml`：`0.2.6+26` → `versionName=0.2.6`，`versionCode=26` |
+| 版本 | 取自 `pubspec.yaml`：`0.2.7+27` → `versionName=0.2.7`，`versionCode=27` |
 | 密钥别名 | `taildeck` |
 | 证书 SHA-256 | 以 `A7:6A:FE:7F` 开头，与已发布的 Kotlin v0.1.0 APK 相同 |
 
@@ -73,7 +73,8 @@ aapt2 dump badging build/app/outputs/flutter-apk/app-arm64-v8a-release.apk | hea
 | `ANDROID_KEY_ALIAS` | `taildeck` |
 | `ANDROID_KEY_PASSWORD` | `keyPassword` |
 
-任务把密钥库写到 `android/release.jks`（权限 `600`），用这些 secret 生成 `android/key.properties`，构建三个
+任务把密钥库写到 `android/app/release.jks`（权限 `600`），用这些 secret 生成 `android/key.properties`
+（`storeFile=release.jks` 相对 `android/app/` 解析），构建三个
 拆分 APK、通用 APK 与 AAB，然后逐个比对签名与 `ANDROID_CERT_SHA256`，不一致即失败。密钥只在任务运行期间
 存在，不会提交。
 
