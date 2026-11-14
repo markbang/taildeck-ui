@@ -155,11 +155,12 @@ mindev() { # <device-name> -> /dev/input/eventN
     /name:/ { if (index($0, "\"" want "\"") > 0) { print dev; exit } }'
 }
 
-# Each virtio finger is its own device and reports positions over 0..32767,
-# not screen pixels.
-pinch() { # <out|in> [centre "x y"]
-  local mode=${1:-out} centre=${2:-} cx cy w h dev1 dev2
-  local i d script=""
+# Each virtio finger reports positions over 0..32767, not screen pixels. The
+# emulator can be read as one device with two contact slots or as one device
+# per finger; the run tries both and keeps the one that zooms.
+pinch() { # <out|in> <slots|devices> [centre "x y"]
+  local mode=${1:-out} scheme=${2:-slots} centre=${3:-}
+  local cx cy w h dev1 dev2 i d script=""
   dev1=$(mindev virtio_input_multi_touch_1)
   dev2=$(mindev virtio_input_multi_touch_2)
   dev1=${dev1:-/dev/input/event2}
@@ -175,26 +176,56 @@ pinch() { # <out|in> [centre "x y"]
   local near=90 far=330
   if [ "$mode" = "in" ]; then near=330; far=90; fi
   scale() { awk -v v="$1" -v max="$2" -v span="$3" 'BEGIN { printf "%d", v * max / span }'; }
-  local sx1 sy sx2
+  local sx1 sx2 sy
   for i in $(seq 0 11); do
     d=$((near + (far - near) * i / 11))
     sx1=$(scale $((cx - d)) 32767 "$w")
     sx2=$(scale $((cx + d)) 32767 "$w")
     sy=$(scale "$cy" 32767 "$h")
-    script+="sendevent $dev1 3 47 0; sendevent $dev1 3 57 1; sendevent $dev1 3 53 $sx1; sendevent $dev1 3 54 $sy; sendevent $dev1 3 48 5; sendevent $dev1 0 0 0; "
-    script+="sendevent $dev2 3 47 0; sendevent $dev2 3 57 2; sendevent $dev2 3 53 $sx2; sendevent $dev2 3 54 $sy; sendevent $dev2 3 48 5; sendevent $dev2 0 0 0; sleep 0.04; "
+    if [ "$scheme" = "slots" ]; then
+      script+="sendevent $dev1 3 47 0; sendevent $dev1 3 57 1; sendevent $dev1 3 53 $sx1; sendevent $dev1 3 54 $sy; sendevent $dev1 3 48 5; sendevent $dev1 0 0 0; "
+      script+="sendevent $dev1 3 47 1; sendevent $dev1 3 57 2; sendevent $dev1 3 53 $sx2; sendevent $dev1 3 54 $sy; sendevent $dev1 3 48 5; sendevent $dev1 0 0 0; sleep 0.04; "
+    else
+      script+="sendevent $dev1 3 47 0; sendevent $dev1 3 57 1; sendevent $dev1 3 53 $sx1; sendevent $dev1 3 54 $sy; sendevent $dev1 3 48 5; sendevent $dev1 0 0 0; "
+      script+="sendevent $dev2 3 47 0; sendevent $dev2 3 57 2; sendevent $dev2 3 53 $sx2; sendevent $dev2 3 54 $sy; sendevent $dev2 3 48 5; sendevent $dev2 0 0 0; sleep 0.04; "
+    fi
   done
-  script+="sendevent $dev1 3 57 -1; sendevent $dev1 0 0 0; sendevent $dev2 3 57 -1; sendevent $dev2 0 0 0"
-  note "pinch: $mode on $dev1 $dev2 around $cx,$cy"
+  if [ "$scheme" = "slots" ]; then
+    script+="sendevent $dev1 3 47 0; sendevent $dev1 3 57 -1; sendevent $dev1 3 47 1; sendevent $dev1 3 57 -1; sendevent $dev1 0 0 0"
+  else
+    script+="sendevent $dev1 3 57 -1; sendevent $dev1 0 0 0; sendevent $dev2 3 57 -1; sendevent $dev2 0 0 0"
+  fi
+  note "pinch: $mode ($scheme) around $cx,$cy on $dev1 $dev2"
   if ! adb shell "$script" > "$out/pinch.txt" 2>&1; then
     note "pinch: sendevent failed, see pinch.txt"
   fi
 }
 
-pinch_only() {
-  pinch out
+pinch_only() { # <scheme>
+  pinch out "${1:-slots}"
   sleep 0.6
-  pinch in
+  pinch in "${1:-slots}"
+}
+
+pinch_slots() { pinch_only slots; }
+
+pinch_step() {
+  local before after
+  before=$(grid_cells || true)
+  root_on
+  record pinch 12 pinch_slots || true
+  root_off
+  sleep 1
+  after=$(grid_cells || true)
+  if [ "$before" = "$after" ]; then
+    root_on
+    pinch_only devices
+    root_off
+    sleep 1
+    after=$(grid_cells || true)
+    note "pinch: second scheme (one device per finger)"
+  fi
+  note "pinch: grid $before -> ${after:-unknown}"
 }
 
 pinch_step() {
@@ -351,6 +382,12 @@ open_link() {
   read -r x y <<< "$point"
   adb shell input tap "$x" "$y" > /dev/null 2>&1 || true
   sleep 6
+  local wizard
+  if wizard=$(ui tap 'Use without an account'); then
+    read -r wx wy <<< "$wizard"
+    adb shell input tap "$wx" "$wy" > /dev/null 2>&1 || true
+    sleep 5
+  fi
   shot open-link
   if ui has 'tailscale' > /dev/null 2>&1; then
     note "open-link: verified (a browser page shows the link)"
@@ -444,6 +481,28 @@ font=$(ui text 'pinch the grid' || true)
 note "pinch: settings reads ${font:-nothing}"
 launch "$demo_url" || true
 note "pinch: grid after relaunch $(grid_cells || echo unknown)"
+
+# 3b. the same size from Settings, kept across a relaunch
+font_step() {
+  launch "$settings_url" || return 0
+  local point x y
+  if point=$(scroll_to 'Larger font'); then
+    read -r x y <<< "$point"
+    adb shell input tap "$x" "$y" > /dev/null 2>&1 || true
+    sleep 1
+    adb shell input tap "$x" "$y" > /dev/null 2>&1 || true
+    sleep 1.5
+    note "font: settings reads $(ui text 'pinch the grid' || echo unreadable)"
+  else
+    note "font: no Larger font button"
+  fi
+  shot settings-font
+  launch "$demo_url" || true
+  note "font: grid after the step $(grid_cells || echo unknown)"
+}
+
+record font-step 12 font_step
+shot font-step
 
 # 4. selection, copy and paste
 record selection 10 select_word
