@@ -176,8 +176,8 @@ pinch() { # <out|in> [centre "x y"]
     note "pinch: two devices $first $second"
     for i in $(seq 0 11); do
       d=$((near + (far - near) * i / 11))
-      script+="sendevent $first 3 47 0; sendevent $first 3 57 1; sendevent $first 3 53 $((cx - d)); sendevent $first 3 54 $cy; sendevent $first 0 0 0; "
-      script+="sendevent $second 3 47 0; sendevent $second 3 57 2; sendevent $second 3 53 $((cx + d)); sendevent $second 3 54 $cy; sendevent $second 0 0 0; sleep 0.04; "
+      script+="sendevent $first 3 57 1; sendevent $first 3 53 $((cx - d)); sendevent $first 3 54 $cy; sendevent $first 0 0 0; "
+      script+="sendevent $second 3 57 2; sendevent $second 3 53 $((cx + d)); sendevent $second 3 54 $cy; sendevent $second 0 0 0; sleep 0.04; "
     done
     script+="sendevent $first 3 57 -1; sendevent $first 0 0 0; sendevent $second 3 57 -1; sendevent $second 0 0 0"
   else
@@ -194,7 +194,9 @@ pinch() { # <out|in> [centre "x y"]
     done
     script+="sendevent $first 3 57 -1; sendevent $first 0 0 0"
   fi
-  adb shell "$script" > /dev/null 2>&1 || note "pinch: sendevent failed"
+  if ! adb shell "$script" > "$out/pinch.txt" 2>&1; then
+    note "pinch: sendevent failed, see pinch.txt"
+  fi
 }
 
 # ---- hardware keys -------------------------------------------------------
@@ -223,23 +225,41 @@ ctrl_c() {
 # ---- actions -------------------------------------------------------------
 pinch_out() { pinch out; }
 landscape() { rotate 1; }
+title='Key row with a hardware keyboard'
+
 enable_key_row() {
-  # The emulator has a physical keyboard, so the row hides by default.
+  # The emulator has a physical keyboard, so the row hides by default. The
+  # row's own label is a semantics action, not a pointer target: tap the
+  # switch at its right edge.
   launch "$settings_url" || return 0
-  local point
-  point=$(scroll_to 'Key row with a hardware keyboard') || point=""
-  if [ -n "$point" ]; then
-    read -r x y <<< "$point"
-    adb shell input tap "$x" "$y" > /dev/null 2>&1 || true
-    sleep 2
-    if ui has ', on' > /dev/null 2>&1; then
-      note "key row with a hardware keyboard: on"
-    else
-      note "key row with a hardware keyboard: toggled, state unreadable"
-    fi
-  else
+  local x1 y1 x2 y2 x y
+  if ! scroll_to "$title" > /dev/null; then
     note "key row with a hardware keyboard: row not found"
+    return 0
   fi
+  read -r x1 y1 x2 y2 <<< "$(ui bounds "$title")" || return 0
+  x=$((x2 - $(dp 22)))
+  y=$(((y1 + y2) / 2))
+  adb shell input tap "$x" "$y" > /dev/null 2>&1 || true
+  sleep 2
+  if ui has ', on' > /dev/null 2>&1; then
+    note "key row with a hardware keyboard: on"
+  else
+    note "key row with a hardware keyboard: tapped at $x,$y, state unreadable"
+  fi
+}
+
+prepare_ime() {
+  adb shell settings put secure show_ime_with_hard_keyboard 1 > /dev/null 2>&1 || true
+  local imes
+  imes=$(adb shell ime list -s 2> /dev/null | tr -d '\r')
+  if [ -z "$imes" ]; then
+    adb shell ime enable com.google.android.inputmethod.latin/com.android.inputmethod.latin.LatinIME > /dev/null 2>&1 || true
+    adb shell ime set com.google.android.inputmethod.latin/com.android.inputmethod.latin.LatinIME > /dev/null 2>&1 || true
+    imes=$(adb shell ime list -s 2> /dev/null | tr -d '\r')
+  fi
+  note "ime: ${imes:-none}"
+  note "show_ime_with_hard_keyboard: $(adb shell settings get secure show_ime_with_hard_keyboard | tr -d '\r')"
 }
 
 swipe_step() {
@@ -327,6 +347,10 @@ open_link() {
   sleep 2
 }
 
+ime_state() {
+  adb shell dumpsys input_method 2> /dev/null | grep -o 'mInputShown=[a-z]*' | head -1 || true
+}
+
 show_keyboard() {
   local point x y
   point=$(ui tap 'Type a command') || point=""
@@ -334,17 +358,25 @@ show_keyboard() {
     note "keyboard: no input line"
     return 0
   fi
+  adb shell dumpsys input_method > "$out/input-method.txt" 2> /dev/null || true
   read -r x y <<< "$point"
   adb shell input tap "$x" "$y" > /dev/null 2>&1 || true
   sleep 3
   shot keyboard-shown
-  adb shell dumpsys input_method 2> /dev/null | grep -o 'mInputShown=[a-z]*' | head -1 | tee -a "$summary" || true
+  note "keyboard: $(ime_state) after tapping $x,$y"
+  note "keyboard: grid $(grid_cells || echo unknown)"
 }
 
 hide_keyboard() {
+  # Back closes the IME; without one it would leave the terminal page.
+  if [ "$(ime_state)" != "mInputShown=true" ]; then
+    note "keyboard-hide: no IME to close"
+    return 0
+  fi
   adb shell input keyevent KEYCODE_BACK > /dev/null 2>&1 || true
   sleep 2.5
   shot keyboard-hidden
+  note "keyboard-hide: grid $(grid_cells || echo unknown)"
 }
 
 rotate() { # <0|1>
@@ -366,6 +398,8 @@ hardware_keys() {
 
 # ---- run -----------------------------------------------------------------
 install_app "$apk" || exit 0
+adb shell getevent -pl > "$out/getevent.txt" 2>&1 || true
+prepare_ime
 enable_key_row
 
 launch "$demo_url" || exit 0
@@ -408,18 +442,26 @@ shot paste
 # 5. open the link a selection holds
 record open-link 12 open_link
 
-# 6. soft keyboard show and hide
-record keyboard 10 show_keyboard
-record keyboard-hide 8 hide_keyboard
-
-# 7. landscape
+# 6. landscape, then back to portrait
 record landscape 9 landscape
 shot landscape
 note "landscape: grid $(grid_cells || echo unknown)"
 rotate 0
-sleep 1
+sleep 2
+if ! ui has 'Terminal output' > /dev/null 2>&1; then
+  note "landscape: terminal page lost, relaunching"
+  launch "$demo_url" || true
+fi
+note "portrait: grid $(grid_cells || echo unknown)"
+
+# 7. soft keyboard show and hide
+record keyboard 11 show_keyboard
+record keyboard-hide 9 hide_keyboard
 
 # 8. hardware keys
+if ! ui has 'Terminal output' > /dev/null 2>&1; then
+  launch "$demo_url" || true
+fi
 record hardware 10 hardware_keys
 shot hardware
 

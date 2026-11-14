@@ -9,7 +9,9 @@ Uint8List demoSessionBytes({int rows = 24}) {
   final b = StringBuffer();
   b.write('\x1b]0;devbox — taildeck\x07');
   b.write('\x1b[2J\x1b[H');
-  final filler = rows + 16;
+  // Enough history to fill any phone grid, so the styled tail sits on the
+  // last rows and gestures have text to select wherever they land.
+  final filler = rows + 160;
   for (var i = 1; i <= filler; i++) {
     b.write(
       '\x1b[2m  boot [$i/$filler] tailscale0 up · derp nyc3 · handshake ok\x1b[0m\r\n',

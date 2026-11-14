@@ -160,6 +160,12 @@ class _TerminalPageState extends State<TerminalPage>
     if (state == AppLifecycleState.resumed) unawaited(_readKeyboard());
   }
 
+  @override
+  void didChangeMetrics() {
+    // ...or while the terminal is on screen.
+    unawaited(_readKeyboard());
+  }
+
   Future<void> _readKeyboard() async {
     final attached = await physicalKeyboardAttached();
     if (!mounted || attached == null || attached == _physicalKeyboard) return;
@@ -320,6 +326,13 @@ class _TerminalPageState extends State<TerminalPage>
     final uri = Uri.tryParse(url);
     if (uri == null) return false;
     return launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+
+  /// A tap on the grid or the input line brings the soft keyboard back, even
+  /// when the field never lost focus.
+  void _focusTerminal() {
+    _focus.requestFocus();
+    unawaited(SystemChannels.textInput.invokeMethod<void>('TextInput.show'));
   }
 
   void _haptic() {
@@ -566,6 +579,7 @@ class _TerminalPageState extends State<TerminalPage>
                     mono: mono,
                     focusNode: _focus,
                     onPaste: session == null ? null : _paste,
+                    onTap: _focusTerminal,
                     onChanged: _session == null ? null : _onTextChanged,
                     onSubmitted: (value) {
                       if (widget.live) {
@@ -637,7 +651,7 @@ class _TerminalPageState extends State<TerminalPage>
         swipeArrows: swipeArrows,
         onArrow: _onArrow,
         onFontSize: _zoomTo,
-        onFocus: widget.live ? _focus.requestFocus : null,
+        onFocus: _focusTerminal,
         onOpenUrl: _openUrl,
         onPaste: _paste,
       ),
@@ -938,6 +952,7 @@ class _InputBar extends StatelessWidget {
     this.focusNode,
     this.onChanged,
     this.onPaste,
+    this.onTap,
   });
 
   final TextEditingController controller;
@@ -946,6 +961,7 @@ class _InputBar extends StatelessWidget {
   final FocusNode? focusNode;
   final ValueChanged<String>? onChanged;
   final VoidCallback? onPaste;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -971,6 +987,7 @@ class _InputBar extends StatelessWidget {
                 controller: controller,
                 focusNode: focusNode,
                 autofocus: true,
+                onTap: onTap,
                 onChanged: onChanged,
                 onSubmitted: onSubmitted,
                 cursorColor: const Color(0xFF7FB4FF),
@@ -993,12 +1010,15 @@ class _InputBar extends StatelessWidget {
                 child: GestureDetector(
                   behavior: HitTestBehavior.opaque,
                   onTap: onPaste,
-                  child: const Padding(
-                    padding: EdgeInsets.only(left: 10),
-                    child: GlyphIcon(
-                      Glyphs.paste,
-                      size: 16,
-                      color: Color(0xFF7C838D),
+                  child: const SizedBox(
+                    width: 34,
+                    height: 34,
+                    child: Center(
+                      child: GlyphIcon(
+                        Glyphs.paste,
+                        size: 16,
+                        color: Color(0xFF7C838D),
+                      ),
                     ),
                   ),
                 ),

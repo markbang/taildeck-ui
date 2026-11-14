@@ -512,8 +512,10 @@ class _ToolButton extends StatelessWidget {
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        child: Container(
+          alignment: Alignment.center,
+          constraints: const BoxConstraints(minHeight: 40),
+          padding: const EdgeInsets.symmetric(horizontal: 14),
           child: Text(
             label,
             style: const TextStyle(
