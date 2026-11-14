@@ -1,12 +1,11 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/widgets.dart';
 import 'package:prism_ui/card_surface.dart';
 import 'package:prism_ui/context.dart';
 import 'package:prism_ui/focus.dart';
-import 'package:prism_ui/press_sparkle.dart';
+import 'package:prism_ui/ripple.dart';
 import 'package:prism_ui/surface.dart';
 import 'package:prism_ui/theme_data.dart';
 
@@ -30,6 +29,7 @@ class PressSurface extends StatefulWidget {
     this.minimum = const BoxConstraints(),
     this.tapTarget = Size.zero,
     this.onPressed,
+    this.squish = false,
     this.inert = false,
     this.selected = false,
     this.statesController,
@@ -62,6 +62,9 @@ class PressSurface extends StatefulWidget {
   final Size tapTarget;
   final VoidCallback? onPressed;
 
+  /// Squashes the corners while held, as a Material 3 Expressive button does.
+  final bool squish;
+
   /// Ignores presses in the enabled colors, so toggling it animates nothing.
   final bool inert;
   final bool selected;
@@ -90,7 +93,12 @@ class _PressSurfaceState extends State<PressSurface>
   static const _revealDelay = Duration(milliseconds: 150);
   static const _lookDuration = Duration(milliseconds: 200);
   static const _tintRelease = Duration(milliseconds: 250);
-  static const _inkFade = Duration(milliseconds: 200);
+  // Material's ink fades its state layer in and out in 15 ms, linear.
+  static const _inkFade = Duration(milliseconds: 15);
+
+  /// Compose's default effects spring (damping 1, stiffness 1600) settles in
+  /// 230 ms, which is how long a pressed button takes to squash.
+  static const fadeSquishDuration = Duration(milliseconds: 230);
 
   late final _tap = _PressTapRecognizer(debugOwner: this)
     ..onTapDown = _handleTapDown
@@ -104,7 +112,9 @@ class _PressSurfaceState extends State<PressSurface>
       onInvoke: (_) => _activate(),
     ),
   };
-  final _sparkles = PressSparkles();
+  late final _ripple = PressRipple(vsync: this);
+  // Compose morphs a button's shape on the default effects spring.
+  late final _squish = AnimationController(vsync: this);
   bool _inking = false;
   bool _inkHeld = false;
   AnimationController? _press;
@@ -117,31 +127,12 @@ class _PressSurfaceState extends State<PressSurface>
   bool _focused = false;
   bool _watchingKeys = false;
 
-  ValueListenable<TickerModeData>? _tickerMode;
-
   bool get _enabled => widget.onPressed != null && !widget.inert;
 
   @override
   void initState() {
     super.initState();
     widget.statesController?.update(WidgetState.disabled, !_enabled);
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final tickerMode = TickerMode.getValuesNotifier(context);
-    if (tickerMode != _tickerMode) {
-      _tickerMode?.removeListener(_dropSparklesWhenHidden);
-      _tickerMode = tickerMode..addListener(_dropSparklesWhenHidden);
-    }
-  }
-
-  // A covered page's sparkle would freeze midway and resume on its return.
-  void _dropSparklesWhenHidden() {
-    if (!_tickerMode!.value.enabled) {
-      _sparkles.clear();
-    }
   }
 
   @override
@@ -163,11 +154,11 @@ class _PressSurfaceState extends State<PressSurface>
   void dispose() {
     _reveal?.cancel();
     _stopWatchingKeys();
-    _tickerMode?.removeListener(_dropSparklesWhenHidden);
     _tap
       ..onRejected = null
       ..dispose();
-    _sparkles.dispose();
+    _ripple.dispose();
+    _squish.dispose();
     _press?.dispose();
     _lookCurve?.dispose();
     _lookMotion?.dispose();
@@ -182,6 +173,9 @@ class _PressSurfaceState extends State<PressSurface>
     _tap.addPointer(event);
     _inking = widget.look == PressLook.ink;
     if (_inking) {
+      _ripple
+        ..still = context.disableAnimations
+        ..press(event.localPosition);
       if (event.kind == PointerDeviceKind.mouse) {
         _fadeInInk();
       }
@@ -197,6 +191,7 @@ class _PressSurfaceState extends State<PressSurface>
   void _handlePointerEnd(PointerEvent event) {
     if (event.pointer == _pointer) {
       _pointer = null;
+      _ripple.release();
     }
   }
 
@@ -221,23 +216,15 @@ class _PressSurfaceState extends State<PressSurface>
     if (!_inking) {
       return;
     }
-    if (_sparkling) {
-      _sparkles.start(
-        details.localPosition,
-        vsync: this,
-        timing: context.motionDuration,
-      );
-    }
     _fadeInInk();
   }
-
-  bool get _sparkling => Theme.of(context).platform == TargetPlatform.android;
 
   void _fadeInInk() {
     if (_inkHeld) {
       return;
     }
     _inkHeld = true;
+    _squash(true);
     if (_press == null) {
       setState(() => _press = AnimationController(vsync: this));
     }
@@ -254,8 +241,11 @@ class _PressSurfaceState extends State<PressSurface>
     if (!_enabled) {
       return;
     }
-    if (widget.look == PressLook.ink && _sparkling) {
-      _sparkles.start(null, vsync: this, timing: context.motionDuration);
+    if (widget.look == PressLook.ink) {
+      _ripple
+        ..still = context.disableAnimations
+        ..press(Offset.zero)
+        ..release();
     } else {
       _showPress();
       _releasePress();
@@ -273,6 +263,7 @@ class _PressSurfaceState extends State<PressSurface>
 
   void _showPress() {
     _reveal = null;
+    _squash(true);
     final press = _press;
     if (press == null) {
       setState(() => _press = AnimationController(vsync: this, value: 1));
@@ -282,8 +273,19 @@ class _PressSurfaceState extends State<PressSurface>
     widget.statesController?.update(WidgetState.pressed, true);
   }
 
+  void _squash(bool pressed) {
+    if (!widget.squish) {
+      return;
+    }
+    final still = context.disableAnimations;
+    _squish.duration = still ? Duration.zero : fadeSquishDuration;
+    pressed ? _squish.forward() : _squish.reverse();
+  }
+
   void _releasePress() {
     _inkHeld = false;
+    _ripple.release();
+    _squash(false);
     _reveal?.cancel();
     _reveal = null;
     final press = _press;
@@ -318,6 +320,7 @@ class _PressSurfaceState extends State<PressSurface>
     _reveal?.cancel();
     _reveal = null;
     _press?.value = 0;
+    _squash(false);
     widget.statesController?.update(WidgetState.pressed, false);
   }
 
@@ -410,10 +413,11 @@ class _PressSurfaceState extends State<PressSurface>
       previousSide: previousLook.side,
       transition: transition,
       pressed: _press ?? kAlwaysDismissedAnimation,
+      squish: _squish,
       hover: widget.showsHover && widget.look != PressLook.none
           ? colorScheme.onSurface.withValues(alpha: _hoverAlpha)
           : const Color(0x00000000),
-      sparkles: _sparkles,
+      ripple: _ripple,
       inkColor: (widget.inkColor ?? widget.foreground ?? colorScheme.onSurface)
           .withValues(alpha: _inkAlpha),
       look: widget.look,

@@ -801,7 +801,7 @@ class _QuickBar extends StatelessWidget {
               padding: const EdgeInsets.only(right: 8),
               child: TapFeedback(
                 onTap: () => onRun(command),
-                scale: true,
+                squish: true,
                 shape: AppShape.full,
                 child: Container(
                   alignment: Alignment.center,

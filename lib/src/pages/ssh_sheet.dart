@@ -15,6 +15,7 @@ import '../ssh_identities.dart';
 import '../widgets/controls.dart';
 import '../widgets/entry_row.dart';
 import '../widgets/select_row.dart';
+import '../widgets/bottom_sheet.dart';
 
 typedef SshChoice = ({String user, int port, SshSession? session});
 
@@ -28,7 +29,7 @@ Future<SshChoice?> showSshSheet(
   // The sheet lives on its own route, above the BackendScope in the page tree,
   // so the backend is handed in from here.
   final backend = BackendScope.of(context);
-  return showFormSheet<SshChoice>(
+  return showMotionSheet<SshChoice>(
     context: context,
     builder: (context) => _SshSheet(
       node: node,

@@ -13,7 +13,7 @@ import '../motion.dart';
 import '../preview_env.dart';
 import '../widgets/controls.dart';
 import '../widgets/foundation.dart';
-import '../widgets/wavy.dart';
+import '../widgets/loading.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key, required this.onSignedIn, this.onCancel});
@@ -272,7 +272,7 @@ class _LoginPageState extends State<LoginPage> {
                   style: AppTextStyle.body.of(context, emphasized: true),
                 ),
               ),
-              const WavyActivityIndicator(size: 20),
+              const LoadingIndicator(size: 20),
             ],
           ),
           const SizedBox(height: 10),
@@ -367,7 +367,7 @@ class _Choices extends StatelessWidget {
                 trailing: busy
                     ? const SizedBox.square(
                         dimension: 16,
-                        child: WavyActivityIndicator(size: 16),
+                        child: LoadingIndicator(size: 16),
                       )
                     : GlyphIcon(
                         Glyphs.chevronForward,

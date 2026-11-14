@@ -11,6 +11,11 @@ kotlin_apk=${2:?usage: tool/motion_record.sh <flutter-apk> <kotlin-apk> [app-id]
 app=${3:-top.bangwu.taildeck}
 out=${4:-motion}
 kotlin_url=${KOTLIN_APK_URL:-https://github.com/markbang/taildeck/releases/download/v0.1.0/taildeck-0.1.0-x86_64.apk}
+# With a control server both apps can sign in and the screens behind login
+# become recordable: control_url is what the emulator reaches, e.g.
+# http://10.0.2.2:8080 for a control plane on the runner.
+control_url=${CONTROL_URL:-}
+auth_key=${AUTH_KEY:-}
 mkdir -p "$out"
 summary="$out/summary.txt"
 : > "$summary"
@@ -108,6 +113,22 @@ install_app() { # <apk>
 record() { # <name> <seconds> <command...>
   local name=$1 seconds=$2
   shift 2
+  # screenrecord sometimes leaves a file with no frames; try the gesture once
+  # more before giving up on the clip.
+  local attempt
+  for attempt in 1 2; do
+    _record_once "$name" "$seconds" "$@" || true
+    if [ -s "$out/$name.mp4" ] && [ "$(stat -c%s "$out/$name.mp4")" -gt 2000 ]; then
+      return 0
+    fi
+    note "$name: retrying (attempt $attempt produced no frames)"
+  done
+  return 0
+}
+
+_record_once() { # <name> <seconds> <command...>
+  local name=$1 seconds=$2
+  shift 2
   adb shell pkill -f screenrecord > /dev/null 2>&1 || true
   sleep 0.7
   adb shell rm -f /sdcard/rec.mp4 > /dev/null 2>&1 || true
@@ -165,6 +186,84 @@ flutter_tabs() {
   tapxy "$TAB_NODES"; sleep 1.2
 }
 
+# Tabs through the bottom bar of either app, found from one label.
+tabs_row() { dock_row Services; }
+
+swipe_down() { # 'x y1 y2'
+  # shellcheck disable=SC2086
+  adb shell input swipe $1 "${2:-400} ${3:-900}" "${4:-400}" > /dev/null 2>&1 || true
+  sleep 0.6
+}
+
+# ---- signed in (needs a control server) ----
+
+kotlin_login() { # <control-url> <auth-key>
+  local field
+  field=$(ui tap Advanced) || return 1
+  tapxy "$field"; sleep 1.2
+  field=$(ui tap "Control server") || return 1
+  tapxy "$field"; sleep 0.8
+  type_text "$1"
+  field=$(ui tap "Auth key") || return 1
+  tapxy "$field"; sleep 0.8
+  type_text "$2"
+  adb shell input keyevent 4 > /dev/null 2>&1 || true
+  sleep 0.8
+  field=$(ui tap "Sign in") || return 1
+  tapxy "$field"
+  local waited=0
+  while [ "$waited" -lt 40 ]; do
+    sleep 1
+    waited=$((waited + 1))
+    ui has "Scan ports" > /dev/null 2>&1 && break
+  done
+  ui tap "Nodes" > /dev/null 2>&1
+}
+
+kotlin_tailnet() {
+  local point
+  if ! kotlin_login "$1" "$2"; then
+    note "kotlin login: could not find the login controls"
+    return 0
+  fi
+  if ! ui has "Nodes" > /dev/null 2>&1; then
+    note "kotlin login: still on the login screen (control server $1)"
+    return 0
+  fi
+  note "kotlin login: signed in"
+  if tabs_row; then
+    record kotlin-tabs 6 flutter_tabs
+    check kotlin-tabs "Services"
+  fi
+  point=$(ui tap devbox) || point=$(ui tap nas) || point=
+  if [ -n "$point" ]; then
+    record kotlin-detail 6 tap_point "$point"
+    record_tap kotlin-ping 8 "Ping" tap
+    record_tap kotlin-scan 10 "Scan ports" tap
+    adb shell input keyevent 4 > /dev/null 2>&1 || true
+    sleep 1.5
+  else
+    note "kotlin-detail: no peer listed"
+  fi
+  record kotlin-refresh 6 swipe_down "$((W / 2)) 420 980 500"
+}
+
+flutter_tailnet() {
+  local point
+  if dock_row Services; then
+    record flutter-tabs 6 flutter_tabs
+  fi
+  point=$(ui tap devbox) || point=$(ui tap nas) || point=
+  if [ -n "$point" ]; then
+    record flutter-detail 6 tap_point "$point"
+    record_tap flutter-ping 8 "Ping" tap
+    record_tap flutter-scan 10 "Scan ports" tap
+    adb shell input keyevent 4 > /dev/null 2>&1 || true
+    sleep 1.5
+  fi
+  record flutter-refresh 6 swipe_down "$((W / 2)) 420 980 500"
+}
+
 flutter_detail() {
   local point
   point=$(ui tap devbox) || { note "flutter-detail: no node for 'devbox'"; return 0; }
@@ -175,12 +274,34 @@ flutter_detail() {
 
 W= TAB_SERVICES= TAB_AGENTS= TAB_NODES=
 
+# ---- signed-out gestures: the one screen both apps share ----
 install_app "$kotlin_apk" || true
 launch "$kotlin_apk" "$app"
+# A fresh install has no device name, and Sign in stays disabled without one.
+if point=$(ui tap "Device name"); then
+  tapxy "$point"; sleep 0.6
+  type_text "pixel-motion"
+  adb shell input keyevent 4 > /dev/null 2>&1 || true
+  sleep 0.6
+fi
 record_tap kotlin-expand 3 Advanced tap "Control server"
-record_tap kotlin-press 3 Advanced hold "Control server"
+record_tap kotlin-press 3 "Control server" hold "Advanced"
+# Collapse the section again so Sign in is back on screen, then press it: the
+# ripple runs, the pill's corners squash, and the app shows its loading dot
+# while the node starts.
+if point=$(ui tap Advanced); then tapxy "$point"; sleep 1; fi
+record_tap kotlin-start 8 "Sign in" tap
+adb shell input keyevent 4 > /dev/null 2>&1 || true
+
+if [ -n "$control_url" ]; then
+  kotlin_tailnet "$control_url" "${auth_key:-tskey-test}"
+else
+  note "no control server: the screens behind login stay unrecorded"
+fi
 
 install_app "$flutter_apk" || true
+launch "$flutter_apk" "$app" "taildeck://preview/?login=1&lang=en"
+record_tap flutter-loading 6 "Continue in browser" tap
 # The preview shell runs on mock data: no tailnet needed for the tabs.
 launch "$flutter_apk" "$app" "taildeck://preview/?preview=1&tab=0&lang=en"
 if dock_row Services; then
@@ -198,6 +319,7 @@ check flutter-detail "Search nodes"
 adb shell pm disable-user --user 0 com.android.chrome > /dev/null 2>&1 || true
 launch "$flutter_apk" "$app" "taildeck://preview/?login=1&lang=en"
 record_tap flutter-expand 3 "auth key" tap "Connect"
+record_tap flutter-press 3 "Control server" hold
 record_tap flutter-press 3 "Control server" hold
 record_tap flutter-start 6 "Continue in browser" tap
 adb shell pm enable com.android.chrome > /dev/null 2>&1 || true
@@ -222,14 +344,19 @@ pair() { # <kotlin clip> <flutter clip> <name>
 
 pair kotlin-expand flutter-expand login-expand
 pair kotlin-press flutter-press press
+pair kotlin-start flutter-loading loading
+pair kotlin-tabs flutter-tabs motion-tabs
+pair kotlin-detail flutter-detail motion-detail
+pair kotlin-ping flutter-ping motion-ping
+pair kotlin-scan flutter-scan motion-scan
+pair kotlin-refresh flutter-refresh motion-refresh
 
 # A GIF is what a pull request can show inline.
-for name in login-expand press; do
+for name in login-expand press loading motion-tabs motion-detail motion-ping motion-scan motion-refresh; do
   [ -s "$out/$name.mp4" ] || continue
   ffmpeg -loglevel error -y -i "$out/$name.mp4" -vf \
     'fps=12,scale=640:-1:flags=lanczos,split[a][b];[a]palettegen[p];[b][p]paletteuse' \
     "$out/$name.gif" || true
 done
 
-note "flutter only (Kotlin screens need a tailnet): flutter-tabs, flutter-detail, flutter-start"
 note "ok: motion recorded"

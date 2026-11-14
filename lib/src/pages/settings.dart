@@ -23,7 +23,7 @@ import '../widgets/select_row.dart';
 import 'key_sheet.dart';
 import 'terminal_keys_sheet.dart';
 import 'logs.dart';
-import '../widgets/wavy.dart';
+import '../widgets/loading.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({
@@ -225,6 +225,7 @@ class _SettingsPageState extends State<SettingsPage> {
     final keyCount = keyPages.fold<int>(0, (sum, page) => sum + page.length);
     return PageBody(
       title: l10n.tabSettings,
+      animateSize: true,
       children: [
         if (_notice.isNotEmpty) ...[
           InlineNotice(text: _notice, tint: scheme.primary),
@@ -324,7 +325,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   trailing: _forgetting
                       ? const SizedBox.square(
                           dimension: 18,
-                          child: WavyActivityIndicator(size: 18),
+                          child: LoadingIndicator(size: 18),
                         )
                       : null,
                 ),
@@ -397,7 +398,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 trailing: _refreshingIcons
                     ? const SizedBox.square(
                         dimension: 18,
-                        child: WavyActivityIndicator(size: 18),
+                        child: LoadingIndicator(size: 18),
                       )
                     : null,
               ),
@@ -451,7 +452,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         width: 51,
                         height: 31,
                         child: Center(
-                          child: WavyActivityIndicator(
+                          child: LoadingIndicator(
                             size: 18,
                             semanticLabel: l10n.pleaseWait,
                           ),

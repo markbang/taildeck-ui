@@ -12,7 +12,8 @@ import '../motion.dart';
 import '../widgets/controls.dart';
 import '../widgets/foundation.dart';
 import '../widgets/snackbar.dart';
-import '../widgets/wavy.dart';
+import '../widgets/loading.dart';
+import '../widgets/bottom_sheet.dart';
 
 /// One agent pane: its transcript, a prompt box, restart and model switching.
 class AgentChatPage extends StatefulWidget {
@@ -346,7 +347,7 @@ class _AgentChatPageState extends State<AgentChatPage> {
       return;
     }
     final current = _transcript?.model ?? '';
-    final chosen = await showFormSheet<String>(
+    final chosen = await showMotionSheet<String>(
       context: context,
       builder: (context) => Padding(
         padding: EdgeInsets.fromLTRB(
@@ -556,10 +557,7 @@ class _AgentChatPageState extends State<AgentChatPage> {
                 ? null
                 : () => unawaited(_pickModel()),
             icon: _switchingModel
-                ? WavyActivityIndicator(
-                    size: 16,
-                    semanticLabel: l10n.pleaseWait,
-                  )
+                ? LoadingIndicator(size: 16, semanticLabel: l10n.pleaseWait)
                 : const GlyphIcon(Glyphs2.sliders),
             tooltip: l10n.agentModel,
           ),
@@ -568,7 +566,7 @@ class _AgentChatPageState extends State<AgentChatPage> {
                 ? null
                 : () => unawaited(_restart()),
             icon: _restarting
-                ? WavyActivityIndicator(
+                ? LoadingIndicator(
                     size: 16,
                     semanticLabel: l10n.agentRestarting,
                   )
@@ -589,7 +587,7 @@ class _AgentChatPageState extends State<AgentChatPage> {
   Widget _body(BuildContext context, AppLocalizations l10n) {
     final scheme = context.colorScheme;
     if (_loading) {
-      return const Center(child: WavyActivityIndicator(size: 20));
+      return const Center(child: LoadingIndicator(size: 20));
     }
     if (_error.isNotEmpty) {
       return ListView(
@@ -743,114 +741,119 @@ class _AgentChatPageState extends State<AgentChatPage> {
     final scheme = context.colorScheme;
     final queue = _queue;
     final popup = _popup;
-    final composer = Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        if (_working)
-          _WorkingBar(
-            activity: _activity(l10n),
-            subagents: _runningSubagents.length,
-            onStop: () => unawaited(widget.herdr.sendKeys(_pane, ['esc'])),
-            onSubagents: () {
-              final running = _runningSubagents;
-              if (running.isNotEmpty) _openSubagent(running.first);
-            },
-          ),
-        if (_transcript?.todos case final todos?)
-          if (todos.any((todo) => !todo.done)) _TodoTrack(todos: todos),
-        if (widget.herdr.queueError.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
-            child: InlineNotice(
-              text: l10n.agentActionFailed(widget.herdr.queueError),
-              tint: scheme.onSurfaceVariant,
+    // Kotlin wraps the panel's column in animateContentSize(Motion.slow()), so
+    // the bar, todo track and queue grow in and out without a jump.
+    final composer = AnimatedContentSize(
+      alignment: Alignment.bottomCenter,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (_working)
+            _WorkingBar(
+              activity: _activity(l10n),
+              subagents: _runningSubagents.length,
+              onStop: () => unawaited(widget.herdr.sendKeys(_pane, ['esc'])),
+              onSubagents: () {
+                final running = _runningSubagents;
+                if (running.isNotEmpty) _openSubagent(running.first);
+              },
             ),
-          ),
-        if (queue.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 2),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  l10n.agentQueuedCount(queue.length),
-                  style: AppTextStyle.caption1
-                      .of(context)
-                      .copyWith(color: scheme.onSurfaceVariant),
-                ),
-                const SizedBox(height: 6),
-                for (final prompt in queue)
-                  _QueuedChip(
-                    prompt: prompt,
-                    onCancel: () => widget.herdr.dequeue(_pane, prompt.id),
-                    onSendNow: () => unawaited(_sendQueued(prompt)),
-                  ),
-              ],
+          if (_transcript?.todos case final todos?)
+            if (todos.any((todo) => !todo.done)) _TodoTrack(todos: todos),
+          if (widget.herdr.queueError.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+              child: InlineNotice(
+                text: l10n.agentActionFailed(widget.herdr.queueError),
+                tint: scheme.onSurfaceVariant,
+              ),
             ),
-          ),
-        if (popup)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
-            child: _CommandPopup(
-              commands: _suggestions,
-              selected: _suggestion,
-              loading: !_commandsLoaded,
-              onPick: _pickCommand,
-            ),
-          ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 6, 16, 12),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _input,
-                  focusNode: _inputFocus,
-                  minLines: 1,
-                  maxLines: 5,
-                  textInputAction: TextInputAction.send,
-                  onSubmitted: (_) {
-                    if (popup && _suggestions.isNotEmpty) {
-                      _pickCommand(_suggestion);
-                    } else {
-                      unawaited(_send());
-                    }
-                  },
-                  style: AppTextStyle.body.of(context),
-                  decoration: InputDecoration(
-                    hintText: _working
-                        ? l10n.agentQueueHint
-                        : l10n.agentPromptHint,
-                    hintStyle: AppTextStyle.body
+          if (queue.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 2),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    l10n.agentQueuedCount(queue.length),
+                    style: AppTextStyle.caption1
                         .of(context)
                         .copyWith(color: scheme.onSurfaceVariant),
-                    filled: true,
-                    fillColor: SurfaceLevel.block.colorOf(scheme),
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 12,
+                  ),
+                  const SizedBox(height: 6),
+                  for (final prompt in queue)
+                    _QueuedChip(
+                      prompt: prompt,
+                      onCancel: () => widget.herdr.dequeue(_pane, prompt.id),
+                      onSendNow: () => unawaited(_sendQueued(prompt)),
+                    ),
+                ],
+              ),
+            ),
+          if (popup)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+              child: _CommandPopup(
+                commands: _suggestions,
+                selected: _suggestion,
+                loading: !_commandsLoaded,
+                onPick: _pickCommand,
+              ),
+            ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 6, 16, 12),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _input,
+                    focusNode: _inputFocus,
+                    minLines: 1,
+                    maxLines: 5,
+                    textInputAction: TextInputAction.send,
+                    onSubmitted: (_) {
+                      if (popup && _suggestions.isNotEmpty) {
+                        _pickCommand(_suggestion);
+                      } else {
+                        unawaited(_send());
+                      }
+                    },
+                    style: AppTextStyle.body.of(context),
+                    decoration: InputDecoration(
+                      hintText: _working
+                          ? l10n.agentQueueHint
+                          : l10n.agentPromptHint,
+                      hintStyle: AppTextStyle.body
+                          .of(context)
+                          .copyWith(color: scheme.onSurfaceVariant),
+                      filled: true,
+                      fillColor: SurfaceLevel.block.colorOf(scheme),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 12,
+                      ),
                     ),
                   ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              GestureDetector(
-                onLongPress: _working ? () => unawaited(_sendNow()) : null,
-                child: IconButton(
-                  onPressed: _sending ? null : () => unawaited(_send()),
-                  icon: _sending
-                      ? const WavyActivityIndicator(size: 18)
-                      : GlyphIcon(
-                          _working ? Glyphs2.schedule : Glyphs2.arrowUp,
-                        ),
-                  tooltip: _working ? l10n.agentQueued : l10n.agentSend,
+                const SizedBox(width: 8),
+                GestureDetector(
+                  onLongPress: _working ? () => unawaited(_sendNow()) : null,
+                  child: IconButton(
+                    onPressed: _sending ? null : () => unawaited(_send()),
+                    icon: _sending
+                        ? const LoadingIndicator(size: 18)
+                        : GlyphIcon(
+                            _working ? Glyphs2.schedule : Glyphs2.arrowUp,
+                          ),
+                    tooltip: _working ? l10n.agentQueued : l10n.agentSend,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
     // A blocked agent takes the composer away and slides its prompt panel in
     // from a third of the height (Kotlin's `AnimatedContent(blocked)`).
@@ -922,7 +925,7 @@ class _CommandPopup extends StatelessWidget {
                   vertical: 11,
                 ),
                 child: loading
-                    ? const WavyActivityIndicator(size: 16)
+                    ? const LoadingIndicator(size: 16)
                     : Text(
                         l10n.agentCommandsEmpty,
                         style: AppTextStyle.footnote
@@ -1191,7 +1194,9 @@ class _MessageBlock extends StatelessWidget {
           text: message.text,
           style: caption.copyWith(fontStyle: FontStyle.italic),
         );
-      case 'system' || 'command' || 'output' || 'recap':
+      case 'output':
+        return _CommandOutput(text: message.text, style: mono);
+      case 'system' || 'command' || 'recap':
         return Padding(
           padding: const EdgeInsets.symmetric(vertical: 2),
           child: SelectableText(
@@ -1213,6 +1218,54 @@ class _MessageBlock extends StatelessWidget {
           ),
         );
     }
+  }
+}
+
+/// A tool's output, laid out as Kotlin's `CommandOutput`: six lines until it
+/// is tapped, then all of it, resizing with `animateContentSize(Motion.slow())`.
+class _CommandOutput extends StatefulWidget {
+  const _CommandOutput({required this.text, required this.style});
+
+  final String text;
+  final TextStyle style;
+
+  @override
+  State<_CommandOutput> createState() => _CommandOutputState();
+}
+
+class _CommandOutputState extends State<_CommandOutput> {
+  bool _open = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = context.colorScheme;
+    final lines = widget.text.split('\n');
+    final collapsed = lines.length > 6;
+    final shown = _open || !collapsed
+        ? widget.text
+        : '${lines.take(6).join('\n')}\n…';
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: AnimatedContentSize(
+        child: TapFeedback(
+          onTap: collapsed ? () => setState(() => _open = !_open) : null,
+          shape: AppShape.all(AppCorner.sm),
+          child: DecoratedBox(
+            decoration: ShapeDecoration(
+              color: scheme.surfaceContainer,
+              shape: AppShape.all(AppCorner.sm),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(10),
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: SelectableText(shown, style: widget.style),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -1347,7 +1400,7 @@ class _RemoteImageState extends State<_RemoteImage> {
         shape: AppShape.all(AppCorner.md),
       ),
       child: busy
-          ? const WavyActivityIndicator(size: 18)
+          ? const LoadingIndicator(size: 18)
           : Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -1593,7 +1646,7 @@ class _SubagentViewState extends State<_SubagentView> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const WavyActivityIndicator(size: 20),
+            const LoadingIndicator(size: 20),
             const SizedBox(height: 10),
             Text(
               l10n.agentSubagentLoading,
@@ -2125,7 +2178,7 @@ class _ToolGroupState extends State<_ToolGroup> {
               child: Row(
                 children: [
                   if (running != null)
-                    const WavyActivityIndicator(size: 16)
+                    const LoadingIndicator(size: 16)
                   else
                     GlyphIcon(
                       Glyphs2.doc,

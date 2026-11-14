@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/rendering.dart';
+import 'package:prism_ui/ripple.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:prism_ui/press_sparkle.dart';
@@ -29,8 +30,10 @@ class CardSurface extends SingleChildRenderObjectWidget {
     required this.previousSide,
     required this.transition,
     required this.pressed,
+    this.squish = kAlwaysDismissedAnimation,
     this.hover = const Color(0x00000000),
     this.sparkles,
+    this.ripple,
     this.inkColor = const Color(0x00000000),
     required this.look,
     required this.brightness,
@@ -60,10 +63,17 @@ class CardSurface extends SingleChildRenderObjectWidget {
   /// How far the press highlight shows, from 0 to 1.
   final Animation<double> pressed;
 
+  /// How far a pressed surface has morphed to its pressed shape, from 0 to 1
+  /// (Material 3 Expressive squashes a button's corners while it is held).
+  final Animation<double> squish;
+
   /// Laid over the fill while a pointer rests on an interactive surface.
   final Color hover;
 
   final PressSparkles? sparkles;
+
+  /// Material's ripple, painted under the child while it runs.
+  final PressRipple? ripple;
   final Color inkColor;
   final PressLook look;
 
@@ -92,8 +102,10 @@ class CardSurface extends SingleChildRenderObjectWidget {
           previousSide: previousSide,
           transition: transition,
           pressed: pressed,
+          squish: squish,
           hover: hover,
           sparkles: sparkles,
+          ripple: ripple,
           inkColor: inkColor,
           look: look,
           brightness: brightness,
@@ -124,8 +136,10 @@ class CardSurface extends SingleChildRenderObjectWidget {
       ..previousSide = previousSide
       ..transition = transition
       ..pressed = pressed
+      ..squish = squish
       ..hover = hover
       ..sparkles = sparkles
+      ..ripple = ripple
       ..inkColor = inkColor
       ..look = look
       ..brightness = brightness
@@ -154,8 +168,10 @@ class RenderCardSurface extends RenderShiftedBox
     required BorderSide previousSide,
     required Animation<double> transition,
     required Animation<double> pressed,
+    required Animation<double> squish,
     required Color hover,
     required PressSparkles? sparkles,
+    required PressRipple? ripple,
     required Color inkColor,
     required PressLook look,
     required Brightness brightness,
@@ -188,7 +204,11 @@ class RenderCardSurface extends RenderShiftedBox
        _clipsChild = clipsChild,
        _textDirection = textDirection,
        _tinting = look == PressLook.tint && pressed.value > 0,
-       super(null);
+       super(null) {
+    // Through the setters, which wire up the repaint listeners.
+    this.squish = squish;
+    this.ripple = ripple;
+  }
 
   // iOS 27 fades a held button to three quarters in a light scheme and mixes
   // a fifth of white into it in a dark one.
@@ -199,6 +219,54 @@ class RenderCardSurface extends RenderShiftedBox
   ValueChanged<PointerDownEvent>? onPointerDown;
   ValueChanged<PointerEvent>? onPointerEnd;
   ValueChanged<bool>? onHover;
+
+  /// The pressed corner, as Material's CornerSmall token (8 dp).
+  static const _pressedCorner = Radius.circular(8);
+
+  Animation<double> _squish = kAlwaysDismissedAnimation;
+
+  set squish(Animation<double> value) {
+    if (value == _squish) return;
+    _squish.removeListener(markNeedsPaint);
+    _squish = value..addListener(markNeedsPaint);
+    markNeedsPaint();
+  }
+
+  PressRipple? _ripple;
+
+  PressRipple? get ripple => _ripple;
+
+  set ripple(PressRipple? value) {
+    if (value == _ripple) return;
+    _ripple?.removeListener(markNeedsPaint);
+    _ripple = value?..addListener(markNeedsPaint);
+    markNeedsPaint();
+  }
+
+  /// [OutlinedBorder] as painted now: a held button's corners have squashed
+  /// from a pill to [_pressedCorner], as Compose's `shapeByInteraction` does.
+  OutlinedBorder _shapeAt(Rect rect) {
+    final shape = _shape;
+    final squish = _squish.value;
+    if (squish <= 0 || shape is! RoundedSuperellipseBorder) {
+      return shape;
+    }
+    final radius = shape.borderRadius;
+    if (radius is! BorderRadius) {
+      return shape;
+    }
+    final pill = Radius.circular(math.min(rect.width, rect.height) / 2);
+    final from = radius.topLeft.x >= rect.height
+        ? BorderRadius.all(pill)
+        : radius;
+    return shape.copyWith(
+      borderRadius: BorderRadius.lerp(
+        from,
+        const BorderRadius.all(_pressedCorner),
+        squish,
+      ),
+    );
+  }
 
   Rect _visual = Rect.zero;
   bool _childClaimed = false;
@@ -487,6 +555,8 @@ class RenderCardSurface extends RenderShiftedBox
 
   @override
   void dispose() {
+    _ripple?.removeListener(markNeedsPaint);
+    _squish.removeListener(markNeedsPaint);
     _clip.layer = null;
     super.dispose();
   }
@@ -679,6 +749,7 @@ class RenderCardSurface extends RenderShiftedBox
   void _paintSurface(PaintingContext context, Offset offset) {
     final canvas = context.canvas;
     final rect = _visual.shift(offset);
+    final shape = _shapeAt(rect);
     final progress = _transition.value;
     var fill = Color.lerp(_previousFill, _fill, progress)!;
     if (_hovered && _interactive && _hover.a > 0) {
@@ -693,31 +764,36 @@ class RenderCardSurface extends RenderShiftedBox
     }
     if (fill.a > 0) {
       final paint = Paint()..color = fill;
-      if (_shape.preferPaintInterior) {
-        _shape.paintInterior(
-          canvas,
-          rect,
-          paint,
-          textDirection: _textDirection,
-        );
+      if (shape.preferPaintInterior) {
+        shape.paintInterior(canvas, rect, paint, textDirection: _textDirection);
       } else {
         canvas.drawPath(
-          _shape.getOuterPath(rect, textDirection: _textDirection),
+          shape.getOuterPath(rect, textDirection: _textDirection),
           paint,
         );
       }
+    }
+    final ripple = _ripple;
+    if (ripple != null && ripple.visible) {
+      // The ripple works in the surface's own coordinates.
+      canvas
+        ..save()
+        ..clipPath(shape.getOuterPath(rect, textDirection: _textDirection))
+        ..translate(offset.dx, offset.dy);
+      ripple.paint(canvas, _visual, _inkColor);
+      canvas.restore();
     }
     final sparkles = _sparkles;
     if (sparkles != null && !sparkles.isEmpty) {
       canvas
         ..save()
-        ..clipPath(_shape.getOuterPath(rect, textDirection: _textDirection));
+        ..clipPath(shape.getOuterPath(rect, textDirection: _textDirection));
       sparkles.paint(canvas, rect, offset, _inkColor);
       canvas.restore();
     }
     final side = BorderSide.lerp(_previousSide, _side, progress);
     if (side.style != BorderStyle.none && side.width > 0) {
-      _shape
+      shape
           .copyWith(side: side)
           .paint(canvas, rect, textDirection: _textDirection);
     }
@@ -735,7 +811,7 @@ class RenderCardSurface extends RenderShiftedBox
       needsCompositing,
       offset,
       Offset.zero & size,
-      _shape.getOuterPath(_visual, textDirection: _textDirection),
+      _shapeAt(_visual).getOuterPath(_visual, textDirection: _textDirection),
       (context, offset) => context.paintChild(child, offset + childOffset),
       clipBehavior: Clip.antiAlias,
       oldLayer: _clip.layer,

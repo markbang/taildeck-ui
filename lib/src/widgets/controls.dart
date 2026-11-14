@@ -6,18 +6,97 @@ import 'package:prism_ui/prism_ui.dart';
 
 import '../l10n.dart';
 import '../motion.dart';
-import 'wavy.dart';
+import 'loading.dart';
+
+/// Material 3's pressed shape: a pill's corners squash to 8 dp while held, on
+/// Compose's default effects spring (230 ms, no bounce). Clipping keeps the
+/// child's own fill inside the narrower shape.
+class PressSquish extends StatefulWidget {
+  const PressSquish({
+    super.key,
+    required this.shape,
+    required this.pressed,
+    required this.child,
+  });
+
+  final ShapeBorder shape;
+  final bool pressed;
+  final Widget child;
+
+  @override
+  State<PressSquish> createState() => _PressSquishState();
+}
+
+class _PressSquishState extends State<PressSquish>
+    with SingleTickerProviderStateMixin {
+  static const _pressedCorner = 8.0;
+
+  late final _controller = AnimationController(
+    vsync: this,
+    value: widget.pressed ? 1 : 0,
+  );
+  late final _curve = CurvedAnimation(parent: _controller, curve: fade.curve);
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _controller.duration = motionDuration(context, fade);
+  }
+
+  @override
+  void didUpdateWidget(covariant PressSquish oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.pressed == widget.pressed) return;
+    widget.pressed ? _controller.forward() : _controller.reverse();
+  }
+
+  @override
+  void dispose() {
+    _curve.dispose();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final height = constraints.maxHeight.isFinite
+            ? constraints.maxHeight
+            : 44.0;
+        return AnimatedBuilder(
+          animation: _curve,
+          builder: (context, child) {
+            final t = _curve.value;
+            if (t == 0) return child!;
+            final pill = height / 2;
+            final shape = RoundedSuperellipseBorder(
+              borderRadius: BorderRadius.all(
+                Radius.circular(pill + (_pressedCorner - pill) * t),
+              ),
+            );
+            return ClipPath(
+              clipper: ShapeBorderClipper(shape: shape),
+              child: child,
+            );
+          },
+          child: widget.child,
+        );
+      },
+    );
+  }
+}
 
 /// A pressable surface with the state layer [PressRegion] leaves out by
-/// default: a tint on press and focus, and an optional slight scale for
-/// surfaces without an ink fill.
+/// default: a tint on press and focus, and Material's pressed shape for
+/// surfaces drawn as buttons.
 class TapFeedback extends StatefulWidget {
   const TapFeedback({
     super.key,
     this.onTap,
     this.shape,
     this.fill,
-    this.scale = false,
+    this.squish = false,
     this.enabled = true,
     this.excludeFromSemantics = false,
     this.semanticsLabel,
@@ -27,7 +106,7 @@ class TapFeedback extends StatefulWidget {
   final VoidCallback? onTap;
   final ShapeBorder? shape;
   final Color? fill;
-  final bool scale;
+  final bool squish;
   final bool enabled;
   final bool excludeFromSemantics;
   final String? semanticsLabel;
@@ -48,18 +127,18 @@ class _TapFeedbackState extends State<TapFeedback> {
   @override
   Widget build(BuildContext context) {
     final enabled = widget.enabled && widget.onTap != null;
-    final content = widget.scale
-        ? AnimatedScale(
-            scale: _pressed && enabled ? 0.97 : 1,
-            duration: const Duration(milliseconds: 90),
-            curve: Curves.easeOut,
+    final shape = widget.shape ?? const RoundedSuperellipseBorder();
+    final content = widget.squish
+        ? PressSquish(
+            shape: shape,
+            pressed: _pressed && enabled,
             child: widget.child,
           )
         : widget.child;
     final region = PressRegion(
       onTap: enabled ? widget.onTap : null,
-      onPressedChanged: widget.scale ? _setPressed : null,
-      shape: widget.shape ?? const RoundedSuperellipseBorder(),
+      onPressedChanged: widget.squish ? _setPressed : null,
+      shape: shape,
       fill: widget.fill,
       overlay: PressRegion.pressOverlay,
       excludeFromSemantics: widget.excludeFromSemantics,
@@ -114,7 +193,7 @@ class LoadingButton extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               if (loading)
-                WavyActivityIndicator(size: 18, semanticLabel: l10n.pleaseWait)
+                LoadingIndicator(size: 18, semanticLabel: l10n.pleaseWait)
               else if (glyph != null)
                 GlyphIcon(glyph!, size: 18),
               if (loading || glyph != null) const SizedBox(width: 8),

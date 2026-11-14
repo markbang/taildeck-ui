@@ -287,7 +287,8 @@ class IconButton extends StatelessWidget {
       iconSize: 24,
       visualDensity: VisualDensity.standard,
       tapTargetSize: theme.tapTargetSize,
-      pressLook: PressLook.tint,
+      // Material 3 answers a press with a ripple, as the app's Kotlin skin does.
+      pressLook: PressLook.ink,
       ringStandsOff: false,
     );
   }
@@ -366,7 +367,7 @@ abstract class _LabelButton extends StatelessWidget {
       iconSize: 18,
       visualDensity: theme.visualDensity,
       tapTargetSize: theme.tapTargetSize,
-      pressLook: PressLook.tint,
+      pressLook: PressLook.ink,
       ringStandsOff: colors.ringStandsOff,
     );
   }
@@ -715,6 +716,7 @@ class _StyledButtonState extends State<_StyledButton> {
       tapTarget: tapTarget,
       onPressed: widget.onPressed,
       selected: widget.selected,
+      squish: true,
       statesController: _states,
       reportsHover: true,
       showsHover: !_stylesHover,

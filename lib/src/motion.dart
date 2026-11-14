@@ -39,13 +39,20 @@ final fade = _spring(1600, 1, 0.23);
 /// Fades that leave quickly (fastEffectsSpec): critically damped 3800, 150 ms.
 final fadeFast = _spring(3800, 1, 0.15);
 
+/// Anything that moves and resizes on its own (defaultSpatialSpec): 0.8/380,
+/// 440 ms.
+final defaultSpatial = _spring(380, 0.8, 0.44);
+
+/// A short move or resize (fastSpatialSpec): 0.6/800, 410 ms.
+final fastSpatial = _spring(800, 0.6, 0.41);
+
 /// Compose's `animateFloatAsState` default spring (`spring()`: no bounce,
 /// stiffness 1500), used for chevrons.
 final chevron = _spring(1500, 1, 0.24);
 
 /// Compose's `animateItem()` placement spring, for rows that join or leave a
-/// list.
-final placement = _spring(380, 0.8, 0.45);
+/// list: the default spatial spring.
+final placement = defaultSpatial;
 
 /// [spec]'s duration, or zero when the platform asks for reduced motion.
 Duration motionDuration(BuildContext context, MotionSpec spec) =>
@@ -93,6 +100,40 @@ class ExpandVisibility extends StatelessWidget {
     return AnimatedSize(
       duration: motionDuration(context, slowSpatial),
       curve: context.disableAnimations ? Curves.linear : slowSpatial.curve,
+      alignment: alignment,
+      child: AnimatedSwitcher(
+        duration: motionDuration(context, fade),
+        switchInCurve: fade.curve,
+        switchOutCurve: fadeFast.curve,
+        child: visible
+            ? KeyedSubtree(key: const ValueKey(true), child: child)
+            : const SizedBox.shrink(),
+      ),
+    );
+  }
+}
+
+/// Shows or hides [child] the way a lazy list item joins or leaves: the space
+/// it takes animates on Compose's `animateItem()` placement spring, so the
+/// rows below slide over the same 440 ms.
+class PlacementVisibility extends StatelessWidget {
+  const PlacementVisibility({
+    super.key,
+    required this.visible,
+    required this.child,
+    this.alignment = Alignment.topCenter,
+  });
+
+  final bool visible;
+  final Widget child;
+  final AlignmentGeometry alignment;
+
+  @override
+  Widget build(BuildContext context) {
+    final still = context.disableAnimations;
+    return AnimatedSize(
+      duration: motionDuration(context, placement),
+      curve: still ? Curves.linear : placement.curve,
       alignment: alignment,
       child: AnimatedSwitcher(
         duration: motionDuration(context, fade),

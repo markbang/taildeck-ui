@@ -6,13 +6,14 @@ import '../backend.dart';
 import '../l10n.dart';
 import '../ssh_identities.dart';
 import '../widgets/controls.dart';
+import '../widgets/bottom_sheet.dart';
 
 /// Imports a private key as `ssh/<name>.key`; null when dismissed.
 Future<SshIdentity?> showKeySheet(
   BuildContext context,
   TaildeckBackend backend,
 ) {
-  return showFormSheet<SshIdentity>(
+  return showMotionSheet<SshIdentity>(
     context: context,
     builder: (context) => _KeySheet(backend: backend),
   );

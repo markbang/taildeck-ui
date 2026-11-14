@@ -14,7 +14,7 @@ import '../webview/web_page.dart';
 import '../widgets/controls.dart';
 import '../widgets/foundation.dart';
 import 'service_sheet.dart';
-import '../widgets/wavy.dart';
+import '../widgets/loading.dart';
 
 class ServicesPage extends StatefulWidget {
   const ServicesPage({super.key});
@@ -158,7 +158,7 @@ class _ServicesPageState extends State<ServicesPage> {
                     trailing: _deleting == service.id
                         ? const SizedBox.square(
                             dimension: 18,
-                            child: WavyActivityIndicator(size: 18),
+                            child: LoadingIndicator(size: 18),
                           )
                         : PopupAnchor(
                             targetBuilder: (open) => IconButton(
