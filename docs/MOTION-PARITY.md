@@ -107,7 +107,7 @@ GPU is busy:
 | --- | --- |
 | `login-expand.mp4` | Kotlin / Flutter: the advanced section expanding, one gesture each |
 | `loading.mp4` | Kotlin / Flutter: Sign in pressed, and the loading dot that follows |
-| `press.mp4` | Kotlin / Flutter: a press and hold on the same control, ripple and pressed shape |
+| `press.mp4` | Kotlin / Flutter: a press and hold on the login's advanced control, ripple and pressed shape. The left half is the Kotlin APK on the emulator, the right half this build's web preview (the emulator's encoder dropped this clip) |
 | `flutter-login-expand.mp4` | This build: the auth-key section expanding (fade + size) |
 | `flutter-tabs.mp4` | This build: nodes → services → agents → nodes, sliding 1/8 and cross-fading |
 | `flutter-detail.mp4` | This build: node page sliding in from 1/5 and popping back |

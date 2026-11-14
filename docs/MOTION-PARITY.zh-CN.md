@@ -100,7 +100,7 @@ Flutter 侧全部走 `context.motionDuration(spec)`（`prism_ui`），因此系�
 | --- | --- |
 | `login-expand.mp4` | Kotlin / Flutter：高级区域展开，各一次手势 |
 | `loading.mp4` | Kotlin / Flutter：按下登录按钮，以及随后的载入圆点 |
-| `press.mp4` | Kotlin / Flutter：同一个控件上的长按，水波与按下形变 |
+| `press.mp4` | Kotlin / Flutter：登录页高级控件上的长按，水波与按下形变。左半是模拟器上的 Kotlin APK，右半是本版本的 Web 预览（模拟器编码器丢掉了这一段） |
 | `flutter-login-expand.mp4` | 本版本：认证密钥区域展开（淡入 + 尺寸变化） |
 | `flutter-tabs.mp4` | 本版本：节点 → 服务 → Agent → 节点，滑动 1/8 并交叉淡化 |
 | `flutter-detail.mp4` | 本版本：节点页从 1/5 处滑入，返回时反向 |
