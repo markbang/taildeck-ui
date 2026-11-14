@@ -43,7 +43,7 @@ scroll_to() { # <needle> [tries]
       echo "$point"
       return 0
     fi
-    adb shell input swipe 540 1700 540 900 300 > /dev/null 2>&1 || true
+    adb shell input swipe 540 1500 540 800 300 > /dev/null 2>&1 || true
     sleep 1
   done
   return 1
@@ -131,10 +131,10 @@ ctrl_c() { # arm Ctrl, then type a letter
 
 swipe_pages() { # one page per swipe, twice
   read -r _ y <<< "$ctrl"
-  adb shell input swipe "$(dp 340)" "$y" "$(dp 40)" "$y" 260 > /dev/null 2>&1 || true
-  sleep 1.6
-  adb shell input swipe "$(dp 340)" "$y" "$(dp 40)" "$y" 260 > /dev/null 2>&1 || true
-  sleep 1.6
+  adb shell input swipe "$(dp 330)" "$y" "$(dp 70)" "$y" 450 > /dev/null 2>&1 || true
+  sleep 1.5
+  adb shell input swipe "$(dp 330)" "$y" "$(dp 70)" "$y" 450 > /dev/null 2>&1 || true
+  sleep 1.5
 }
 
 toggle_haptics() {
@@ -147,8 +147,12 @@ edit_keys() {
   read -r x y <<< "$row"
   adb shell input tap "$x" "$y" > /dev/null 2>&1 || true
   sleep 2.5
+  if ! ui has 'Choose which keys' > /dev/null 2>&1; then
+    note "keyrow-editor: the sheet did not open"
+    return 0
+  fi
   local chip
-  chip=$(ui tap 'Page up') || chip=$(ui tap 'Home') || chip=""
+  chip=$(ui tap 'Vertical bar') || chip=""
   if [ -n "$chip" ]; then
     read -r cx cy <<< "$chip"
     adb shell input tap "$cx" "$cy" > /dev/null 2>&1 || true
@@ -189,12 +193,18 @@ fi
 # ---- 3. swipe to the next page ----------------------------------------
 if [ -n "$ctrl" ]; then
   record keybar-pages 8 swipe_pages
-  shot keybar-page3
   if ui has 'page 3 of 3' > /dev/null 2>&1; then
     note "keybar-pages: verified (two swipes reached page 3)"
   else
-    note "keybar-pages: no page 3 after the swipes"
+    note "keybar-pages: swipe missed, stepping with the page dots"
+    for _ in 1 2; do
+      point=$(ui tap 'Key row page') || point=""
+      [ -n "$point" ] && adb shell input tap $point > /dev/null 2>&1
+      sleep 1.2
+    done
+    ui has 'page 3 of 3' > /dev/null 2>&1 && note "keybar-pages: dots reached page 3"
   fi
+  shot keybar-page3
 else
   note "keybar-pages: no Control key found"
 fi
