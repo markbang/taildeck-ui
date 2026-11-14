@@ -68,23 +68,51 @@ jobs:
       - name: Build a test control server
         # Both apps need a control plane to leave their login screens. Tailscale's
         # own `testcontrol` runs one, with a DERP relay, on a single port and
-        # accepts any auth key, so the emulator only needs http://10.0.2.2:8080.
+        # accepts any auth key. It binds loopback, which the emulator reaches as
+        # 10.0.2.2:8080, and its relay map points at 127.0.0.1 too: the relay
+        # port is reversed into the device below, so the nodes keep a path even
+        # though the emulator cannot see the runner's loopback.
         id: control
         run: |
           set -o pipefail
           if go install tailscale.com/cmd/testcontrol@v1.104.7 2>&1 | tee /tmp/testcontrol.log; then
-            "$(go env GOPATH)/bin/testcontrol" -addr 0.0.0.0:8080 > /tmp/control.log 2>&1 &
-            sleep 4
-            if ss -ltn | grep -q ':8080 '; then
+            "$(go env GOPATH)/bin/testcontrol" -addr 127.0.0.1:8080 > /tmp/control.log 2>&1 &
+            for _ in $(seq 1 20); do
+              grep -q 'listening on' /tmp/control.log && break
+              sleep 1
+            done
+            if grep -q 'listening on 127.0.0.1:8080' /tmp/control.log; then
               echo "control_url=http://10.0.2.2:8080" >> "$GITHUB_OUTPUT"
               echo "auth_key=tskey-test" >> "$GITHUB_OUTPUT"
-              echo "control server listening on 8080" | tee -a "$GITHUB_STEP_SUMMARY"
+              derp=$(sed -n 's/.*DERP httpsrv listener: 127\.0\.0\.1:\([0-9]*\).*/\1/p' /tmp/control.log | head -1)
+              echo "derp_port=$derp" >> "$GITHUB_OUTPUT"
+              echo "control server listening on 8080, relay on ${derp:-?}" | tee -a "$GITHUB_STEP_SUMMARY"
             else
               echo "control server did not listen; see /tmp/control.log" | tee -a "$GITHUB_STEP_SUMMARY"
             fi
           else
             echo "could not install testcontrol; recording the signed-out screens only" | tee -a "$GITHUB_STEP_SUMMARY"
           fi
+      - name: Start a peer node
+        # testcontrol's own fake nodes answer nothing, and the node page's Ping,
+        # Scan and pull gestures need a peer that is online and has a port open.
+        # This one joins the same tailnet and serves a page on 3000, a port both
+        # apps' scan lists carry.
+        id: peer
+        run: |
+          if [ -z "${{ steps.control.outputs.control_url }}" ]; then
+            echo "peer= " >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          set -o pipefail
+          (cd tool/motion_peer && go build -o /tmp/motion_peer .) 2>&1 | tee /tmp/peer-build.log
+          /tmp/motion_peer -control http://127.0.0.1:8080 -port 3000 > /tmp/peer.log 2>&1 &
+          for _ in $(seq 1 60); do
+            grep -q 'serving on' /tmp/peer.log && break
+            sleep 1
+          done
+          grep 'serving on' /tmp/peer.log || echo 'peer did not come up; see /tmp/peer.log'
+          echo "peer=motionpeer" >> "$GITHUB_OUTPUT"
       - name: Install the recording tools
         run: |
           sudo apt-get update -qq
@@ -108,6 +136,8 @@ jobs:
           script: >-
             CONTROL_URL='${{ steps.control.outputs.control_url }}'
             AUTH_KEY='${{ steps.control.outputs.auth_key }}'
+            PEER='${{ steps.peer.outputs.peer }}'
+            DERP_PORT='${{ steps.control.outputs.derp_port }}'
             bash tool/motion_record.sh build/motion.apk build/kotlin.apk
             top.bangwu.taildeck motion
       - name: Job summary
