@@ -261,11 +261,19 @@ W= TAB_SERVICES= TAB_AGENTS= TAB_NODES=
 # ---- signed-out gestures: the one screen both apps share ----
 install_app "$kotlin_apk" || true
 launch "$kotlin_apk" "$app"
+# A fresh install has no device name, and Sign in stays disabled without one.
+if point=$(ui tap "Device name"); then
+  tapxy "$point"; sleep 0.6
+  type_text "pixel-motion"
+  adb shell input keyevent 4 > /dev/null 2>&1 || true
+  sleep 0.6
+fi
 record_tap kotlin-expand 3 Advanced tap "Control server"
-record_tap kotlin-press 3 Advanced hold "Control server"
-# Press and hold the sign-in button: the ripple runs and the pill's corners
-# squash, and the app then shows its loading dot while the node starts.
-record_tap kotlin-start 6 "Sign in" tap
+record_tap kotlin-press 3 "Control server" hold "Advanced"
+# Press Sign in: the ripple runs, the pill's corners squash, and the app shows
+# its loading dot while the node starts.
+record_tap kotlin-start 8 "Sign in" tap
+adb shell input keyevent 4 > /dev/null 2>&1 || true
 
 if [ -n "$control_url" ]; then
   kotlin_tailnet "$control_url" "${auth_key:-tskey-test}"
@@ -293,6 +301,7 @@ check flutter-detail "Search nodes"
 adb shell pm disable-user --user 0 com.android.chrome > /dev/null 2>&1 || true
 launch "$flutter_apk" "$app" "taildeck://preview/?login=1&lang=en"
 record_tap flutter-expand 3 "auth key" tap "Connect"
+record_tap flutter-press 3 "Control server" hold
 record_tap flutter-press 3 "Control server" hold
 record_tap flutter-start 6 "Continue in browser" tap
 adb shell pm enable com.android.chrome > /dev/null 2>&1 || true
