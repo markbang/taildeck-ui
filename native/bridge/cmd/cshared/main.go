@@ -184,6 +184,21 @@ func td_probe(host *C.char, portsCSV *C.char) *C.char {
 	})
 }
 
+// td_favicon fetches a service icon through the node. host is the peer name,
+// ports is a comma-separated list to try in order, scheme is "http" or "https".
+// Third-party favicon services are never contacted: only the peer answers.
+//
+//export td_favicon
+func td_favicon(host *C.char, portsCSV *C.char, scheme *C.char) *C.char {
+	return guard("td_favicon", func() *C.char {
+		raw, err := tsbridge.Favicon(C.GoString(host), C.GoString(portsCSV), C.GoString(scheme))
+		if err != nil {
+			return fail(err)
+		}
+		return okJSON(raw)
+	})
+}
+
 //export td_set_event_cb
 func td_set_event_cb(cb C.td_event_fn, ctx C.uintptr_t) {
 	guardVoid("td_set_event_cb", func() {
