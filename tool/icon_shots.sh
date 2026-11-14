@@ -49,12 +49,17 @@ shoot() { # shoot <label> <apk>
     || { echo "$label: install failed" >> "$summary"; return 1; }
 
   # Launcher drawer: the entry as the launcher lays it out, icon and label.
-  adb shell input keyevent KEYCODE_HOME > /dev/null 2>&1 || true
-  sleep 2
-  adb shell input swipe 540 2100 540 600 250 > /dev/null 2>&1 || true
-  sleep 3
-  file=$(dump "$label-drawer")
-  box=$(bounds_of "$file" 'text="Taildeck"' 'content-desc="Taildeck"' | head -1)
+  # Best effort: the swipe or the uiautomator dump misses it on a slow emulator,
+  # so retry and record it as missing instead of failing the icon comparison.
+  for attempt in 1 2 3; do
+    adb shell input keyevent KEYCODE_HOME > /dev/null 2>&1 || true
+    sleep 2
+    adb shell input swipe 540 2100 540 600 250 > /dev/null 2>&1 || true
+    sleep 3
+    file=$(dump "$label-drawer-$attempt")
+    box=$(bounds_of "$file" 'text="Taildeck"' 'content-desc="Taildeck"' | head -1)
+    [ -n "$box" ] && break
+  done
   adb exec-out screencap -p > "$out/$label-launcher.png"
   if [ -n "$box" ]; then
     set -- $box
