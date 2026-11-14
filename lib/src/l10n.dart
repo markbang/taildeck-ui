@@ -275,6 +275,7 @@ class AppLocalizations implements UiLocalizations {
   String agentActionFailed(String error) =>
       _zh ? '操作失败：$error' : 'Failed: $error';
   String get agentTool => _zh ? '工具' : 'tool';
+  String get agentThinking => _zh ? '思考' : 'Thinking';
   String agentToolSteps(int count) => _zh ? '$count 步' : '$count steps';
   String agentTodoProgress(int done, int total) =>
       _zh ? '$done/$total 已完成' : '$done/$total done';

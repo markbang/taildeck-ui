@@ -463,8 +463,9 @@ class HerdrController extends ChangeNotifier {
   /// herdr only signals; re-read after a short quiet period so a burst of
   /// streaming updates costs one list request.
   void onEvent(BridgeEvent event) {
-    if (_connId == 0 || (event.herdrId != 0 && event.herdrId != _connId))
+    if (_connId == 0 || (event.herdrId != 0 && event.herdrId != _connId)) {
       return;
+    }
     switch (event.event) {
       case 'changed':
         _debounce?.cancel();

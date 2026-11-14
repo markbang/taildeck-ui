@@ -665,7 +665,9 @@ class _AgentChatPageState extends State<AgentChatPage> {
         for (final row in _rows(transcript.messages))
           if (row is List<HerdrMessage>)
             _ToolGroup(
-              key: ValueKey('tools-${row.first.call}-${row.length}'),
+              key: ValueKey(
+                'tools-${row.first.call.isNotEmpty ? row.first.call : row.first.name}',
+              ),
               messages: row,
               herdr: widget.herdr,
               live: _working,
@@ -1185,12 +1187,9 @@ class _MessageBlock extends StatelessWidget {
           ),
         );
       case 'thinking':
-        return Padding(
-          padding: const EdgeInsets.symmetric(vertical: 4),
-          child: SelectableText(
-            message.text,
-            style: caption.copyWith(fontStyle: FontStyle.italic),
-          ),
+        return _ThinkingCard(
+          text: message.text,
+          style: caption.copyWith(fontStyle: FontStyle.italic),
         );
       case 'system' || 'command' || 'output' || 'recap':
         return Padding(
@@ -2178,5 +2177,98 @@ class _ToolGroupState extends State<_ToolGroup> {
   static String _label(AppLocalizations l10n, HerdrMessage message) {
     final name = message.name.isNotEmpty ? message.name : l10n.agentTool;
     return message.summary.isEmpty ? name : '$name · ${message.summary}';
+  }
+}
+
+/// The agent's reasoning, folded under a chevron: the summary stays, the body
+/// expands and the card resizes with it (Kotlin's `Expandable`).
+class _ThinkingCard extends StatefulWidget {
+  const _ThinkingCard({required this.text, required this.style});
+
+  final String text;
+  final TextStyle style;
+
+  @override
+  State<_ThinkingCard> createState() => _ThinkingCardState();
+}
+
+class _ThinkingCardState extends State<_ThinkingCard> {
+  bool _open = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = context.colorScheme;
+    final l10n = AppLocalizations.of(context);
+    final firstLine = widget.text
+        .split('\n')
+        .map((line) => line.trim())
+        .firstWhere((line) => line.isNotEmpty, orElse: () => '');
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: AnimatedContentSize(
+        child: Container(
+          decoration: ShapeDecoration(
+            color: scheme.surfaceContainerHigh,
+            shape: AppShape.all(AppCorner.md),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              TapFeedback(
+                onTap: () => setState(() => _open = !_open),
+                shape: AppShape.all(AppCorner.md),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 8, 10, 8),
+                  child: Row(
+                    children: [
+                      GlyphIcon(
+                        Glyphs2.bolt,
+                        size: 15,
+                        color: scheme.onSurfaceVariant,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        l10n.agentThinking,
+                        style: AppTextStyle.caption1.of(
+                          context,
+                          emphasized: true,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      if (!_open)
+                        Expanded(
+                          child: Text(
+                            firstLine,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: AppTextStyle.caption2
+                                .of(context)
+                                .copyWith(color: scheme.onSurfaceVariant),
+                          ),
+                        )
+                      else
+                        const Spacer(),
+                      RotatingChevron(
+                        open: _open,
+                        size: 15,
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              AnimatedContentSize(
+                child: _open
+                    ? Padding(
+                        padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+                        child: SelectableText(widget.text, style: widget.style),
+                      )
+                    : const SizedBox(width: double.infinity),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }

@@ -420,8 +420,12 @@ class _MotionVisibilityState extends State<MotionVisibility>
 
   void _applyDurations() {
     final still = context.disableAnimations;
-    _effects.duration = still ? Duration.zero : fade.duration;
-    _spatial.duration = still ? Duration.zero : slowSpatial.duration;
+    _effects
+      ..duration = still ? Duration.zero : fade.duration
+      ..reverseDuration = still ? Duration.zero : fadeFast.duration;
+    _spatial
+      ..duration = still ? Duration.zero : slowSpatial.duration
+      ..reverseDuration = still ? Duration.zero : slowSpatial.duration;
   }
 
   @override
