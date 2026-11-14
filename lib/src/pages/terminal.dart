@@ -20,6 +20,7 @@ import '../native/hardware_keyboard.dart';
 import '../native/keys.dart';
 import '../native/term.dart';
 import '../native/term_demo.dart';
+import '../preview_env.dart';
 import '../terminal_gestures.dart';
 import '../terminal_keys.dart';
 import '../terminal_store.dart';
@@ -112,7 +113,7 @@ class _TerminalPageState extends State<TerminalPage>
   String? _closedReason;
   bool _connected = false;
   bool _bannerFed = false;
-  bool _demoFilled = false;
+  int _demoRows = 0;
   String _sent = '';
   final _mods = TerminalMods();
 
@@ -134,8 +135,10 @@ class _TerminalPageState extends State<TerminalPage>
         ..addListener(_onSessionChanged)
         ..onResize = (cols, rows) {
           terminal.resize(cols, rows);
-          if (widget.demo && !_demoFilled) {
-            _demoFilled = true;
+          // The demo re-reads its size so its tail always sits on the last
+          // rows, whatever the device and keyboard do to the grid.
+          if (widget.demo && rows != _demoRows) {
+            _demoRows = rows;
             _session?.feed(demoSessionBytes(rows: rows));
           }
         };
@@ -628,6 +631,8 @@ class _TerminalPageState extends State<TerminalPage>
   /// unless Settings keeps it or the soft keyboard is up.
   bool _showKeyRow(BuildContext context) {
     if (BackendScope.of(context).terminalKeyRowWithKeyboard) return true;
+    // `?keys=1` keeps the row on a preview build that reports a keyboard.
+    if (previewParam('keys') == '1') return true;
     final mobile = switch (defaultTargetPlatform) {
       TargetPlatform.android || TargetPlatform.iOS => true,
       _ => false,
@@ -797,12 +802,17 @@ class _Header extends StatelessWidget {
                 ),
                 const SizedBox(height: 1),
                 FadeThrough(
-                  child: Text(
-                    subtitle,
-                    key: ValueKey(subtitle),
-                    style: mono.copyWith(
-                      fontSize: 11,
-                      color: const Color(0xFF7C838D),
+                  child: Semantics(
+                    container: true,
+                    label: subtitle,
+                    excludeSemantics: true,
+                    child: Text(
+                      subtitle,
+                      key: ValueKey(subtitle),
+                      style: mono.copyWith(
+                        fontSize: 11,
+                        color: const Color(0xFF7C838D),
+                      ),
                     ),
                   ),
                 ),

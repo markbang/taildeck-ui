@@ -15,10 +15,6 @@ summary="$out/summary.txt"
 note() { echo "$*" | tee -a "$summary"; }
 
 adb wait-for-device
-# Raw touch events (the pinch) need root; google_apis images allow it and the
-# production builds refuse, which the pinch step then reports.
-adb root > /dev/null 2>&1 || true
-adb wait-for-device
 adb shell settings put global hide_error_dialogs 1 > /dev/null 2>&1 || true
 for scale in window_animation_scale transition_animation_scale animator_duration_scale; do
   adb shell settings put global "$scale" 1 > /dev/null 2>&1 || true
@@ -115,7 +111,7 @@ install_app() {
   adb install -g "$1" > "$out/install.txt" 2>&1 || { note "install failed, see install.txt"; return 1; }
 }
 
-demo_url="taildeck://preview/?preview=1&ssh=demo&lang=en"
+demo_url="taildeck://preview/?preview=1&ssh=demo&lang=en&keys=1"
 settings_url="taildeck://preview/?preview=1&tab=3&lang=en"
 
 # ---- grid geometry from the a11y tree -----------------------------------
@@ -148,6 +144,10 @@ last_rows() { # prints "N M" and the row index of the demo URL line (M-3)
 double_tap() { adb shell "input tap $1 $2; input tap $1 $2" > /dev/null 2>&1 || true; }
 long_press() { adb shell input swipe "$1" "$2" "$1" "$2" "${3:-1200}" > /dev/null 2>&1 || true; }
 swipe_on_grid() { adb shell input swipe "$1" "$2" "$3" "$4" "${5:-400}" > /dev/null 2>&1 || true; }
+
+# ---- root only for the pinch --------------------------------------------
+root_on() { adb root > /dev/null 2>&1 || true; adb wait-for-device; }
+root_off() { adb unroot > /dev/null 2>&1 || true; adb wait-for-device; }
 
 # ---- one finger per device, two for a pinch ------------------------------
 mt_devices() { # prints "device kind" for every multi-touch device
@@ -227,7 +227,7 @@ ctrl_c() {
 }
 
 # ---- actions -------------------------------------------------------------
-pinch_out() { pinch out; }
+pinch_out() { root_on; pinch out; root_off; }
 landscape() { rotate 1; }
 title='Key row with a hardware keyboard'
 
@@ -367,7 +367,7 @@ show_keyboard() {
   adb shell dumpsys input_method > "$out/input-method.txt" 2> /dev/null || true
   read -r x y <<< "$point"
   adb shell input tap "$x" "$y" > /dev/null 2>&1 || true
-  sleep 3
+  sleep 6
   shot keyboard-shown
   note "keyboard: $(ime_state) after tapping $x,$y"
   note "keyboard: grid $(grid_cells || echo unknown)"
@@ -461,7 +461,7 @@ fi
 note "portrait: grid $(grid_cells || echo unknown)"
 
 # 7. soft keyboard show and hide
-record keyboard 11 show_keyboard
+record keyboard 13 show_keyboard
 record keyboard-hide 9 hide_keyboard
 
 # 8. hardware keys
