@@ -6,9 +6,11 @@ import 'package:flutter/widgets.dart';
 import 'data.dart';
 import 'herdr.dart';
 import 'native/bridge.dart';
+import 'native/node_service.dart';
 import 'native/platform_hooks.dart';
 import 'native/ssh.dart';
 import 'native/storage.dart';
+import 'notifications.dart';
 import 'ssh_identities.dart';
 
 enum BackendState { unavailable, stopped, starting, needsLogin, running, error }
@@ -28,11 +30,20 @@ class PingResult {
 /// stream. Web and missing-library hosts report [available] false and the UI
 /// stays on mock data.
 class TaildeckBackend extends ChangeNotifier {
-  TaildeckBackend({NativeBridge? bridge, BackendStorage? storage})
-    : this._(bridge ?? openNativeBridge(), storage ?? openBackendStorage());
+  TaildeckBackend({
+    NativeBridge? bridge,
+    BackendStorage? storage,
+    AgentNotifications? notifications,
+  }) : this._(
+         bridge ?? openNativeBridge(),
+         storage ?? openBackendStorage(),
+         notifications ?? AgentNotifications(),
+       );
 
-  TaildeckBackend._(this._bridge, this._storage)
-    : _herdr = _bridge == null ? null : HerdrController(_bridge);
+  TaildeckBackend._(this._bridge, this._storage, this.notifications)
+    : _herdr = _bridge == null ? null : HerdrController(_bridge) {
+    _herdr?.onAttention = _onAttention;
+  }
 
   static const defaultHostname = 'taildeck';
   static const defaultGatewayPort = 18680;
@@ -42,6 +53,10 @@ class TaildeckBackend extends ChangeNotifier {
   final NativeBridge? _bridge;
   final BackendStorage? _storage;
   final HerdrController? _herdr;
+  final NodeService _service = openNodeService();
+
+  /// Agent alerts; the settings page owns the toggle.
+  final AgentNotifications notifications;
   StreamSubscription<BridgeEvent>? _events;
   Timer? _refreshTimer;
 
@@ -72,6 +87,8 @@ class TaildeckBackend extends ChangeNotifier {
   int _herdrPort = 22;
   String _herdrAuth = 'tailscale';
   String _herdrIdentity = '';
+  bool _foreground = true;
+  bool _serviceRunning = false;
 
   bool get available => _bridge != null && _storage != null;
   BackendState get state => _state;
@@ -99,6 +116,9 @@ class TaildeckBackend extends ChangeNotifier {
   /// Services open in the in-app WebView on Android/iOS, the browser elsewhere.
   bool get openInApp => _openInApp;
 
+  /// Whether agents post an attention notification while the app is away.
+  bool get agentNotifications => notifications.enabled;
+
   /// herdr link, agent list and pane calls; null without a native backend.
   HerdrController? get herdr => _herdr;
 
@@ -123,6 +143,7 @@ class TaildeckBackend extends ChangeNotifier {
       (_state == BackendState.starting || _state == BackendState.needsLogin);
 
   Future<void> init() async {
+    await notifications.init();
     final bridge = _bridge;
     final storage = _storage;
     if (bridge == null || storage == null) return;
@@ -137,6 +158,7 @@ class TaildeckBackend extends ChangeNotifier {
       _controlURL = config.controlURL;
       _persistedSignIn = config.signedIn;
       _openInApp = config.openInApp;
+      notifications.setEnabled(config.agentNotifications);
       _herdrNode = config.herdrNode;
       _herdrUser = config.herdrUser;
       _herdrPort = config.herdrPort;
@@ -440,6 +462,28 @@ class TaildeckBackend extends ChangeNotifier {
     }
   }
 
+  /// Turns agent alerts on (asking the OS first) or off; false when the OS
+  /// refuses, which the settings page explains.
+  Future<bool> setAgentNotifications(bool value) async {
+    if (!value) {
+      notifications.setEnabled(false);
+      await _persist();
+      notifyListeners();
+      return false;
+    }
+    final granted = await notifications.requestPermission();
+    notifications.setEnabled(granted);
+    await _persist();
+    notifyListeners();
+    return granted;
+  }
+
+  /// The app's lifecycle, so alerts only fire while it is away.
+  void setForeground(bool value) => _foreground = value;
+
+  /// Language the notification text is written in.
+  void setNotificationLanguage(String code) => notifications.setLanguage(code);
+
   Future<void> setOpenInApp(bool value) async {
     if (value == _openInApp) return;
     _openInApp = value;
@@ -486,6 +530,8 @@ class TaildeckBackend extends ChangeNotifier {
     }
     _herdr?.dispose();
     _bridge?.dispose();
+    if (_serviceRunning) unawaited(_service.stop());
+    _serviceRunning = false;
     super.dispose();
   }
 
@@ -540,6 +586,7 @@ class TaildeckBackend extends ChangeNotifier {
     _state = BackendState.stopped;
     _authUrl = '';
     _waitingForLogin = false;
+    _syncService();
   }
 
   void _onEvent(BridgeEvent event) {
@@ -597,6 +644,26 @@ class TaildeckBackend extends ChangeNotifier {
       if (!_persistedSignIn) _persist(signedIn: true);
       _autoConnectHerdr();
     }
+    _syncService();
+  }
+
+  /// Android keeps the node in a foreground service only while it runs.
+  void _syncService() {
+    final running = _state == BackendState.running;
+    if (running == _serviceRunning) return;
+    _serviceRunning = running;
+    unawaited(running ? _service.start() : _service.stop());
+  }
+
+  /// A pane turned blocked or done while the app is away.
+  void _onAttention(HerdrAgent agent) {
+    if (_foreground) return;
+    unawaited(
+      notifications.show(
+        agent,
+        needsInput: agent.status == HerdrStatus.blocked,
+      ),
+    );
   }
 
   /// Reconnects to the herdr target of the last session, once per launch.
@@ -631,6 +698,7 @@ class TaildeckBackend extends ChangeNotifier {
           controlURL: _controlURL,
           signedIn: persist,
           openInApp: _openInApp,
+          agentNotifications: notifications.enabled,
           herdrNode: _herdrNode,
           herdrUser: _herdrUser,
           herdrPort: _herdrPort,
@@ -654,6 +722,7 @@ class TaildeckBackend extends ChangeNotifier {
       _ => '$error',
     };
     _state = BackendState.error;
+    _syncService();
   }
 }
 

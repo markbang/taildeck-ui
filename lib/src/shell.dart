@@ -13,6 +13,7 @@ import 'preview_env.dart';
 import 'glyphs.dart';
 import 'l10n.dart';
 import 'native/ssh.dart';
+import 'notifications.dart';
 import 'pages/agent_chat.dart';
 import 'pages/agents.dart';
 import 'pages/node_detail.dart';
@@ -59,6 +60,7 @@ class _TaildeckShellState extends State<TaildeckShell>
   String _sshUser = 'root';
   int _sshPort = 22;
   SshSession? _sshSession;
+  AgentNotifications? _alerts;
 
   late final PageController _pageController = PageController(initialPage: _tab);
 
@@ -82,9 +84,44 @@ class _TaildeckShellState extends State<TaildeckShell>
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final alerts = BackendScope.of(context).notifications;
+    if (!identical(alerts, _alerts)) {
+      _alerts?.removeListener(_openTappedPane);
+      _alerts = alerts..addListener(_openTappedPane);
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) => _openTappedPane());
+  }
+
+  @override
   void dispose() {
+    _alerts?.removeListener(_openTappedPane);
     _pageController.dispose();
     super.dispose();
+  }
+
+  /// A notification tap names a pane; its chat opens, or the Agents tab does
+  /// when that pane is gone.
+  void _openTappedPane() {
+    final pane = _alerts?.takePendingPane();
+    if (pane == null || !mounted) return;
+    final backend = BackendScope.of(context);
+    if (!_previewShell && backend.available && !backend.signedIn) return;
+    final herdr = backend.herdr;
+    final agent = herdr?.agents
+        .where((item) => item.paneId == pane)
+        .firstOrNull;
+    if (herdr == null || agent == null) {
+      _toPage(2);
+      return;
+    }
+    unawaited(
+      BaseNavigator.push<void>(
+        context,
+        AgentChatPage(agent: agent, herdr: herdr),
+      ),
+    );
   }
 
   void _toPage(int index) {

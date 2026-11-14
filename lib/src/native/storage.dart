@@ -6,6 +6,7 @@ class StoredConfig {
     this.controlURL = '',
     this.signedIn = false,
     this.openInApp = false,
+    this.agentNotifications = false,
     this.herdrNode = '',
     this.herdrUser = 'root',
     this.herdrPort = 22,
@@ -18,6 +19,7 @@ class StoredConfig {
     controlURL: json['controlURL'] as String? ?? '',
     signedIn: json['signedIn'] as bool? ?? false,
     openInApp: json['openInApp'] as bool? ?? false,
+    agentNotifications: json['agentNotifications'] as bool? ?? false,
     herdrNode: json['herdrNode'] as String? ?? '',
     herdrUser: json['herdrUser'] as String? ?? 'root',
     herdrPort: (json['herdrPort'] as num?)?.toInt() ?? 22,
@@ -34,6 +36,9 @@ class StoredConfig {
   /// Whether services open in the in-app WebView (Android/iOS) or the browser.
   final bool openInApp;
 
+  /// Whether agents post an attention notification while the app is away.
+  final bool agentNotifications;
+
   /// Node, user and auth the Agents page reconnects to herdr with. The
   /// password itself is never written.
   final String herdrNode;
@@ -47,6 +52,7 @@ class StoredConfig {
     'controlURL': controlURL,
     'signedIn': signedIn,
     'openInApp': openInApp,
+    'agentNotifications': agentNotifications,
     'herdrNode': herdrNode,
     'herdrUser': herdrUser,
     'herdrPort': herdrPort,

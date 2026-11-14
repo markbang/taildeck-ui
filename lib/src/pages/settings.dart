@@ -144,6 +144,11 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
+  Future<void> _setNotifications(bool value) async {
+    final backend = BackendScope.of(context);
+    await backend.setAgentNotifications(value);
+  }
+
   Future<void> _signOut() async {
     final l10n = AppLocalizations.of(context);
     final confirmed = await showFloatingDialog<bool>(
@@ -301,6 +306,61 @@ class _SettingsPageState extends State<SettingsPage> {
                 ],
               ),
             ),
+          ],
+        ),
+        const SizedBox(height: 20),
+        SectionLabel(l10n.notificationsSection),
+        GroupCard(
+          dividerInset: 16,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+              child: RowSemantics(
+                label: l10n.a11yAgentNotifications(
+                  backend.agentNotifications,
+                  backend.notifications.denied,
+                ),
+                onTap: backend.notifications.supported
+                    ? () => unawaited(_setNotifications(!backend.agentNotifications))
+                    : null,
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(l10n.agentNotifications, style: context.listTitleStyle),
+                          const SizedBox(height: 2),
+                          Text(
+                            !backend.notifications.supported
+                                ? l10n.notificationsUnsupported
+                                : backend.notifications.denied
+                                    ? l10n.notificationsDenied
+                                    : backend.agentNotifications
+                                        ? l10n.agentNotificationsOn
+                                        : l10n.agentNotificationsOff,
+                            style: context.listCaptionStyle,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Switch(
+                      value: backend.agentNotifications,
+                      onChanged: backend.notifications.supported
+                          ? (value) => unawaited(_setNotifications(value))
+                          : null,
+                      semanticLabel: l10n.agentNotifications,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            if (backend.notifications.supported)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+                child: Text(l10n.nodeNotificationHint, style: context.listCaptionStyle),
+              ),
           ],
         ),
         const SizedBox(height: 20),
