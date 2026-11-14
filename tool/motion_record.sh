@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# Records the same interactions on this build and on the Kotlin reference app,
-# then puts the clips side by side. Only effects reachable without a tailnet are
-# recorded: both login screens, and the preview shell of this build. Media
-# problems are reported in summary.txt and never fail the step.
+# Records one gesture per motion effect on this build and on the Kotlin
+# reference app, then stacks the two clips side by side under docs/motion/.
+# A peer node (tool/motion_peer) joins the same test control plane as both
+# apps, so the screens behind login have a node to open, ping, scan and pull.
+# Media problems are reported in summary.txt and never fail the step.
 # Usage: tool/motion_record.sh <flutter-apk> <kotlin-apk> [application-id] [out-dir]
 set -euo pipefail
 
@@ -11,11 +12,15 @@ kotlin_apk=${2:?usage: tool/motion_record.sh <flutter-apk> <kotlin-apk> [app-id]
 app=${3:-top.bangwu.taildeck}
 out=${4:-motion}
 kotlin_url=${KOTLIN_APK_URL:-https://github.com/markbang/taildeck/releases/download/v0.1.0/taildeck-0.1.0-x86_64.apk}
-# With a control server both apps can sign in and the screens behind login
-# become recordable: control_url is what the emulator reaches, e.g.
-# http://10.0.2.2:8080 for a control plane on the runner.
+# With a control server both apps sign in and the screens behind login become
+# recordable: control_url is what the emulator reaches, e.g. http://10.0.2.2:8080
+# for a control plane on the runner. peer is the hostname of tool/motion_peer,
+# derp_port is the relay port its map advertises on 127.0.0.1, reversed into
+# the emulator so a relay-only path still carries the node's traffic.
 control_url=${CONTROL_URL:-}
 auth_key=${AUTH_KEY:-}
+peer=${PEER:-motionpeer}
+derp_port=${DERP_PORT:-}
 mkdir -p "$out"
 summary="$out/summary.txt"
 : > "$summary"
@@ -27,10 +32,27 @@ adb shell settings put global hide_error_dialogs 1 > /dev/null 2>&1 || true
 for scale in window_animation_scale transition_animation_scale animator_duration_scale; do
   adb shell settings put global "$scale" 1 > /dev/null 2>&1 || true
 done
-sleep 20
+adb shell svc power stayon true > /dev/null 2>&1 || true
+adb shell settings put system screen_off_timeout 2147483647 > /dev/null 2>&1 || true
+sleep 15
+adb shell input keyevent 82 > /dev/null 2>&1 || true
+adb shell wm dismiss-keyguard > /dev/null 2>&1 || true
 adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS > /dev/null 2>&1 || true
+# testcontrol's relay listens on the runner's loopback; the emulator only sees
+# 10.0.2.2, so hand it the same port through adb.
+if [ -n "$derp_port" ]; then
+  adb reverse "tcp:$derp_port" "tcp:$derp_port" > /dev/null 2>&1 \
+    && note "relay port $derp_port reversed into the device" \
+    || note "could not reverse relay port $derp_port"
+fi
 
 [ -s "$kotlin_apk" ] || curl -fsSL -o "$kotlin_apk" "$kotlin_url"
+
+W= SH= TAB_NODES= TAB_SERVICES= TAB_AGENTS= TAB_SETTINGS=
+screen_size() {
+  read -r W SH <<< "$(adb shell wm size | sed -n 's/.*: \([0-9]*\)x\([0-9]*\).*/\1 \2/p' | tr -d '\r')"
+  [ -n "${W:-}" ]
+}
 
 # uiautomator sometimes dumps while the window is mid-animation; retry.
 ui() {
@@ -44,12 +66,9 @@ ui() {
   return 1
 }
 
-# Resolves the tap point of <text> into the variable <var>, before recording,
-# so the gesture itself can be replayed without a slow UI dump.
-coord() {
-  local point
-  point=$(ui tap "$2") || { note "no node for '$2'"; return 1; }
-  printf -v "$1" '%s' "$point"
+dump() { # keeps a dump per stage so a missing marker can be read back
+  adb shell uiautomator dump /sdcard/ui.xml > /dev/null 2>&1 || true
+  adb pull /sdcard/ui.xml "$out/ui-$1.xml" > /dev/null 2>&1 || true
 }
 
 tapxy() { # 'x y'
@@ -58,15 +77,56 @@ tapxy() { # 'x y'
   sleep 0.5
 }
 
-holdxy() { # 'x y' [ms]
+# A plain tap event, for navigation: `input swipe` in place is enough for
+# Compose, and this is the form every toolkit treats as a click.
+tap_xy() { # 'x y'
   # shellcheck disable=SC2086
-  adb shell input swipe $1 $1 "${2:-800}" > /dev/null 2>&1 || true
-  sleep 0.5
+  adb shell input tap $1 > /dev/null 2>&1 || true
+  sleep 0.6
+}
+
+# Keeps the state of the screen in the artifact when something does not react.
+shot() { adb exec-out screencap -p > "$out/$1.png" 2> /dev/null || true; }
+
+# Thread stacks plus logcat, for a screen that ignores input.
+stacks() { # <name>
+  local pid
+  pid=$(adb shell pidof "$app" 2> /dev/null | tr -d '\r' | awk '{print $1}')
+  if [ -n "${pid:-}" ]; then
+    adb shell kill -3 "$pid" > /dev/null 2>&1 || true
+    sleep 2
+  fi
+  adb logcat -d > "$out/logcat-$1.txt" 2>&1 || true
+}
+
+state() { # <label>
+  note "$1: $(adb shell dumpsys power 2> /dev/null | grep -m1 -oE 'Display Power: state=[A-Z]+' || echo 'display ?') $(adb shell dumpsys window 2> /dev/null | grep -m1 -oE 'mCurrentFocus=Window\{[^}]*\}' || true)"
+}
+
+hold_long() { # 'x y' <ms>: the finger stays down for the whole clip
+  # shellcheck disable=SC2086
+  adb shell input swipe $1 $1 "${2:-3000}" > /dev/null 2>&1 || true
 }
 
 type_text() {
   adb shell input text "$(printf '%s' "$1" | sed 's/ /%s/g')" > /dev/null 2>&1 || true
   sleep 0.4
+}
+
+hide_keyboard() {
+  adb shell dumpsys input_method 2> /dev/null | grep -q 'mInputShown=true' || return 0
+  adb shell input keyevent 4 > /dev/null 2>&1 || true
+  sleep 0.8
+}
+
+wait_for() { # <marker> <seconds>
+  local waited=0
+  while [ "$waited" -lt "$2" ]; do
+    ui has "$1" > /dev/null 2>&1 && return 0
+    sleep 1
+    waited=$((waited + 1))
+  done
+  return 1
 }
 
 launch() { # <apk> <app> [url]
@@ -113,12 +173,10 @@ install_app() { # <apk>
 record() { # <name> <seconds> <command...>
   local name=$1 seconds=$2
   shift 2
-  # screenrecord sometimes leaves a file with no frames; try the gesture once
-  # more before giving up on the clip.
   local attempt
-  for attempt in 1 2; do
+  for attempt in 1 2 3; do
     _record_once "$name" "$seconds" "$@" || true
-    if [ -s "$out/$name.mp4" ] && [ "$(stat -c%s "$out/$name.mp4")" -gt 2000 ]; then
+    if [ -s "$out/$name.mp4" ] && [ "$(stat -c%s "$out/$name.mp4")" -gt 4000 ]; then
       return 0
     fi
     note "$name: retrying (attempt $attempt produced no frames)"
@@ -130,12 +188,14 @@ _record_once() { # <name> <seconds> <command...>
   local name=$1 seconds=$2
   shift 2
   adb shell pkill -f screenrecord > /dev/null 2>&1 || true
-  sleep 0.7
+  adb shell svc power stayon true > /dev/null 2>&1 || true
+  adb shell input keyevent 224 > /dev/null 2>&1 || true
+  sleep 1
   adb shell rm -f /sdcard/rec.mp4 > /dev/null 2>&1 || true
-  adb shell screenrecord --time-limit "$((seconds + 2))" --bit-rate 8000000 \
-    /sdcard/rec.mp4 > /dev/null 2>&1 &
+  adb shell screenrecord --time-limit "$((seconds + 2))" --bit-rate 3000000 \
+    --size 480x1066 /sdcard/rec.mp4 > /dev/null 2>&1 &
   local recorder=$!
-  sleep 0.4
+  sleep 0.6
   "$@" || true
   wait "$recorder" 2> /dev/null || true
   sleep 0.5
@@ -149,18 +209,51 @@ _record_once() { # <name> <seconds> <command...>
   fi
 }
 
-# ---- scenarios ----
+# ---- gestures ----
 
 tap_point() { tapxy "$1"; }
-hold_point() { holdxy "$1" 900; sleep 1; }
+
+# Taps a label without recording: used to reach a screen, never as evidence.
+tap_label() { # <text>
+  local point
+  point=$(find_or_scroll "$1") || { note "no node for '$1'"; return 1; }
+  tap_xy "$point"
+  sleep 0.8
+}
+
+field_count() { ui edits 2> /dev/null | wc -l | tr -d ' '; }
+
+# Opens a section that reveals text fields. A row's hit area can be narrower
+# than the box semantics reports, so the neighbours of the centre are tried
+# before giving up.
+tap_until_fields() { # <text> <expected field count>
+  local point x y dx
+  point=$(find_or_scroll "$1") || { note "no node for '$1'"; return 1; }
+  tap_xy "$point"
+  sleep 1
+  [ "$(field_count)" -ge "$2" ] && return 0
+  x=${point% *}
+  y=${point#* }
+  for dx in -300 -150 150 300; do
+    tap_xy "$((x + dx)) $y"
+    sleep 1
+    [ "$(field_count)" -ge "$2" ] && return 0
+  done
+  note "'$1' did not open $2 text field(s), $(field_count) on screen"
+  return 1
+}
 
 # Records one gesture on an element found just before the recording starts, so
 # a layout that moved since the last dump cannot send the tap elsewhere.
-record_tap() { # <name> <seconds> <text> [hold]
+record_tap() { # <name> <seconds> <text> [tap|hold] [marker] [scroll]
   local name=$1 seconds=$2 text=$3 mode=${4:-tap} point
-  point=$(ui tap "$text") || { note "$name: no node for '$text'"; return 0; }
+  if [ -n "${6:-}" ]; then
+    point=$(find_or_scroll "$text") || { note "$name: no node for '$text'"; return 0; }
+  else
+    point=$(ui tap "$text") || { note "$name: no node for '$text'"; return 0; }
+  fi
   if [ "$mode" = hold ]; then
-    record "$name" "$seconds" hold_point "$point"
+    record "$name" "$seconds" hold_long "$point" "$((seconds * 1000 + 1200))"
   else
     record "$name" "$seconds" tap_point "$point"
   fi
@@ -168,160 +261,250 @@ record_tap() { # <name> <seconds> <text> [hold]
   return 0
 }
 
-# The dock's four items share a row: find one of them, derive the rest.
+# Fills a labelled field (the Kotlin app labels every input).
+fill_label() { # <label> <value>
+  local point
+  point=$(find_or_scroll "$1") || { note "no field '$1'"; return 1; }
+  tapxy "$point"
+  sleep 0.5
+  type_text "$2"
+  hide_keyboard
+}
+
+# Fills a text field by class (this build's key and control-server fields carry
+# no label of their own).
+fill_edit() { # <index> <value>
+  local point
+  point=$(ui edit "$1") || { note "no text field $1"; return 1; }
+  tapxy "$point"
+  sleep 0.5
+  type_text "$2"
+  hide_keyboard
+}
+
 dock_row() { # <text>
   local point
   point=$(ui tap "$1") || return 1
-  DOCK_Y=${point#* }
-  read -r W H <<< "$(adb shell wm size | sed -n 's/.*: \([0-9]*\)x\([0-9]*\).*/\1 \2/p' | tr -d '\r')"
-  TAB_NODES="$((W / 8)) $DOCK_Y"
-  TAB_SERVICES="$((W * 3 / 8)) $DOCK_Y"
-  TAB_AGENTS="$((W * 5 / 8)) $DOCK_Y"
-  [ -n "${W:-}" ]
-}
-
-flutter_tabs() {
-  tapxy "$TAB_SERVICES"; sleep 1.4
-  tapxy "$TAB_AGENTS"; sleep 1.4
-  tapxy "$TAB_NODES"; sleep 1.2
+  TAB_Y=${point#* }
+  screen_size
+  TAB_NODES="$((W / 8)) $TAB_Y"
+  TAB_SERVICES="$((W * 3 / 8)) $TAB_Y"
+  TAB_AGENTS="$((W * 5 / 8)) $TAB_Y"
+  TAB_SETTINGS="$((W * 7 / 8)) $TAB_Y"
 }
 
 # Tabs through the bottom bar of either app, found from one label.
 tabs_row() { dock_row Services; }
 
-swipe_down() { # 'x y1 y2'
-  # shellcheck disable=SC2086
-  adb shell input swipe $1 "${2:-400} ${3:-900}" "${4:-400}" > /dev/null 2>&1 || true
-  sleep 0.6
+tabs_cycle() {
+  tapxy "$TAB_SERVICES"; sleep 1.4
+  tapxy "$TAB_AGENTS"; sleep 1.4
+  tapxy "$TAB_NODES"; sleep 1.2
 }
 
-# ---- signed in (needs a control server) ----
-
-kotlin_login() { # <control-url> <auth-key>
-  local field
-  field=$(ui tap Advanced) || return 1
-  tapxy "$field"; sleep 1.2
-  field=$(ui tap "Control server") || return 1
-  tapxy "$field"; sleep 0.8
-  type_text "$1"
-  field=$(ui tap "Auth key") || return 1
-  tapxy "$field"; sleep 0.8
-  type_text "$2"
-  adb shell input keyevent 4 > /dev/null 2>&1 || true
+scroll_down() {
+  screen_size
+  adb shell input swipe "$((W / 2))" "$((SH * 3 / 4))" "$((W / 2))" "$((SH / 2))" 300 > /dev/null 2>&1 || true
   sleep 0.8
-  field=$(ui tap "Sign in") || return 1
-  tapxy "$field"
-  local waited=0
-  while [ "$waited" -lt 40 ]; do
-    sleep 1
-    waited=$((waited + 1))
-    ui has "Scan ports" > /dev/null 2>&1 && break
+}
+
+scroll_up() {
+  screen_size
+  adb shell input swipe "$((W / 2))" "$((SH / 2))" "$((W / 2))" "$((SH * 3 / 4))" 300 > /dev/null 2>&1 || true
+  sleep 0.8
+}
+
+scroll_top() {
+  scroll_up
+  scroll_up
+  scroll_up
+}
+
+# Finds a target that a long page keeps below the fold, scrolling as needed.
+find_or_scroll() { # <text> [tries]
+  local point tries=${2:-3}
+  point=$(ui tap "$1") && { echo "$point"; return 0; }
+  while [ "$tries" -gt 0 ]; do
+    scroll_down
+    point=$(ui tap "$1") && { echo "$point"; return 0; }
+    tries=$((tries - 1))
   done
-  ui tap "Nodes" > /dev/null 2>&1
+  return 1
 }
 
-kotlin_tailnet() {
+# A drag that crosses the 80 dp threshold and then holds, so the contained dot
+# is on screen while the refresh runs.
+pull_down() {
+  screen_size
+  adb shell input swipe "$((W / 2))" 760 "$((W / 2))" 1560 420 > /dev/null 2>&1 || true
+  sleep 2.6
+}
+
+# ---- this build ----
+
+# Does this build take a tap at all? The preview shell needs no native node,
+# so it separates a dead input path from a blocked sign-in.
+flutter_probe() {
   local point
-  if ! kotlin_login "$1" "$2"; then
-    note "kotlin login: could not find the login controls"
-    return 0
-  fi
-  if ! ui has "Nodes" > /dev/null 2>&1; then
-    note "kotlin login: still on the login screen (control server $1)"
-    return 0
-  fi
-  note "kotlin login: signed in"
-  if tabs_row; then
-    record kotlin-tabs 6 flutter_tabs
-    check kotlin-tabs "Services"
-  fi
-  point=$(ui tap devbox) || point=$(ui tap nas) || point=
-  if [ -n "$point" ]; then
-    record kotlin-detail 6 tap_point "$point"
-    record_tap kotlin-ping 8 "Ping" tap
-    record_tap kotlin-scan 10 "Scan ports" tap
-    adb shell input keyevent 4 > /dev/null 2>&1 || true
-    sleep 1.5
+  launch "$flutter_apk" "$app" "taildeck://preview/?preview=1&lang=en&splash=0"
+  sleep 3
+  if point=$(ui tap "Agents"); then
+    tap_xy "$point"
+    sleep 3
+    if ui has "herdr" > /dev/null 2>&1; then
+      note "flutter input: a tap on the preview shell landed"
+    else
+      note "flutter input: the preview shell ignored a tap"
+      shot flutter-preview-ignored
+      stacks flutter-preview
+    fi
   else
-    note "kotlin-detail: no peer listed"
+    note "flutter input: no dock label to tap"
   fi
-  record kotlin-refresh 6 swipe_down "$((W / 2)) 420 980 500"
 }
 
-flutter_tailnet() {
+flutter_login_scene() {
   local point
-  if dock_row Services; then
-    record flutter-tabs 6 flutter_tabs
-  fi
-  point=$(ui tap devbox) || point=$(ui tap nas) || point=
-  if [ -n "$point" ]; then
-    record flutter-detail 6 tap_point "$point"
-    record_tap flutter-ping 8 "Ping" tap
-    record_tap flutter-scan 10 "Scan ports" tap
-    adb shell input keyevent 4 > /dev/null 2>&1 || true
-    sleep 1.5
-  fi
-  record flutter-refresh 6 swipe_down "$((W / 2)) 420 980 500"
+  state "flutter-login"
+  tap_until_fields "Control server" 1 || { shot flutter-no-field; stacks flutter-no-field; return 0; }
+  fill_edit 0 "$control_url" || { shot flutter-control; return 0; }
+  tap_until_fields "Use an auth key" 2 || { shot flutter-no-key; return 0; }
+  fill_edit 0 "${auth_key:-tskey-test}" || { shot flutter-key; return 0; }
+  shot flutter-filled
+  # Press: the filled button held, its pill squashing to CornerSmall while the
+  # ripple stays; the release signs the node in, past the end of the clip.
+  point=$(find_or_scroll "Connect") || { note "flutter-press: no Connect"; return 0; }
+  record flutter-press 3 hold_long "$point" 4200
+  wait_for "Services" 40 || { shot flutter-after-press; note "flutter login: still on the login screen"; }
 }
 
-flutter_detail() {
+flutter_scene() {
   local point
-  point=$(ui tap devbox) || { note "flutter-detail: no node for 'devbox'"; return 0; }
+  if ! ui has "Services" > /dev/null 2>&1; then
+    note "flutter: not signed in, the node page stays unrecorded"
+    return 0
+  fi
+  note "flutter: signed in"
+  if tabs_row; then
+    record flutter-tabs 6 tabs_cycle
+    check flutter-tabs "Services"
+  fi
+  point=$(ui tap "$peer") || { note "flutter-detail: no node '$peer'"; return 0; }
   record flutter-detail 6 tap_point "$point"
+  dump flutter-detail
+  # The ping result block grows in under the buttons.
+  record_tap flutter-size 6 "Ping" tap "ms"
+  # The scan block joins the list and resizes with the found port.
+  record_tap flutter-scan 14 "Scan common ports" tap "3000" scroll
+  dump flutter-scan
   adb shell input keyevent 4 > /dev/null 2>&1 || true
   sleep 1.5
+  # Pull to refresh: the contained dot morphs with the drag, then spins.
+  record flutter-refresh 6 pull_down
+  dump flutter-refresh
+  # A held dock item sits outside the page's scroll view, so the ink stays on
+  # screen for the whole press; the tab switches when the finger lifts.
+  record_tap flutter-ripple 4 "Services" hold
+  flutter_settings
 }
 
-W= TAB_SERVICES= TAB_AGENTS= TAB_NODES=
-
-# ---- signed-out gestures: the one screen both apps share ----
-install_app "$kotlin_apk" || true
-launch "$kotlin_apk" "$app"
-# A fresh install has no device name, and Sign in stays disabled without one.
-if point=$(ui tap "Device name"); then
-  tapxy "$point"; sleep 0.6
-  type_text "pixel-motion"
+# Settings carries the modal effect: the key sheet rising over the scrim.
+flutter_settings() {
+  local point
+  point=$(ui tap "Settings") || { note "flutter: no Settings tab"; return 0; }
+  tapxy "$point"
+  sleep 1.5
+  record_tap flutter-sheet 4 "Import key" tap "Import key" scroll
+  dump flutter-sheet
   adb shell input keyevent 4 > /dev/null 2>&1 || true
-  sleep 0.6
-fi
-record_tap kotlin-expand 3 Advanced tap "Control server"
-record_tap kotlin-press 3 "Control server" hold "Advanced"
-# Collapse the section again so Sign in is back on screen, then press it: the
-# ripple runs, the pill's corners squash, and the app shows its loading dot
-# while the node starts.
-if point=$(ui tap Advanced); then tapxy "$point"; sleep 1; fi
-record_tap kotlin-start 8 "Sign in" tap
-adb shell input keyevent 4 > /dev/null 2>&1 || true
+  sleep 1
+}
+
+# ---- the Kotlin app ----
+
+kotlin_login_scene() {
+  local point
+  # A fresh install has no device name, and Sign in stays disabled without one.
+  if point=$(ui tap "Device name"); then
+    tapxy "$point"
+    sleep 0.5
+    type_text "pixel-motion"
+    hide_keyboard
+  fi
+  tap_label "Advanced"
+  fill_label "Control server" "$control_url" || return 0
+  fill_label "Auth key" "${auth_key:-tskey-test}" || return 0
+  dump kotlin-login
+  # Press: the Sign in pill held, its corners squashing to CornerSmall; the
+  # release starts the node, past the end of the clip.
+  point=$(find_or_scroll "Sign in") || { note "kotlin-press: no Sign in"; return 0; }
+  record kotlin-press 3 hold_long "$point" 4200
+  wait_for "Search" 40 || note "kotlin login: still on the login screen"
+}
+
+kotlin_scene() {
+  local point
+  if ! ui has "Search" > /dev/null 2>&1; then
+    note "kotlin: not signed in, the node page stays unrecorded"
+    return 0
+  fi
+  note "kotlin: signed in"
+  if tabs_row; then
+    record kotlin-tabs 6 tabs_cycle
+    check kotlin-tabs "Services"
+  fi
+  point=$(ui tap "$peer") || { note "kotlin-detail: no node '$peer'"; return 0; }
+  record kotlin-detail 6 tap_point "$point"
+  dump kotlin-detail
+  record_tap kotlin-size 6 "Ping" tap "ms"
+  record_tap kotlin-scan 14 "Scan ports" tap "3000" scroll
+  dump kotlin-scan
+  adb shell input keyevent 4 > /dev/null 2>&1 || true
+  sleep 1.5
+  record kotlin-refresh 6 pull_down
+  dump kotlin-refresh
+  record_tap kotlin-ripple 4 "Services" hold
+  kotlin_settings
+}
+
+kotlin_settings() {
+  local point
+  point=$(ui tap "Settings") || { note "kotlin: no Settings action"; return 0; }
+  tapxy "$point"
+  sleep 1.5
+  record_tap kotlin-sheet 4 "Import key" tap "Import key" scroll
+  dump kotlin-sheet
+  adb shell input keyevent 4 > /dev/null 2>&1 || true
+  sleep 1
+}
+
+# ---- run it ----
 
 if [ -n "$control_url" ]; then
-  kotlin_tailnet "$control_url" "${auth_key:-tskey-test}"
+  install_app "$kotlin_apk" || true
+  launch "$kotlin_apk" "$app"
+  kotlin_login_scene
+  kotlin_scene
+  adb shell am force-stop "$app" > /dev/null 2>&1 || true
 else
   note "no control server: the screens behind login stay unrecorded"
 fi
 
 install_app "$flutter_apk" || true
-launch "$flutter_apk" "$app" "taildeck://preview/?login=1&lang=en"
-record_tap flutter-loading 6 "Continue in browser" tap
-# The preview shell runs on mock data: no tailnet needed for the tabs.
-launch "$flutter_apk" "$app" "taildeck://preview/?preview=1&tab=0&lang=en"
-if dock_row Services; then
-  record flutter-tabs 6 flutter_tabs
-  check flutter-tabs "Add service"
-else
-  note "flutter-tabs: no dock row found"
-fi
-launch "$flutter_apk" "$app" "taildeck://preview/?preview=1&tab=0&lang=en"
-flutter_detail
-check flutter-detail "Search nodes"
-
-# Signing in with a key would start a node; no browser on this device keeps a
-# real sign-in from leaving the app.
+# Neither the browser flow nor an external page needs a browser on the device.
 adb shell pm disable-user --user 0 com.android.chrome > /dev/null 2>&1 || true
-launch "$flutter_apk" "$app" "taildeck://preview/?login=1&lang=en"
-record_tap flutter-expand 3 "auth key" tap "Connect"
-record_tap flutter-press 3 "Control server" hold
-record_tap flutter-press 3 "Control server" hold
-record_tap flutter-start 6 "Continue in browser" tap
+adb shell input keyevent 224 > /dev/null 2>&1 || true
+if [ -n "$control_url" ]; then
+  flutter_probe
+  launch "$flutter_apk" "$app" "taildeck://preview/?login=1&lang=en&splash=0"
+  shot flutter-launch
+  state flutter-launch
+  flutter_login_scene
+  flutter_scene
+else
+  note "no control server: this build stays on its login screen"
+fi
+stacks flutter-end
 adb shell pm enable com.android.chrome > /dev/null 2>&1 || true
 
 # ---- put them side by side: Kotlin on the left, this build on the right ----
@@ -342,17 +525,17 @@ pair() { # <kotlin clip> <flutter clip> <name>
   return 0
 }
 
-pair kotlin-expand flutter-expand login-expand
+pair kotlin-ripple flutter-ripple ripple
 pair kotlin-press flutter-press press
-pair kotlin-start flutter-loading loading
+pair kotlin-size flutter-size content-size
+pair kotlin-scan flutter-scan scan-row
+pair kotlin-refresh flutter-refresh pull-refresh
+pair kotlin-sheet flutter-sheet sheet
 pair kotlin-tabs flutter-tabs motion-tabs
 pair kotlin-detail flutter-detail motion-detail
-pair kotlin-ping flutter-ping motion-ping
-pair kotlin-scan flutter-scan motion-scan
-pair kotlin-refresh flutter-refresh motion-refresh
 
 # A GIF is what a pull request can show inline.
-for name in login-expand press loading motion-tabs motion-detail motion-ping motion-scan motion-refresh; do
+for name in ripple press content-size scan-row pull-refresh sheet motion-tabs motion-detail; do
   [ -s "$out/$name.mp4" ] || continue
   ffmpeg -loglevel error -y -i "$out/$name.mp4" -vf \
     'fps=12,scale=640:-1:flags=lanczos,split[a][b];[a]palettegen[p];[b][p]paletteuse' \
