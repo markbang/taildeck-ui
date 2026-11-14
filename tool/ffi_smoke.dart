@@ -22,6 +22,8 @@ typedef _ResizeFnNative = Pointer<Int8> Function(Int32, Int32, Int32);
 typedef _ResizeFn = Pointer<Int8> Function(int, int, int);
 typedef _TwoStrFnNative = Pointer<Int8> Function(Pointer<Int8>, Pointer<Int8>);
 typedef _TwoStrFn = Pointer<Int8> Function(Pointer<Int8>, Pointer<Int8>);
+typedef _UploadFnNative = Pointer<Int8> Function(Pointer<Int8>, Pointer<Uint8>, Int32);
+typedef _UploadFn = Pointer<Int8> Function(Pointer<Int8>, Pointer<Uint8>, int);
 
 final _libc = DynamicLibrary.process();
 final _calloc = _libc
@@ -82,6 +84,10 @@ Future<void> main(List<String> args) async {
   final herdrConnect = lib.lookupFunction<_StrArgFn, _StrArgFn>('td_herdr_connect');
   final herdrCall = lib.lookupFunction<_TwoStrFnNative, _TwoStrFn>('td_herdr_call');
   final herdrClose = lib.lookupFunction<_StrFn, _StrFn>('td_herdr_close');
+  final herdrCommands = lib.lookupFunction<_TwoStrFnNative, _TwoStrFn>('td_herdr_commands');
+  final herdrImage = lib.lookupFunction<_StrArgFn, _StrArgFn>('td_herdr_image');
+  final herdrUpload = lib.lookupFunction<_UploadFnNative, _UploadFn>('td_herdr_upload');
+  final herdrSubagent = lib.lookupFunction<_TwoStrFnNative, _TwoStrFn>('td_herdr_subagent');
 
   String call(Pointer<Int8> Function() fn) {
     final p = fn();
@@ -165,6 +171,66 @@ Future<void> main(List<String> args) async {
   check(
     decode(call(herdrClose))['ok'] == true,
     'td_herdr_close without a connection is a no-op',
+  );
+
+  // The agent extras also answer with a clean envelope when herdr is away.
+  final noCommands = decode(callTwo(herdrCommands, 'claude', '/tmp'));
+  check(noCommands['ok'] == false, 'td_herdr_commands without a connection fails');
+  check(
+    (noCommands['error'] as String? ?? '').contains('not connected'),
+    'td_herdr_commands explains the missing connection: ${noCommands['error']}',
+  );
+  check(
+    decode(callArg(herdrImage, ''))['ok'] == false,
+    'td_herdr_image without a ref fails',
+  );
+  final noImage = decode(callArg(herdrImage, 'img:deadbeef'));
+  check(noImage['ok'] == false, 'td_herdr_image without a connection fails');
+  check(
+    (noImage['error'] as String? ?? '').contains('not connected'),
+    'td_herdr_image explains the missing connection: ${noImage['error']}',
+  );
+  final uploaded = decode(
+    (() {
+      final name = cstr('note.txt');
+      final data = _calloc(4, 1).cast<Uint8>();
+      data.asTypedList(4).setAll(0, [1, 2, 3, 4]);
+      try {
+        return call(() => herdrUpload(name, data, 4));
+      } finally {
+        _free(name.cast());
+        _free(data.cast());
+      }
+    })(),
+  );
+  check(uploaded['ok'] == false, 'td_herdr_upload without a connection fails: ${uploaded['error']}');
+  check(
+    (uploaded['error'] as String? ?? '').contains('not connected'),
+    'td_herdr_upload explains the missing connection',
+  );
+  check(
+    decode(call(() {
+      final name = cstr('empty.bin');
+      final data = _calloc(1, 1).cast<Uint8>();
+      try {
+        return herdrUpload(name, data, 0);
+      } finally {
+        _free(name.cast());
+        _free(data.cast());
+      }
+    }))['ok'] ==
+        false,
+    'td_herdr_upload rejects an empty file',
+  );
+  final noSubagent = decode(callTwo(herdrSubagent, 'w1:p1', 'call_1'));
+  check(noSubagent['ok'] == false, 'td_herdr_subagent without a connection fails');
+  check(
+    (noSubagent['error'] as String? ?? '').contains('not connected'),
+    'td_herdr_subagent explains the missing connection: ${noSubagent['error']}',
+  );
+  check(
+    decode(callTwo(herdrSubagent, 'w1:p1', ''))['ok'] == false,
+    'td_herdr_subagent without a call id fails',
   );
 
   final beforeProbe = decode(callTwo(probe, '100.64.0.1', '80,443'));

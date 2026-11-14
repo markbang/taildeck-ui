@@ -7,11 +7,13 @@ package main
 import "C"
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 	"sync"
+	"unsafe"
 
 	tsbridge "github.com/markbang/taildeck/bridge"
 )
@@ -156,6 +158,78 @@ func td_herdr_models(kind, pane *C.char) *C.char {
 	}
 	return ok(map[string]any{"result": reply})
 }
+
+//export td_herdr_commands
+func td_herdr_commands(kind, cwd *C.char) *C.char {
+	h, err := currentHerdr()
+	if err != nil {
+		return fail(err)
+	}
+	reply, err := h.Commands(strings.TrimSpace(C.GoString(kind)), C.GoString(cwd))
+	if err != nil {
+		return fail(err)
+	}
+	return ok(map[string]any{"result": reply})
+}
+
+//export td_herdr_image
+func td_herdr_image(ref *C.char) *C.char {
+	name := strings.TrimSpace(C.GoString(ref))
+	if name == "" {
+		return fail(errors.New("image ref is required"))
+	}
+	h, err := currentHerdr()
+	if err != nil {
+		return fail(err)
+	}
+	data, err := h.Image(name)
+	if err != nil {
+		return fail(err)
+	}
+	return ok(map[string]any{"data": base64.StdEncoding.EncodeToString(data)})
+}
+
+// td_herdr_upload copies the bytes into the node's upload dir and returns the
+// path, for prompts that reference the file.
+//
+//export td_herdr_upload
+func td_herdr_upload(name *C.char, data *C.uchar, length C.int) *C.char {
+	if length < 1 {
+		return fail(errors.New("upload is empty"))
+	}
+	if length > maxUpload {
+		return fail(fmt.Errorf("upload is larger than %d MB", maxUpload>>20))
+	}
+	h, err := currentHerdr()
+	if err != nil {
+		return fail(err)
+	}
+	file := strings.TrimSpace(C.GoString(name))
+	path, err := h.Upload(file, C.GoBytes(unsafe.Pointer(data), length))
+	if err != nil {
+		return fail(err)
+	}
+	return ok(map[string]any{"path": path})
+}
+
+//export td_herdr_subagent
+func td_herdr_subagent(target, callID *C.char) *C.char {
+	call := strings.TrimSpace(C.GoString(callID))
+	if call == "" {
+		return fail(errors.New("subagent call id is required"))
+	}
+	h, pane, err := herdrPane(target)
+	if err != nil {
+		return fail(err)
+	}
+	reply, err := h.Subagent(pane, call)
+	if err != nil {
+		return fail(err)
+	}
+	return ok(map[string]any{"result": reply})
+}
+
+const maxUpload = 32 << 20
 
 func currentHerdr() (*tsbridge.Herdr, error) {
 	herdrMu.Lock()
