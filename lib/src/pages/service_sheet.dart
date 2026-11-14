@@ -1,4 +1,3 @@
-import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:prism_ui/icons/icons.dart';
 import 'package:prism_ui/prism_ui.dart';
@@ -7,6 +6,7 @@ import '../data.dart';
 import '../l10n.dart';
 import '../services.dart';
 import '../widgets/controls.dart';
+import '../widgets/entry_row.dart';
 import '../widgets/foundation.dart';
 import '../widgets/select_row.dart';
 
@@ -105,13 +105,8 @@ class _ServiceSheetState extends State<_ServiceSheet> {
     super.dispose();
   }
 
-  int? get _parsedPort {
-    final value = int.tryParse(_port.text.trim());
-    return value != null && value >= 1 && value <= 65535 ? value : null;
-  }
-
   Future<void> _save() async {
-    final port = _parsedPort;
+    final port = portValue(_port.text);
     if (_busy || port == null || _node.isEmpty) return;
     final service = Service(
       id: widget.initial?.id ?? ServiceStore.newId(),
@@ -148,7 +143,7 @@ class _ServiceSheetState extends State<_ServiceSheet> {
     final scheme = context.colorScheme;
     final editing = widget.initial != null;
     final portText = _port.text.trim();
-    final portError = portText.isNotEmpty && _parsedPort == null;
+    final portError = portText.isNotEmpty && portValue(portText) == null;
     return Padding(
       padding: EdgeInsets.fromLTRB(
         20,
@@ -205,7 +200,7 @@ class _ServiceSheetState extends State<_ServiceSheet> {
                     onChanged: (value) => setState(() => _node = value),
                   ),
                   const _RowDivider(),
-                  _FieldRow(
+                  EntryRow(
                     label: l10n.serviceName,
                     controller: _name,
                     hintText: l10n.serviceNameHint,
@@ -219,16 +214,16 @@ class _ServiceSheetState extends State<_ServiceSheet> {
                     onChanged: (value) => setState(() => _scheme = value),
                   ),
                   const _RowDivider(),
-                  _FieldRow(
+                  EntryRow(
                     label: l10n.servicePort,
                     controller: _port,
                     hintText: '3000',
-                    number: true,
-                    errorText: portError ? l10n.servicePortInvalid : null,
+                    numeric: true,
+                    errorText: portError ? l10n.portInvalid : null,
                     onChanged: (_) => setState(() {}),
                   ),
                   const _RowDivider(),
-                  _FieldRow(
+                  EntryRow(
                     label: l10n.servicePath,
                     controller: _path,
                     hintText: l10n.servicePathHint,
@@ -244,7 +239,9 @@ class _ServiceSheetState extends State<_ServiceSheet> {
             LoadingButton(
               label: l10n.save,
               loading: _busy,
-              onPressed: _parsedPort == null || _node.isEmpty ? null : _save,
+              onPressed: portValue(_port.text) == null || _node.isEmpty
+                  ? null
+                  : _save,
             ),
           ],
         ),
@@ -261,79 +258,6 @@ class _RowDivider extends StatelessWidget {
     return const Padding(
       padding: EdgeInsets.only(left: 16),
       child: Divider(height: 0.5, thickness: 0.5),
-    );
-  }
-}
-
-class _FieldRow extends StatelessWidget {
-  const _FieldRow({
-    required this.label,
-    required this.controller,
-    this.hintText,
-    this.number = false,
-    this.errorText,
-    this.onChanged,
-  });
-
-  final String label;
-  final TextEditingController controller;
-  final String? hintText;
-  final bool number;
-  final String? errorText;
-  final ValueChanged<String>? onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = context.colorScheme;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: context.listCaptionStyle.copyWith(
-              color: scheme.onSurfaceVariant,
-            ),
-          ),
-          const SizedBox(height: 6),
-          TextField(
-            controller: controller,
-            keyboardType: number ? TextInputType.number : TextInputType.text,
-            inputFormatters: number ? const [_Digits()] : null,
-            onChanged: onChanged,
-            style: context.listTitleStyle,
-            decoration: InputDecoration(
-              hintText: hintText,
-              hintStyle: context.listCaptionStyle,
-              errorText: errorText,
-              filled: true,
-              fillColor: SurfaceLevel.block.colorOf(scheme),
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 12,
-                vertical: 11,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _Digits extends TextInputFormatter {
-  const _Digits();
-
-  @override
-  TextEditingValue formatEditUpdate(
-    TextEditingValue oldValue,
-    TextEditingValue newValue,
-  ) {
-    final digits = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
-    final text = digits.length > 5 ? digits.substring(0, 5) : digits;
-    return TextEditingValue(
-      text: text,
-      selection: TextSelection.collapsed(offset: text.length),
     );
   }
 }

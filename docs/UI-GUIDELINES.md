@@ -64,17 +64,32 @@ Inventory of actions and where their feedback shows:
 | Agent connect / send / restart / model | button or icon spinner, controls disabled | notice or inline notice with the error |
 | Agent notifications | switch replaced by a spinner | switch returns on the saved value |
 
-## Selects and segmentation
+## Field values, selects and segmentation
 
-`SelectRow` (`lib/src/widgets/select_row.dart`) is the one control for choosing
-a value inside a form: SSH auth method, port, identity, service node, scheme,
-theme, language, bottom bar style, tab animation, service open mode, agent
-harness/workspace/model.
+Pick the control from the kind of value, not from how it looks in the form:
 
-- It opens prism_ui's `PopupAnchor` + `PopupMenu` (the iOS-style menu) with a
-  check on the current value, and reads as one item: "label, value" plus a
-  select hint.
-- Disable it with `enabled: false` while its form is submitting.
+| Value | Control | Examples |
+|---|---|---|
+| The user types it | text field (`EntryRow`) | service name/path, control server URL, key name, agent directory, prompt |
+| The user types it, but it repeats | combobox: field + popup of suggestions (`EntryRow` with `suggestions`) | SSH user, herdr user |
+| One of a fixed set | `SelectRow` | SSH auth method, identity, service node, scheme, theme, language, bottom bar style, tab animation, service open mode, agent harness/workspace/model |
+| A number with a range | numeric field (`EntryRow(numeric: true)`) with inline error | ports, 1–65535 |
+| Switching a view or filter | `SegmentedControl` | segments of the same screen |
+
+- Never turn a value the user may need to type into a `Select`: a list of
+  guesses ("root", "ubuntu", "pi") is a combobox's suggestions, not a menu.
+- A combobox stays free text; the chevron offers what was used before, never
+  replaces typing. Suggestions come from the last saved value for the same
+  target, then what the node suggests (Tailscale login), then the default.
+- A numeric field validates as the user types: inline error under the field,
+  and the form's submit button stays disabled while the value is out of range.
+  Ports default to 22 and accept 1–65535.
+- Remember what the user typed per target (node, or node + service) in the
+  config store, and prefill it the next time the form opens.
+- `SelectRow` (`lib/src/widgets/select_row.dart`) opens prism_ui's
+  `PopupAnchor` + `PopupMenu` (the iOS-style menu) with a check on the current
+  value, and reads as one item: "label, value" plus a select hint. Disable it
+  with `enabled: false` while its form is submitting.
 - `SegmentedControl` is only for switching a view or filter (segments of the
   same screen), never for a form value: a segmented row says "show me this",
   a select says "save this".

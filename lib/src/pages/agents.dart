@@ -10,8 +10,10 @@ import '../glyphs.dart';
 import '../herdr.dart';
 import '../l10n.dart';
 import '../native/bridge.dart';
+import '../preview_env.dart';
 import '../ssh_identities.dart';
 import '../widgets/controls.dart';
+import '../widgets/entry_row.dart';
 import '../widgets/foundation.dart';
 import '../widgets/select_row.dart';
 import 'agent_chat.dart';
@@ -90,7 +92,7 @@ class _AgentsPageState extends State<AgentsPage> {
     final l10n = AppLocalizations.of(context);
     final backend = BackendScope.of(context);
     final herdr = backend.herdr;
-    if (herdr == null) return _demoPage(l10n);
+    if (herdr == null) return _demoPage(l10n, backend);
     return ListenableBuilder(
       listenable: herdr,
       builder: (context, _) => PageBody(
@@ -115,7 +117,7 @@ class _AgentsPageState extends State<AgentsPage> {
           ],
           if (!herdr.ready) ...[
             _linkNotice(context, l10n, herdr),
-            _HerdrConnectCard(backend: backend, herdr: herdr),
+            _HerdrConnectCard(backend: backend),
           ] else if (herdr.agents.isEmpty)
             Padding(
               padding: const EdgeInsets.fromLTRB(6, 24, 6, 8),
@@ -202,8 +204,10 @@ class _AgentsPageState extends State<AgentsPage> {
     );
   }
 
-  Widget _demoPage(AppLocalizations l10n) {
+  Widget _demoPage(AppLocalizations l10n, TaildeckBackend backend) {
     final scheme = context.colorScheme;
+    // `?tab=2&herdr=connect` opens the connect form on the web preview.
+    final connect = previewParam('herdr') == 'connect';
     return PageBody(
       title: l10n.agentsTitle,
       subtitle: 'herdr · devbox',
@@ -220,6 +224,10 @@ class _AgentsPageState extends State<AgentsPage> {
         if (_notice.isNotEmpty) ...[
           const SizedBox(height: 6),
           InlineNotice(text: _notice, tint: scheme.onSurfaceVariant),
+        ],
+        if (connect) ...[
+          const SizedBox(height: 14),
+          _HerdrConnectCard(backend: backend, preview: true),
         ],
         const SizedBox(height: 6),
         for (final (index, group) in _demo.indexed) ...[
@@ -478,10 +486,12 @@ class _DemoAgentRow extends StatelessWidget {
 /// Node, user and credentials for the herdr connection, prefilled from the
 /// last successful one.
 class _HerdrConnectCard extends StatefulWidget {
-  const _HerdrConnectCard({required this.backend, required this.herdr});
+  const _HerdrConnectCard({required this.backend, this.preview = false});
 
   final TaildeckBackend backend;
-  final HerdrController herdr;
+
+  /// Web preview: no node behind the form, so it stays usable.
+  final bool preview;
 
   @override
   State<_HerdrConnectCard> createState() => _HerdrConnectCardState();
@@ -489,10 +499,12 @@ class _HerdrConnectCard extends StatefulWidget {
 
 class _HerdrConnectCardState extends State<_HerdrConnectCard> {
   late String _node = widget.backend.herdrTarget.node;
-  late String _user = widget.backend.herdrTarget.user;
-  late int _port = widget.backend.herdrTarget.port;
+  late final _user = TextEditingController(text: _rememberedUser);
+  late final _port = TextEditingController(text: '$_targetPort');
   late String _auth = widget.backend.herdrTarget.auth;
   late String _identity = widget.backend.herdrTarget.identity;
+  String _userError = '';
+  String _portError = '';
   final _password = TextEditingController();
   final _nodeInput = TextEditingController();
   List<SshIdentity> _identities = const [];
@@ -502,7 +514,36 @@ class _HerdrConnectCardState extends State<_HerdrConnectCard> {
   @override
   void initState() {
     super.initState();
+    _user.addListener(_validateUser);
+    _port.addListener(_validatePort);
     if (widget.backend.available) unawaited(_loadKeys());
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _validateUser();
+    _validatePort();
+  }
+
+  void _validateUser() {
+    if (!mounted) return;
+    final l10n = AppLocalizations.of(context);
+    final value = _user.text.trim();
+    final error = value.isEmpty
+        ? l10n.sshUserRequired
+        : isValidSshUser(value)
+        ? ''
+        : l10n.sshUserInvalid;
+    if (error != _userError) setState(() => _userError = error);
+  }
+
+  void _validatePort() {
+    if (!mounted) return;
+    final error = portValue(_port.text) == null
+        ? AppLocalizations.of(context).portInvalid
+        : '';
+    if (error != _portError) setState(() => _portError = error);
   }
 
   Future<void> _loadKeys() async {
@@ -522,22 +563,54 @@ class _HerdrConnectCardState extends State<_HerdrConnectCard> {
 
   @override
   void dispose() {
+    _user.dispose();
+    _port.dispose();
     _password.dispose();
     _nodeInput.dispose();
     super.dispose();
   }
 
+  /// The login this node was last reached with, else the last herdr one.
+  String get _rememberedUser {
+    final saved = widget.backend.sshUserFor(_node);
+    return saved.isEmpty ? widget.backend.herdrTarget.user : saved;
+  }
+
+  /// The port this node was last reached on, else the last herdr one.
+  int get _targetPort {
+    final saved = widget.backend.sshPortFor(_node);
+    return saved == 22 ? widget.backend.herdrTarget.port : saved;
+  }
+
+  List<NodeItem> get _nodes =>
+      widget.preview ? [selfNode, ...peers] : widget.backend.nodes;
+
+  String get _selfName =>
+      widget.preview ? selfNode.name : (widget.backend.self?.name ?? '');
+
   String get _defaultNode {
-    final nodes = widget.backend.nodes;
-    final self = widget.backend.self?.name;
-    for (final node in nodes) {
+    final self = _selfName;
+    for (final node in _nodes) {
       if (node.name != self) return node.name;
     }
-    return nodes.isEmpty ? '' : nodes.first.name;
+    return _nodes.isEmpty ? '' : _nodes.first.name;
+  }
+
+  /// Last login on this node, its tailnet login, then root.
+  List<String> get _userSuggestions {
+    final name = _node.isEmpty ? _defaultNode : _node;
+    final item = _nodes.where((node) => node.name == name).firstOrNull;
+    return widget.backend.sshUserSuggestions(
+      name,
+      login: item?.suggestedSshUser ?? '',
+    );
   }
 
   Future<void> _connect() async {
     if (_busy) return;
+    _validateUser();
+    _validatePort();
+    if (_userError.isNotEmpty || _portError.isNotEmpty) return;
     final l10n = AppLocalizations.of(context);
     final node = _node.isNotEmpty
         ? _node
@@ -546,6 +619,7 @@ class _HerdrConnectCardState extends State<_HerdrConnectCard> {
       setState(() => _error = l10n.serviceNode);
       return;
     }
+    final port = portValue(_port.text)!;
     FocusScope.of(context).unfocus();
     setState(() {
       _busy = true;
@@ -554,8 +628,8 @@ class _HerdrConnectCardState extends State<_HerdrConnectCard> {
     try {
       await widget.backend.connectHerdr(
         node: node,
-        user: _user,
-        port: _port,
+        user: _user.text.trim(),
+        port: port,
         auth: _auth,
         identityId: _identity,
         password: _password.text,
@@ -575,8 +649,7 @@ class _HerdrConnectCardState extends State<_HerdrConnectCard> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final scheme = context.colorScheme;
-    final nodes = widget.backend.nodes;
-    final names = [for (final node in nodes) (node.name, node.name)];
+    final names = [for (final node in _nodes) (node.name, node.name)];
     return Card(
       radius: AppCorner.xl,
       padding: EdgeInsets.zero,
@@ -635,18 +708,23 @@ class _HerdrConnectCardState extends State<_HerdrConnectCard> {
               onChanged: (value) => setState(() => _node = value),
             ),
           const _RowDivider(),
-          SelectRow<String>(
+          EntryRow(
             label: l10n.sshUser,
-            value: _user,
-            options: const [('root', 'root'), ('ubuntu', 'ubuntu'), ('pi', 'pi')],
-            onChanged: (value) => setState(() => _user = value),
+            controller: _user,
+            hintText: 'root',
+            errorText: _userError.isEmpty ? null : _userError,
+            enabled: !_busy,
+            autofillHints: const [AutofillHints.username],
+            suggestions: _userSuggestions,
           ),
           const _RowDivider(),
-          SelectRow<int>(
+          EntryRow(
             label: l10n.sshPort,
-            value: _port,
-            options: const [(22, '22'), (2222, '2222'), (2200, '2200')],
-            onChanged: (value) => setState(() => _port = value),
+            controller: _port,
+            hintText: '22',
+            numeric: true,
+            errorText: _portError.isEmpty ? null : _portError,
+            enabled: !_busy,
           ),
           const _RowDivider(),
           SelectRow<String>(
@@ -705,7 +783,12 @@ class _HerdrConnectCardState extends State<_HerdrConnectCard> {
             child: LoadingButton(
               label: l10n.connect,
               loading: _busy,
-              onPressed: widget.backend.signedIn ? _connect : null,
+              onPressed:
+                  (widget.backend.signedIn || widget.preview) &&
+                      _userError.isEmpty &&
+                      _portError.isEmpty
+                  ? _connect
+                  : null,
             ),
           ),
         ],

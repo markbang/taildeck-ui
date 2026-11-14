@@ -7,6 +7,7 @@ import 'package:prism_ui/prism_ui.dart';
 import '../herdr.dart';
 import '../l10n.dart';
 import '../widgets/controls.dart';
+import '../widgets/entry_row.dart';
 import '../widgets/select_row.dart';
 
 typedef NewAgentChoice = ({
@@ -207,12 +208,12 @@ class _NewAgentSheetState extends State<_NewAgentSheet> {
                   ),
                   const _RowDivider(),
                   if (_live) ...[
-                    _TextFieldRow(
+                    EntryRow(
                       label: l10n.agentName,
                       controller: _nameInput,
-                      hint: _name,
+                      hintText: _name,
                       onChanged: (_) => setState(() {}),
-                      error: nameError,
+                      errorText: nameError,
                     ),
                     const _RowDivider(),
                     SelectRow<String>(
@@ -226,10 +227,10 @@ class _NewAgentSheetState extends State<_NewAgentSheet> {
                       onChanged: (value) => setState(() => _workspace = value),
                     ),
                     const _RowDivider(),
-                    _TextFieldRow(
+                    EntryRow(
                       label: l10n.agentDir,
                       controller: _cwd,
-                      hint: l10n.agentDirHint,
+                      hintText: l10n.agentDirHint,
                     ),
                   ] else
                     SelectRow<String>(
@@ -239,10 +240,10 @@ class _NewAgentSheetState extends State<_NewAgentSheet> {
                       onChanged: (value) => setState(() => _project = value),
                     ),
                   const _RowDivider(),
-                  _TextFieldRow(
+                  EntryRow(
                     label: l10n.task,
                     controller: _task,
-                    hint: l10n.taskHint,
+                    hintText: l10n.taskHint,
                   ),
                 ],
               ),
@@ -264,62 +265,6 @@ class _NewAgentSheetState extends State<_NewAgentSheet> {
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _TextFieldRow extends StatelessWidget {
-  const _TextFieldRow({
-    required this.label,
-    required this.controller,
-    required this.hint,
-    this.onChanged,
-    this.error,
-  });
-
-  final String label;
-  final TextEditingController controller;
-  final String hint;
-  final ValueChanged<String>? onChanged;
-  final String? error;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = context.colorScheme;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label, style: context.listTitleStyle),
-          const SizedBox(height: 6),
-          TextField(
-            controller: controller,
-            onChanged: onChanged,
-            style: context.listSubtitleStyle,
-            decoration: InputDecoration(
-              hintText: hint,
-              hintStyle: context.listCaptionStyle,
-              filled: true,
-              fillColor: SurfaceLevel.block.colorOf(scheme),
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 12,
-                vertical: 11,
-              ),
-            ),
-          ),
-          if (error != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: Text(
-                error!,
-                style: AppTextStyle.caption1
-                    .of(context)
-                    .copyWith(color: scheme.error),
-              ),
-            ),
-        ],
       ),
     );
   }
