@@ -38,8 +38,42 @@ def matches(path, needle):
     return [((x1 + x2) // 2, (y1 + y2) // 2) for x1, y1, x2, y2 in boxes(path, needle)]
 
 
+def fields(path):
+    """Every text field on the screen, as (x1, y1, x2, y2)."""
+    root = ET.parse(path).getroot()
+    found = []
+    for node in root.iter("node"):
+        if "EditText" not in (node.get("class") or ""):
+            continue
+        box = BOUNDS.match(node.get("bounds") or "")
+        if not box:
+            continue
+        x1, y1, x2, y2 = (int(value) for value in box.groups())
+        if x2 > x1 and y2 > y1:
+            found.append((x1, y1, x2, y2))
+    return found
+
+
 def main():
     path, command, needle = sys.argv[1:4]
+    if command in ("fieldbelow", "fieldabove"):
+        # The text field nearest to a label, above or below it, for a form
+        # whose fields carry no text of their own.
+        found = boxes(path, needle)
+        if not found:
+            print(f"no node matches {needle!r}", file=sys.stderr)
+            return 1
+        x1, y1, x2, y2 = max(found, key=lambda b: b[2] - b[0])
+        near = [b for b in fields(path)
+                if b[1] >= y2 - 4] if command == "fieldbelow" else [
+                b for b in fields(path) if b[3] <= y1 + 4]
+        if not near:
+            print(f"no field near {needle!r}", file=sys.stderr)
+            return 1
+        key = (lambda b: b[1]) if command == "fieldbelow" else (lambda b: -b[3])
+        bx1, by1, bx2, by2 = min(near, key=key)
+        print((bx1 + bx2) // 2, (by1 + by2) // 2)
+        return 0
     if command in ("below", "above"):
         delta = int(sys.argv[4])
         found = boxes(path, needle)

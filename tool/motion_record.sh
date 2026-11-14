@@ -116,7 +116,8 @@ record() { # <name> <seconds> <command...>
   # screenrecord sometimes leaves a file with no frames; try the gesture once
   # more before giving up on the clip.
   local attempt
-  for attempt in 1 2; do
+  for attempt in 1 2 3; do
+    sleep 1.5
     _record_once "$name" "$seconds" "$@" || true
     if [ -s "$out/$name.mp4" ] && [ "$(stat -c%s "$out/$name.mp4")" -gt 2000 ]; then
       return 0
@@ -153,7 +154,42 @@ _record_once() { # <name> <seconds> <command...>
 
 tap_point() { tapxy "$1"; }
 hold_point() { holdxy "$1" 900; sleep 1; }
-ime_hide() { adb shell input keyevent 111 > /dev/null 2>&1 || true; sleep 0.4; }
+# BACK closes the keyboard; ESC is the fallback when no keyboard is up, so a
+# field that never took focus cannot send the app back a screen.
+ime_hide() {
+  if adb shell dumpsys input_method 2> /dev/null | grep -q "mInputShown=true"; then
+    adb shell input keyevent 4 > /dev/null 2>&1 || true
+  else
+    adb shell input keyevent 111 > /dev/null 2>&1 || true
+  fi
+  sleep 0.5
+}
+
+clear_field() { # <anchor> <below|above>
+  local point
+  point=$(ui field"$2" "$1") || return 1
+  tapxy "$point"
+  adb shell input keyevent 123 > /dev/null 2>&1 || true
+  for _ in $(seq 1 48); do adb shell input keyevent 67 > /dev/null 2>&1; done
+  ime_hide
+}
+
+scroll_down_screen() { adb shell input swipe 540 1700 540 1000 400 > /dev/null 2>&1 || true; sleep 0.8; }
+
+# Writes the app's own config so the control server is already filled in: the
+# sign-in then only needs the key.
+seed_flutter_config() { # <control-url>
+  local uid
+  adb root > /dev/null 2>&1 || true
+  sleep 1
+  uid=$(adb shell dumpsys package "$app" 2> /dev/null | sed -n 's/.*userId=\([0-9]*\).*/\1/p' | head -1 | tr -d '\r')
+  printf '{"controlURL":"%s","hostname":"pixel-motion"}\n' "$1" > /tmp/config.json
+  adb shell "mkdir -p /data/data/$app/files" > /dev/null 2>&1 || true
+  adb push /tmp/config.json "/data/data/$app/files/config.json" > /dev/null 2>&1 || { note "seed: push failed"; return 1; }
+  adb shell "chown ${uid:-0}:${uid:-0} /data/data/$app/files/config.json" > /dev/null 2>&1 || true
+  adb shell "restorecon /data/data/$app/files/config.json" > /dev/null 2>&1 || true
+  note "seed: control server $1"
+}
 
 # Keeps the last dump beside a clip that could not find its control, so the
 # artifact says what the screen really showed.
@@ -213,85 +249,92 @@ swipe_down() { # <x> <y1> <y2> [ms]
 # ---- the two sign-in flows, so both apps reach the same screens ----
 
 kotlin_login() { # <control-url> <key>
-  local point
+  local point i
   if point=$(ui tap "Device name"); then
     tapxy "$point"; type_text "pixel-motion"; ime_hide
   fi
   point=$(ui tap Advanced) && { tapxy "$point"; sleep 1; }
-  point=$(ui tap "Control server") || return 1
-  tapxy "$point"; type_text "$1"; ime_hide
-  point=$(ui tap "Auth key") || return 1
-  tapxy "$point"; type_text "$2"; ime_hide
-  point=$(ui tap "Sign in") || return 1
+  point=$(ui tap "Control server") || { keep_ui kotlin-login; return 1; }
   tapxy "$point"
-  wait_for "Services" 45
+  adb shell input keyevent 123 > /dev/null 2>&1 || true
+  for _ in $(seq 1 48); do adb shell input keyevent 67 > /dev/null 2>&1; done
+  type_text "$1"; ime_hide
+  point=$(ui tap "Auth key") || { keep_ui kotlin-login; return 1; }
+  tapxy "$point"; type_text "$2"; ime_hide
+  # With the section open, Sign in sits below the fold.
+  point=
+  for i in 1 2 3; do
+    point=$(ui tap "Sign in") && break
+    scroll_down_screen
+  done
+  [ -n "$point" ] || { keep_ui kotlin-login; note "kotlin sign in: no Sign in button"; return 1; }
+  tapxy "$point"
+  wait_for "Services" 60 || { keep_ui kotlin-login; return 1; }
 }
 
-flutter_login() { # <control-url> <key>
+flutter_login() { # <key>
   local point
   point=$(ui tap "Use an auth key") && { tapxy "$point"; sleep 1; }
-  point=$(ui tap "Control server") && { tapxy "$point"; sleep 1; }
-  # The control URL sits under its section button, the key under "Connect".
-  point=$(ui below "Control server" 48) && { tapxy "$point"; type_text "$1"; ime_hide; }
-  point=$(ui tap "Connect") || return 1
-  point=$(ui above "Connect" 46) || return 1
-  tapxy "$point"; type_text "$2"; ime_hide
-  point=$(ui tap "Connect") || return 1
+  point=$(ui fieldbelow "Use an auth key") || { keep_ui flutter-login; return 1; }
+  tapxy "$point"; type_text "$1"; ime_hide
+  point=$(ui tap "Connect") || { keep_ui flutter-login; return 1; }
   tapxy "$point"
-  wait_for "This device" 60
+  wait_for "This device" 75 || { keep_ui flutter-login; return 1; }
 }
 
 # ---- signed-out clips: the login screen both apps share ----
 
 signed_out_kotlin() { # <hanging-url>
+  local point i
   launch "$kotlin_apk" "$app"
   record_hold kotlin-ripple 3 Advanced
   check kotlin-ripple "Control server"
   record_hold kotlin-press 3 "Control server"
-  adb shell input keyevent 4 > /dev/null 2>&1 || true
   sleep 1
   # A control server that never answers keeps the app on its loading stage.
   if point=$(ui tap "Control server"); then
     tapxy "$point"; type_text "$1"; ime_hide
-    if point=$(ui tap "Sign in"); then
-      record kotlin-loading 6 tap_point "$point"
+    point=
+    for i in 1 2 3; do
+      point=$(ui tap "Sign in") && break
+      scroll_down_screen
+    done
+    if [ -n "$point" ]; then
+      record kotlin-loading 7 tap_point "$point"
       check kotlin-loading "Connecting"
     else
       note "kotlin-loading: no Sign in button"
+      keep_ui kotlin-loading
     fi
     if point=$(ui tap Cancel); then tapxy "$point"; sleep 2; fi
-    # Clear the URL for the real sign-in that follows.
-    if point=$(ui tap "Control server"); then
-      tapxy "$point"
-      for _ in $(seq 1 40); do adb shell input keyevent 67 > /dev/null 2>&1; done
-      ime_hide
-    fi
+  else
+    note "kotlin-loading: no control server field"
+    keep_ui kotlin-loading
   fi
 }
 
 signed_out_flutter() { # <hanging-url>
+  local point
+  # The control URL is seeded, so the clips only need the key field.
+  seed_flutter_config "$1"
   launch "$flutter_apk" "$app"
   record_hold flutter-ripple 3 "Control server"
   record_hold flutter-press 3 "Control server"
-  if point=$(ui tap "Control server"); then tapxy "$point"; sleep 1; fi
-  if point=$(ui below "Control server" 48); then
-    tapxy "$point"; type_text "$1"; ime_hide
-  fi
+  sleep 1
   if point=$(ui tap "Use an auth key"); then tapxy "$point"; sleep 1; fi
-  if point=$(ui tap "Connect"); then
-    if point=$(ui above "Connect" 46); then
-      tapxy "$point"; type_text "tskey-hang"; ime_hide
-    fi
-    point=$(ui tap "Connect") || point=
-    [ -n "$point" ] && record flutter-loading 6 tap_point "$point"
+  if point=$(ui fieldbelow "Use an auth key"); then
+    tapxy "$point"; type_text "tskey-hang"; ime_hide
   fi
-  if point=$(ui tap Cancel); then tapxy "$point"; sleep 2; fi
-  if point=$(ui tap "Use an auth key"); then tapxy "$point"; sleep 0.6; fi
-  if point=$(ui tap "Control server"); then
-    tapxy "$point"
-    for _ in $(seq 1 40); do adb shell input keyevent 67 > /dev/null 2>&1; done
-    ime_hide
+  point=$(ui tap "Connect") || point=
+  if [ -n "$point" ]; then
+    record flutter-loading 7 tap_point "$point"
+    check flutter-loading "Starting the node"
+  else
+    note "flutter-loading: no Connect button"
+    keep_ui flutter-loading
   fi
+  adb shell am force-stop "$app" > /dev/null 2>&1 || true
+  sleep 1
 }
 
 # ---- signed-in clips ----
@@ -306,13 +349,14 @@ kotlin_tailnet() { # <control-url> <key>
   read_size
   record kotlin-tabs 6 tap_tabs Services Nodes Services
   check kotlin-tabs "Nodes"
+  point=$(ui tap "Nodes") && { tapxy "$point"; sleep 1.5; }
   record kotlin-refresh 6 swipe_down "$((W / 2)) 420 1000"
   # The scan block joins the list and resizes: the same gesture is recorded
   # once for the row and once for the content size.
   for clip in kotlin-scan-row kotlin-content-size; do
     launch "$kotlin_apk" "$app"
     sleep 2
-    point=$(ui tap "pixel-motion") || point=$(ui tap "This device") || point=
+    point=$(ui tap "This device") || point=$(ui tap "pixel-motion") || point=
     if [ -n "$point" ]; then
       tapxy "$point"; sleep 2
       record_tap "$clip" 10 "Scan ports"
@@ -338,7 +382,7 @@ kotlin_tailnet() { # <control-url> <key>
 
 flutter_tailnet() { # <control-url> <key>
   local point
-  if ! flutter_login "$1" "$2"; then
+  if ! flutter_login "$2"; then
     note "flutter sign in: did not reach the shell"
     return 0
   fi
@@ -346,6 +390,7 @@ flutter_tailnet() { # <control-url> <key>
   read_size
   record flutter-tabs 6 tap_tabs Services Agents Nodes
   check flutter-tabs "Nodes"
+  point=$(ui tap "Nodes") && { tapxy "$point"; sleep 1.5; }
   record flutter-refresh 6 swipe_down "$((W / 2)) 420 1000"
   for clip in flutter-scan-row flutter-content-size; do
     launch "$flutter_apk" "$app"
@@ -389,6 +434,7 @@ install_app "$flutter_apk" || true
 signed_out_flutter "$hang_url"
 
 if [ -n "$control_url" ]; then
+  seed_flutter_config "$control_url"
   flutter_tailnet "$control_url" "${auth_key:-tskey-test}"
 else
   note "no control server: the screens behind login stay unrecorded"
