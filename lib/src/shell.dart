@@ -42,8 +42,9 @@ class _TaildeckShellState extends State<TaildeckShell>
   int _tab = (int.tryParse(previewParam('tab') ?? '') ?? 0).clamp(0, _tabs - 1);
   NodeItem? _node = _queryNode();
   bool _floating = previewParam('nav') != 'docked';
-  TabAnimation _animation =
-      previewParam('anim') == 'fade' ? TabAnimation.fade : TabAnimation.slide;
+  TabAnimation _animation = previewParam('anim') == 'fade'
+      ? TabAnimation.fade
+      : TabAnimation.slide;
   bool _sidebarExpanded = true;
   // Mock/preview sign-in; the native backend reports its own state.
   bool _previewSignedIn = switch (previewParam('login')) {
@@ -159,12 +160,18 @@ class _TaildeckShellState extends State<TaildeckShell>
           workspace: '',
         ),
         herdr: herdr,
+        demoQueue: [
+          for (final text in (previewParam('queue') ?? '').split('|'))
+            if (text.trim().isNotEmpty) text.trim(),
+        ],
       );
     }
     final sshNode = _sshNode;
     if (sshNode != null) {
       return CallbackShortcuts(
-        bindings: {const SingleActivator(LogicalKeyboardKey.escape): _handleEscape},
+        bindings: {
+          const SingleActivator(LogicalKeyboardKey.escape): _handleEscape,
+        },
         child: TerminalPage(
           node: sshNode,
           user: _sshUser,
@@ -185,7 +192,9 @@ class _TaildeckShellState extends State<TaildeckShell>
       (glyph: Glyphs2.agents, label: l10n.tabAgents),
       (glyph: Glyphs2.sliders, label: l10n.tabSettings),
     ];
-    final dockInset = mobile && _floating ? NavigationDock.insetOf(context) : 0.0;
+    final dockInset = mobile && _floating
+        ? NavigationDock.insetOf(context)
+        : 0.0;
     return Surface(
       color: SurfaceLevel.page.colorOf(scheme),
       child: Row(
@@ -203,7 +212,8 @@ class _TaildeckShellState extends State<TaildeckShell>
                 selectedIndex: _tab,
                 expanded: _sidebarExpanded,
                 onSelected: _toPage,
-                onToggle: () => setState(() => _sidebarExpanded = !_sidebarExpanded),
+                onToggle: () =>
+                    setState(() => _sidebarExpanded = !_sidebarExpanded),
               ),
             ),
           ),
@@ -220,8 +230,9 @@ class _TaildeckShellState extends State<TaildeckShell>
                             isMobile: mobile,
                             child: CallbackShortcuts(
                               bindings: {
-                                const SingleActivator(LogicalKeyboardKey.escape):
-                                    _handleEscape,
+                                const SingleActivator(
+                                  LogicalKeyboardKey.escape,
+                                ): _handleEscape,
                               },
                               child: _pages(),
                             ),
@@ -455,8 +466,8 @@ class _StatusLiveState extends State<_StatusLive> {
         found.add(switch (state) {
           BackendState.running => l10n.a11yTailnetConnected,
           BackendState.stopped || BackendState.error => l10n.a11yTailnetOffline,
-          BackendState.starting || BackendState.needsLogin =>
-            l10n.a11yTailnetStarting,
+          BackendState.starting ||
+          BackendState.needsLogin => l10n.a11yTailnetStarting,
           BackendState.unavailable => '',
         });
       }
@@ -473,7 +484,9 @@ class _StatusLiveState extends State<_StatusLive> {
       }
       _online = online;
     }
-    if (found.isNotEmpty) _message = found.where((line) => line.isNotEmpty).join('; ');
+    if (found.isNotEmpty) {
+      _message = found.where((line) => line.isNotEmpty).join('; ');
+    }
     return LiveRegion(message: _message);
   }
 }

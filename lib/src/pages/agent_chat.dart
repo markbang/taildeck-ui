@@ -12,10 +12,18 @@ import '../widgets/foundation.dart';
 
 /// One agent pane: its transcript, a prompt box, restart and model switching.
 class AgentChatPage extends StatefulWidget {
-  const AgentChatPage({super.key, required this.agent, required this.herdr});
+  const AgentChatPage({
+    super.key,
+    required this.agent,
+    required this.herdr,
+    this.demoQueue = const [],
+  });
 
   final HerdrAgent agent;
   final HerdrController herdr;
+
+  /// `?queue=` on the preview build: prompts that start out queued.
+  final List<String> demoQueue;
 
   @override
   State<AgentChatPage> createState() => _AgentChatPageState();
@@ -37,9 +45,9 @@ class _AgentChatPageState extends State<AgentChatPage> {
   List<HerdrCommand> _commands = const [];
   List<HerdrCommand> _suggestions = const [];
   int _suggestion = 0;
-  bool _dismissed = false;
   bool _loadingCommands = false;
   bool _commandsLoaded = false;
+  bool _popup = false;
 
   String get _pane => widget.agent.paneId;
 
@@ -59,6 +67,9 @@ class _AgentChatPageState extends State<AgentChatPage> {
     super.initState();
     widget.herdr.addListener(_onHerdr);
     _input.addListener(_onDraft);
+    for (final text in widget.demoQueue) {
+      widget.herdr.enqueue(_pane, text);
+    }
     unawaited(_load());
   }
 
@@ -111,10 +122,10 @@ class _AgentChatPageState extends State<AgentChatPage> {
     final text = _input.text;
     final asking = text.startsWith('/') && !text.contains(RegExp(r'\s'));
     if (!asking) {
-      if (_suggestions.isEmpty && !_dismissed) return;
+      if (!_popup) return;
       setState(() {
+        _popup = false;
         _suggestions = const [];
-        _dismissed = false;
       });
       return;
     }
@@ -130,7 +141,7 @@ class _AgentChatPageState extends State<AgentChatPage> {
           return as != bs ? as - bs : a.name.compareTo(b.name);
         });
     setState(() {
-      _dismissed = false;
+      _popup = true;
       _suggestion = 0;
       _suggestions = matches.take(_maxSuggestions).toList();
     });
@@ -141,7 +152,7 @@ class _AgentChatPageState extends State<AgentChatPage> {
   Future<void> _loadCommands() async {
     if (_loadingCommands) return;
     _loadingCommands = true;
-    final builtin = builtinCommands(_agent.kind);
+    final builtin = builtinCommands(_agent.kind, AppLocalizations.of(context));
     var own = const <HerdrCommand>[];
     try {
       own = await widget.herdr.commands(_agent.kind, _agent.cwd);
@@ -169,6 +180,7 @@ class _AgentChatPageState extends State<AgentChatPage> {
       selection: TextSelection.collapsed(offset: text.length),
     );
     setState(() {
+      _popup = false;
       _suggestions = const [];
       _suggestion = 0;
     });
@@ -176,10 +188,10 @@ class _AgentChatPageState extends State<AgentChatPage> {
   }
 
   void _dismissCommands() {
-    if (_suggestions.isEmpty) return;
+    if (!_popup) return;
     setState(() {
+      _popup = false;
       _suggestions = const [];
-      _dismissed = true;
     });
   }
 
@@ -209,6 +221,7 @@ class _AgentChatPageState extends State<AgentChatPage> {
     _input.clear();
     setState(() {
       _notice = '';
+      _popup = false;
       _suggestions = const [];
     });
   }
@@ -585,7 +598,7 @@ class _AgentChatPageState extends State<AgentChatPage> {
   Widget _composer(BuildContext context, AppLocalizations l10n) {
     final scheme = context.colorScheme;
     final queue = _queue;
-    final popup = _suggestions.isNotEmpty;
+    final popup = _popup;
     final composer = Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -625,6 +638,7 @@ class _AgentChatPageState extends State<AgentChatPage> {
             child: _CommandPopup(
               commands: _suggestions,
               selected: _suggestion,
+              loading: !_commandsLoaded,
               onPick: _pickCommand,
             ),
           ),
@@ -641,7 +655,7 @@ class _AgentChatPageState extends State<AgentChatPage> {
                   maxLines: 5,
                   textInputAction: TextInputAction.send,
                   onSubmitted: (_) {
-                    if (popup) {
+                    if (popup && _suggestions.isNotEmpty) {
                       _pickCommand(_suggestion);
                     } else {
                       unawaited(_send());
@@ -700,11 +714,13 @@ class _CommandPopup extends StatelessWidget {
   const _CommandPopup({
     required this.commands,
     required this.selected,
+    required this.loading,
     required this.onPick,
   });
 
   final List<HerdrCommand> commands;
   final int selected;
+  final bool loading;
   final ValueChanged<int> onPick;
 
   @override
@@ -721,6 +737,21 @@ class _CommandPopup extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           mainAxisSize: MainAxisSize.min,
           children: [
+            if (commands.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 11,
+                ),
+                child: loading
+                    ? const ActivityIndicator(size: 16)
+                    : Text(
+                        l10n.agentCommandsEmpty,
+                        style: AppTextStyle.footnote
+                            .of(context)
+                            .copyWith(color: scheme.onSurfaceVariant),
+                      ),
+              ),
             for (var i = 0; i < commands.length; i++)
               RowSemantics(
                 label: l10n.agentCommandLabel(
@@ -1434,50 +1465,56 @@ class _SubagentViewState extends State<_SubagentView> {
   }
 }
 
-/// Commands each harness takes by typing, with what they do.
-List<HerdrCommand> builtinCommands(String kind) => switch (kind) {
-  'claude' => const [
-    ('compact', 'Compact the conversation'),
-    ('clear', 'Start a new conversation'),
-    ('context', 'Show context usage'),
-    ('cost', 'Show usage and cost'),
-    ('model', 'Switch model'),
-    ('effort', 'Set thinking effort'),
-    ('review', 'Review a pull request'),
-    ('security-review', 'Review pending changes for security issues'),
-    ('pr-comments', 'Fetch pull request comments'),
-    ('init', 'Write CLAUDE.md for this project'),
-  ],
-  'codex' => const [
-    ('compact', 'Summarize the conversation to free context'),
-    ('recap', 'Summarize the conversation now'),
-    ('review', 'Review current changes and find issues'),
-    ('new', 'Start a new chat'),
-    ('init', 'Create an AGENTS.md file'),
-    ('diff', 'Show git diff, including untracked files'),
-    ('status', 'Show session configuration and token usage'),
-    ('model', 'Choose model and reasoning effort'),
-    ('plan', 'Switch to Plan mode'),
-    ('goal', 'Set or view the goal of a long task'),
-    ('fork', 'Fork the current chat'),
-    ('side', 'Start a side conversation'),
-    ('rename', 'Rename the thread'),
-    ('export', 'Export the conversation as Markdown'),
-    ('ps', 'List background terminals'),
-    ('stop', 'Stop all background terminals'),
-    ('usage', 'View account usage'),
-    ('mcp', 'List MCP tools'),
-  ],
-  'pi' || 'omp' => const [
-    ('compact', 'Compact the session context'),
-    ('new', 'Start a new session'),
-    ('model', 'Switch model (provider/model)'),
-    ('thinking', 'Set thinking level'),
-    ('name', 'Set session display name'),
-    ('session', 'Show session info and stats'),
-    ('export', 'Export the session'),
-    ('clone', 'Duplicate the session at this point'),
-    ('reload', 'Reload extensions, skills and prompts'),
-  ],
-  _ => const [],
-}.map((pair) => HerdrCommand(pair.$1, pair.$2, 'builtin')).toList();
+/// Commands each harness takes by typing; the description comes from l10n.
+List<HerdrCommand> builtinCommands(String kind, AppLocalizations l10n) =>
+    switch (kind) {
+          'claude' => const [
+            'compact',
+            'clear',
+            'context',
+            'cost',
+            'model',
+            'effort',
+            'review',
+            'security-review',
+            'pr-comments',
+            'init',
+          ],
+          'codex' => const [
+            'compact',
+            'recap',
+            'review',
+            'new',
+            'init',
+            'diff',
+            'status',
+            'model',
+            'plan',
+            'goal',
+            'fork',
+            'side',
+            'rename',
+            'export',
+            'ps',
+            'stop',
+            'usage',
+            'mcp',
+          ],
+          'pi' || 'omp' => const [
+            'compact',
+            'new',
+            'model',
+            'thinking',
+            'name',
+            'session',
+            'export',
+            'clone',
+            'reload',
+          ],
+          _ => const [],
+        }
+        .map(
+          (name) =>
+              HerdrCommand(name, l10n.agentBuiltinHelp(kind, name), 'builtin'),
+        )
+        .toList();
