@@ -139,7 +139,7 @@ jobs:
         run: rm -f android/app/release.jks android/key.properties
 
       - name: Download the APK
-        if: ${{ !inputs.build && (inputs.apk-url || '') != '' }}
+        if: ${{ !inputs.build && (inputs.apk-artifact || '') == '' && (inputs.apk-url || '') != '' }}
         run: |
           mkdir -p build
           curl -fsSL -o build/smoke.apk "${{ inputs.apk-url }}"
