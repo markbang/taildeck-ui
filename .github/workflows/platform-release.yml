@@ -66,6 +66,18 @@ jobs:
         with:
           path: native/term/build/ghostty
           key: ghostty-vt-${{ steps.ghostty.outputs.rev }}-zig0.17.1-${{ runner.os }}-${{ runner.arch }}
+      - name: Warm the Go module cache
+        shell: bash
+        working-directory: native/bridge
+        run: |
+          for attempt in 1 2 3; do
+            if go mod download; then exit 0; fi
+            if [ "$attempt" -eq 3 ]; then break; fi
+            echo "::warning::go mod download failed (attempt $attempt/3); retrying in 8s"
+            sleep 8
+          done
+          echo "::error::go mod download failed after 3 attempts against $GOPROXY"
+          exit 1
       - name: Build the native libs (arm64-v8a, armeabi-v7a, x86_64)
         run: |
           set -o pipefail
@@ -128,6 +140,8 @@ jobs:
           EXPECTED_SHA256: A76AFE7FFB0787C18BE80DB3FF2D383A09E6EDCD2F67D023A48E3CE4FCABAD61
         run: |
           set -euo pipefail
+          version_name="$(sed -n 's/^version: //p' pubspec.yaml)"
+          version_name="${version_name%%+*}"
           sdk="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
           build_tools="$(ls -d "$sdk"/build-tools/*/ | sort -V | tail -1)"
           apksigner="$build_tools/apksigner"
@@ -144,13 +158,29 @@ jobs:
           cp "$out/flutter-apk/app-release.apk" "build/taildeck-android-universal-${VERSION}.apk"
           cp "$out/bundle/release/app-release.aab" "build/taildeck-android-${VERSION}.aab"
 
+          # apksigner words the digest line differently across build-tools
+          # versions (and may wrap the value onto the next line); take the last
+          # field of the SHA-256 line and keep only hex digits.
+          cert_sha256() {
+            awk '
+              /SHA-256 digest/ {
+                v = $NF
+                if (v !~ /^[0-9A-Fa-f:]+$/) { r = (getline nxt); if (r == 1) v = nxt }
+                gsub(/[^0-9A-Fa-f]/, "", v)
+                print toupper(v)
+                exit
+              }'
+          }
+
           verify_apk() {
-            local apk=$1 abi=$2 badging sha code listing
+            local apk=$1 abi=$2 badging certs sha code listing
             "$apksigner" verify "$apk" > /dev/null
-            sha="$("$apksigner" verify --print-certs "$apk" \
-              | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | tr -d ':')"
-            if [ "$(echo "$sha" | tr 'a-f' 'A-F')" != "$EXPECTED_SHA256" ]; then
-              echo "::error::$apk is signed by ${sha:0:8}..., expected ${EXPECTED_SHA256:0:8}..."
+            certs="$("$apksigner" verify --print-certs "$apk" 2>&1)"
+            sha="$(printf '%s\n' "$certs" | cert_sha256)"
+            if [ "$sha" != "$EXPECTED_SHA256" ]; then
+              echo "::error::$apk is signed by ${sha:-<unparsed>}, expected $EXPECTED_SHA256"
+              echo "--- $("$apksigner" --version 2>&1)"
+              printf '%s\n' "$certs"
               exit 1
             fi
             badging="$("$aapt2" dump badging "$apk")"
@@ -160,7 +190,7 @@ jobs:
               *) echo "::error::$apk has the wrong applicationId: $badging"; exit 1 ;;
             esac
             case "$badging" in
-              *"versionName='0.2.7'"*) ;;
+              *"versionName='$version_name'"*) ;;
               *) echo "::error::$apk has the wrong versionName: $badging"; exit 1 ;;
             esac
             code="$(echo "$badging" | sed -n "s/.*versionCode='\([0-9]*\)'.*/\1/p")"
@@ -188,9 +218,14 @@ jobs:
           verify_apk "build/taildeck-android-universal-${VERSION}.apk" ""
 
           aab="build/taildeck-android-${VERSION}.aab"
-          aab_sha="$(keytool -printcert -jarfile "$aab" | sed -n 's/.*SHA256: //p' | tr -d ':')"
-          if [ "$(echo "$aab_sha" | tr 'a-f' 'A-F')" != "$EXPECTED_SHA256" ]; then
-            echo "::error::$aab is signed by ${aab_sha:0:8}..., expected ${EXPECTED_SHA256:0:8}..."
+          # keytool labels the fingerprint SHA256 or SHA-256 depending on the JDK.
+          aab_certs="$(keytool -printcert -jarfile "$aab" 2>&1)"
+          aab_sha="$(printf '%s\n' "$aab_certs" \
+            | awk '/SHA-?256:/ { sub(/^.*SHA-?256:[ \t]*/, ""); print; exit }' \
+            | tr -d ':[:space:]' | tr '[:lower:]' '[:upper:]')"
+          if [ "$aab_sha" != "$EXPECTED_SHA256" ]; then
+            echo "::error::$aab is signed by ${aab_sha:-<unparsed>}, expected $EXPECTED_SHA256"
+            printf '%s\n' "$aab_certs"
             exit 1
           fi
           aab_listing="$(unzip -l "$aab")"
@@ -249,6 +284,18 @@ jobs:
         with:
           path: native/term/build/ghostty
           key: ghostty-vt-${{ steps.ghostty.outputs.rev }}-zig0.17.1-${{ runner.os }}-${{ runner.arch }}
+      - name: Warm the Go module cache
+        shell: bash
+        working-directory: native/bridge
+        run: |
+          for attempt in 1 2 3; do
+            if go mod download; then exit 0; fi
+            if [ "$attempt" -eq 3 ]; then break; fi
+            echo "::warning::go mod download failed (attempt $attempt/3); retrying in 8s"
+            sleep 8
+          done
+          echo "::error::go mod download failed after 3 attempts against $GOPROXY"
+          exit 1
       - name: Build the native libs
         run: |
           set -o pipefail
@@ -326,6 +373,18 @@ jobs:
           cache: true
       - run: flutter pub get
 
+      - name: Warm the Go module cache
+        shell: bash
+        working-directory: native/bridge
+        run: |
+          for attempt in 1 2 3; do
+            if go mod download; then exit 0; fi
+            if [ "$attempt" -eq 3 ]; then break; fi
+            echo "::warning::go mod download failed (attempt $attempt/3); retrying in 8s"
+            sleep 8
+          done
+          echo "::error::go mod download failed after 3 attempts against $GOPROXY"
+          exit 1
       - name: Build native libs (windows)
         if: matrix.name == 'windows-x64'
         shell: bash
