@@ -394,8 +394,6 @@ flutter_scene() {
   dump flutter-detail
   # The ping result block grows in under the buttons.
   record_tap flutter-size 6 "Ping" tap "ms"
-  # A held button keeps the ink circle and the pressed shape on screen.
-  record_tap flutter-ripple 3 "Ping" hold
   # The scan block joins the list and resizes with the found port.
   record_tap flutter-scan 14 "Scan common ports" tap "3000" scroll
   dump flutter-scan
@@ -404,6 +402,9 @@ flutter_scene() {
   # Pull to refresh: the contained dot morphs with the drag, then spins.
   record flutter-refresh 6 pull_down
   dump flutter-refresh
+  # A held dock item sits outside the page's scroll view, so the ink stays on
+  # screen for the whole press; the tab switches when the finger lifts.
+  record_tap flutter-ripple 4 "Services" hold
   flutter_settings
 }
 
@@ -456,13 +457,13 @@ kotlin_scene() {
   record kotlin-detail 6 tap_point "$point"
   dump kotlin-detail
   record_tap kotlin-size 6 "Ping" tap "ms"
-  record_tap kotlin-ripple 3 "Ping" hold
   record_tap kotlin-scan 14 "Scan ports" tap "3000" scroll
   dump kotlin-scan
   adb shell input keyevent 4 > /dev/null 2>&1 || true
   sleep 1.5
   record kotlin-refresh 6 pull_down
   dump kotlin-refresh
+  record_tap kotlin-ripple 4 "Services" hold
   kotlin_settings
 }
 
