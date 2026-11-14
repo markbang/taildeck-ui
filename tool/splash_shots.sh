@@ -135,5 +135,9 @@ for f in "$out"/*-splash.png "$out"/*.gif; do
   note "$(basename "$f"): $(stat -c%s "$f") bytes"
 done
 
+# Leave the build under test installed: the Kotlin app shares its application
+# id, so a later step would otherwise smoke the wrong app.
+adb install -r -g "$apk" > "$out/reinstall.txt" 2>&1 || true
+
 [ "$ok" -ge 2 ] || { note "FAIL: this build did not reach a first frame"; exit 1; }
 note "ok: cold start recorded light and dark"

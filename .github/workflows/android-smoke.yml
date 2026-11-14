@@ -196,8 +196,10 @@ jobs:
           profile: pixel_6
           disable-animations: true
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          # One line: the runner hands each line to sh separately.
-          script: bash tool/smoke_android.sh "$APK" "$APP_ID" smoke && bash tool/back_android.sh "$APK" "$APP_ID" smoke-back && bash tool/ping_android.sh "$APK" "$APP_ID" smoke-ping && bash tool/splash_shots.sh "$APK" "$APP_ID" smoke-splash
+          # One line: the runner hands each line to sh separately. The splash
+          # recording runs before the back and ping cases so its stills exist
+          # even when one of those fails; it reinstalls this APK at the end.
+          script: bash tool/smoke_android.sh "$APK" "$APP_ID" smoke && bash tool/splash_shots.sh "$APK" "$APP_ID" smoke-splash && bash tool/back_android.sh "$APK" "$APP_ID" smoke-back && bash tool/ping_android.sh "$APK" "$APP_ID" smoke-ping
 
       - name: Job summary
         if: always()
