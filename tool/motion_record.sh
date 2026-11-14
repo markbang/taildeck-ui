@@ -77,16 +77,22 @@ install_app() { # <apk>
   adb install -g "$1" > "$out/install.txt" 2>&1 || { note "install failed, see install.txt"; return 1; }
 }
 
-# Records <seconds> from just before the gesture the scenario plays.
+# Records <seconds> from just before the gesture the scenario plays. Each
+# recording ends on its own; a device-side screenrecord left over from the
+# previous clip would make the next one fail.
 record() { # <name> <seconds> <command...>
   local name=$1 seconds=$2
   shift 2
+  adb shell pkill -f screenrecord > /dev/null 2>&1 || true
+  sleep 0.7
   adb shell rm -f /sdcard/rec.mp4 > /dev/null 2>&1 || true
-  adb shell screenrecord --time-limit 30 --bit-rate 8000000 /sdcard/rec.mp4 > /dev/null 2>&1 &
+  adb shell screenrecord --time-limit "$((seconds + 2))" --bit-rate 8000000 \
+    /sdcard/rec.mp4 > /dev/null 2>&1 &
   local recorder=$!
   sleep 0.4
   "$@" || true
   wait "$recorder" 2> /dev/null || true
+  sleep 0.5
   adb pull /sdcard/rec.mp4 "$out/$name-raw.mp4" > /dev/null 2>&1 || true
   if [ -s "$out/$name-raw.mp4" ]; then
     ffmpeg -loglevel error -y -ss 0.2 -i "$out/$name-raw.mp4" -t "$seconds" \
@@ -111,7 +117,7 @@ flutter_tabs() {
   tapxy "$TAB_AGENTS"; sleep 1.4
   tapxy "$TAB_NODES"; sleep 1.2
 }
-flutter_detail() { tapxy "$PEER"; sleep 2; tapxy "$BACK"; sleep 1.2; }
+flutter_detail() { tapxy "$PEER"; sleep 2; adb shell input keyevent 4 > /dev/null 2>&1 || true; sleep 1.4; }
 
 ADVANCED= SIGNIN= CONTROL= AUTHKEY= BROWSER= TAB_SERVICES= TAB_AGENTS= TAB_NODES= PEER= BACK=
 
@@ -128,9 +134,16 @@ tapxy "$CONTROL" || true
 type_text "http://10.255.255.1:1"
 adb shell input keyevent 4 > /dev/null 2>&1 || true
 sleep 1
-coord SIGNIN "Sign in" || true
-record kotlin-start 7 kotlin_start
+if ui has "10.255.255.1" > /dev/null; then
+  coord SIGNIN "Sign in" || true
+  record kotlin-start 7 kotlin_start
+else
+  note "kotlin-start: control URL not typed; the real controlplane would open a browser"
+fi
 record kotlin-press 3 kotlin_press
+# A failed sign-in never leaves the app, but a stray browser would follow the
+# next clip.
+adb shell am force-stop com.android.chrome > /dev/null 2>&1 || true
 
 install_app "$flutter_apk" || true
 # The preview shell runs on mock data: no tailnet needed for the tabs.
@@ -141,12 +154,11 @@ coord TAB_NODES Nodes || true
 record flutter-tabs 6 flutter_tabs
 launch "$flutter_apk" "$app" "taildeck://preview/?preview=1&tab=0&lang=en"
 coord PEER devbox || true
-coord BACK Back || true
 record flutter-detail 5 flutter_detail
 
 launch "$flutter_apk" "$app" "taildeck://preview/?login=1&lang=en"
 coord CONTROL "Control server" || true
-coord AUTHKEY "Use auth key" || true
+coord AUTHKEY "auth key" || true
 record flutter-expand 6 flutter_expand
 launch "$flutter_apk" "$app" "taildeck://preview/?login=1&lang=en"
 coord BROWSER "Continue in browser" || true
@@ -168,6 +180,7 @@ pair() { # <kotlin clip> <flutter clip> <name>
     -filter_complex '[0:v]scale=404:-2,pad=404:ih:0:0:color=0x101214[l];[1:v]scale=404:-2,pad=404:ih:0:0:color=0x101214[r];[l][r]hstack=inputs=2' \
     -an "$out/$3.mp4" || true
   [ -s "$out/$3.mp4" ] && note "$3: $(stat -c%s "$out/$3.mp4") bytes"
+  return 0
 }
 
 pair kotlin-expand flutter-expand login-expand
