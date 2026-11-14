@@ -31,6 +31,10 @@ on:
         description: Build a release-signed x86_64 APK from this ref instead of downloading one
         type: boolean
         default: false
+      apk-artifact:
+        description: Artifact holding the x86_64 APK (skips apk-url)
+        type: string
+        default: ''
       application-id:
         description: Package to install, launch and watch
         type: string

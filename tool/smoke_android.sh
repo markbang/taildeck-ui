@@ -66,8 +66,10 @@ echo "ok: $app alive after ${wait_s}s with no crash" | tee -a "$out/summary.txt"
 # Best-effort evidence for the installed identity: the system's app info page
 # shows the launcher icon and label, recents shows the running app.
 adb shell am start -a android.settings.APPLICATION_DETAILS_SETTINGS -d "package:$app" > /dev/null 2>&1 || true
-sleep 3
+sleep 4
 adb exec-out screencap -p > "$out/appinfo.png" || true
+sleep 4
+adb exec-out screencap -p > "$out/appinfo-late.png" || true
 adb shell input keyevent KEYCODE_APP_SWITCH > /dev/null 2>&1 || true
 sleep 3
 adb exec-out screencap -p > "$out/recents.png" || true
