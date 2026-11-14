@@ -36,8 +36,7 @@ class PullToRefresh extends StatefulWidget {
 
 class _PullToRefreshState extends State<PullToRefresh>
     with SingleTickerProviderStateMixin {
-  late final _offset = AnimationController.unbounded(vsync: this)
-    ..addListener(() => setState(() {}));
+  late final _offset = AnimationController.unbounded(vsync: this);
   double _pulled = 0;
   bool _refreshing = false;
   bool _dragging = false;
@@ -95,16 +94,19 @@ class _PullToRefreshState extends State<PullToRefresh>
     setState(() => _refreshing = true);
     await _offset.animateTo(PullToRefresh.threshold, curve: Curves.easeOut);
     final spin = Future<void>.delayed(PullToRefresh.minimumSpin);
-    await Future.wait([widget.onRefresh(), spin]);
-    if (!mounted) return;
-    setState(() => _refreshing = false);
-    _pulled = 0;
-    await _offset.animateTo(0, curve: Curves.easeOut);
+    try {
+      await Future.wait([widget.onRefresh(), spin]);
+    } finally {
+      if (mounted) {
+        setState(() => _refreshing = false);
+        _pulled = 0;
+        await _offset.animateTo(0, curve: Curves.easeOut);
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final fraction = _offset.value / PullToRefresh.threshold;
     return NotificationListener<ScrollNotification>(
       onNotification: _onScroll,
       child: Stack(
@@ -113,22 +115,29 @@ class _PullToRefreshState extends State<PullToRefresh>
           Positioned.fill(
             child: IgnorePointer(
               child: ClipRect(
-                child: Align(
-                  alignment: Alignment.topCenter,
-                  child: Transform.translate(
-                    offset: Offset(
-                      0,
-                      _offset.value - PullToRefresh._indicatorSize,
-                    ),
-                    child: Opacity(
-                      opacity: fraction.clamp(0.0, 1.0),
-                      child: LoadingIndicator(
-                        size: PullToRefresh._indicatorSize,
-                        contained: true,
-                        progress: _refreshing ? null : fraction.clamp(0.0, 1.0),
+                child: AnimatedBuilder(
+                  animation: _offset,
+                  builder: (context, _) {
+                    final fraction = (_offset.value / PullToRefresh.threshold)
+                        .clamp(0.0, 1.0);
+                    return Align(
+                      alignment: Alignment.topCenter,
+                      child: Transform.translate(
+                        offset: Offset(
+                          0,
+                          _offset.value - PullToRefresh._indicatorSize,
+                        ),
+                        child: Opacity(
+                          opacity: fraction,
+                          child: LoadingIndicator(
+                            size: PullToRefresh._indicatorSize,
+                            contained: true,
+                            progress: _refreshing ? null : fraction,
+                          ),
+                        ),
                       ),
-                    ),
-                  ),
+                    );
+                  },
                 ),
               ),
             ),
