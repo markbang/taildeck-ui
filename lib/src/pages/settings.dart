@@ -8,9 +8,11 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../backend.dart';
 import '../data.dart';
-import '../native/bridge.dart';
+import '../favicons.dart';
 import '../glyphs.dart';
 import '../l10n.dart';
+import '../native/bridge.dart';
+import '../services.dart';
 import '../shell.dart';
 import '../ssh_identities.dart';
 import '../theme.dart';
@@ -53,6 +55,7 @@ class _SettingsPageState extends State<SettingsPage> {
   String _error = '';
   bool _forgetting = false;
   bool _notificationsBusy = false;
+  bool _refreshingIcons = false;
 
   @override
   void didChangeDependencies() {
@@ -163,6 +166,26 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
+  Future<void> _refreshIcons() async {
+    if (_refreshingIcons) return;
+    final l10n = AppLocalizations.of(context);
+    final favicons = FaviconsScope.of(context);
+    final services = ServicesScope.of(context);
+    setState(() {
+      _refreshingIcons = true;
+      _notice = '';
+      _error = '';
+    });
+    try {
+      await favicons.refreshAll(services.all);
+      if (mounted) setState(() => _notice = l10n.iconsRefreshed);
+    } on Object catch (error) {
+      if (mounted) setState(() => _error = _message(error));
+    } finally {
+      if (mounted) setState(() => _refreshingIcons = false);
+    }
+  }
+
   Future<void> _signOut() async {
     final l10n = AppLocalizations.of(context);
     final confirmed = await showFloatingDialog<bool>(
@@ -230,7 +253,11 @@ class _SettingsPageState extends State<SettingsPage> {
               label: l10n.hostname,
               value: self?.name ?? backend.hostname,
             ),
-            _InfoRow(label: l10n.addresses, value: _orDash(self?.ip), mono: true),
+            _InfoRow(
+              label: l10n.addresses,
+              value: _orDash(self?.ip),
+              mono: true,
+            ),
             _InfoRow(
               label: l10n.status,
               value: (self?.online ?? false) ? l10n.online : l10n.offline,
@@ -249,7 +276,10 @@ class _SettingsPageState extends State<SettingsPage> {
               ListRow(
                 leading: const IconBadge(Glyphs2.key),
                 title: Text(l10n.builtinKey, style: context.listTitleStyle),
-                subtitle: Text(l10n.sshNoBackend, style: context.listCaptionStyle),
+                subtitle: Text(
+                  l10n.sshNoBackend,
+                  style: context.listCaptionStyle,
+                ),
               )
             else ...[
               for (final identity in _keys)
@@ -279,7 +309,10 @@ class _SettingsPageState extends State<SettingsPage> {
                 onTap: _forgetting ? null : () => unawaited(_forgetHosts()),
                 child: ListRow(
                   leading: const IconBadge(Glyphs2.refresh),
-                  title: Text(l10n.forgetHostKeys, style: context.listTitleStyle),
+                  title: Text(
+                    l10n.forgetHostKeys,
+                    style: context.listTitleStyle,
+                  ),
                   subtitle: Text(
                     l10n.forgetHostKeysHint,
                     style: context.listCaptionStyle,
@@ -311,6 +344,60 @@ class _SettingsPageState extends State<SettingsPage> {
               options: [(false, l10n.inBrowser), (true, l10n.inApp)],
               onChanged: (value) => unawaited(backend.setOpenInApp(value)),
             ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+              child: RowSemantics(
+                label: l10n.a11yServiceIcons(backend.serviceIcons),
+                onTap: () =>
+                    unawaited(backend.setServiceIcons(!backend.serviceIcons)),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            l10n.serviceIcons,
+                            style: context.listTitleStyle,
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            backend.serviceIcons
+                                ? l10n.serviceIconsOn
+                                : l10n.serviceIconsOff,
+                            style: context.listCaptionStyle,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Switch(
+                      value: backend.serviceIcons,
+                      onChanged: (value) =>
+                          unawaited(backend.setServiceIcons(value)),
+                      semanticLabel: l10n.serviceIcons,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            TapFeedback(
+              onTap: _refreshingIcons ? null : () => unawaited(_refreshIcons()),
+              child: ListRow(
+                leading: const IconBadge(Glyphs2.refresh),
+                title: Text(l10n.refreshIcons, style: context.listTitleStyle),
+                subtitle: Text(
+                  l10n.refreshIconsHint,
+                  style: context.listCaptionStyle,
+                ),
+                trailing: _refreshingIcons
+                    ? const SizedBox.square(
+                        dimension: 18,
+                        child: ActivityIndicator(size: 18),
+                      )
+                    : null,
+              ),
+            ),
           ],
         ),
         const SizedBox(height: 20),
@@ -326,7 +413,9 @@ class _SettingsPageState extends State<SettingsPage> {
                   backend.notifications.denied,
                 ),
                 onTap: backend.notifications.supported
-                    ? () => unawaited(_setNotifications(!backend.agentNotifications))
+                    ? () => unawaited(
+                        _setNotifications(!backend.agentNotifications),
+                      )
                     : null,
                 child: Row(
                   children: [
@@ -334,16 +423,19 @@ class _SettingsPageState extends State<SettingsPage> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(l10n.agentNotifications, style: context.listTitleStyle),
+                          Text(
+                            l10n.agentNotifications,
+                            style: context.listTitleStyle,
+                          ),
                           const SizedBox(height: 2),
                           Text(
                             !backend.notifications.supported
                                 ? l10n.notificationsUnsupported
                                 : backend.notifications.denied
-                                    ? l10n.notificationsDenied
-                                    : backend.agentNotifications
-                                        ? l10n.agentNotificationsOn
-                                        : l10n.agentNotificationsOff,
+                                ? l10n.notificationsDenied
+                                : backend.agentNotifications
+                                ? l10n.agentNotificationsOn
+                                : l10n.agentNotificationsOff,
                             style: context.listCaptionStyle,
                           ),
                         ],
@@ -376,7 +468,10 @@ class _SettingsPageState extends State<SettingsPage> {
             if (backend.notifications.supported)
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
-                child: Text(l10n.nodeNotificationHint, style: context.listCaptionStyle),
+                child: Text(
+                  l10n.nodeNotificationHint,
+                  style: context.listCaptionStyle,
+                ),
               ),
           ],
         ),
@@ -464,13 +559,11 @@ class _SettingsPageState extends State<SettingsPage> {
                 ('en', l10n.english),
                 ('zh', l10n.chinese),
               ],
-              onChanged: (value) => widget.theme.setLocale(
-                switch (value) {
-                  'en' => const Locale('en'),
-                  'zh' => const Locale('zh'),
-                  _ => null,
-                },
-              ),
+              onChanged: (value) => widget.theme.setLocale(switch (value) {
+                'en' => const Locale('en'),
+                'zh' => const Locale('zh'),
+                _ => null,
+              }),
             ),
           ],
         ),
@@ -517,17 +610,25 @@ class _SettingsPageState extends State<SettingsPage> {
             ListRow(
               leading: const IconBadge(Glyphs2.nodes),
               title: Text('Taildeck', style: context.listTitleStyle),
-              trailing: Text(l10n.version(appVersion), style: context.listCaptionStyle),
+              trailing: Text(
+                l10n.version(appVersion),
+                style: context.listCaptionStyle,
+              ),
             ),
             TapFeedback(
-              onTap: () => unawaited(launchUrl(
-                Uri.parse(repoUrl),
-                mode: LaunchMode.externalApplication,
-              )),
+              onTap: () => unawaited(
+                launchUrl(
+                  Uri.parse(repoUrl),
+                  mode: LaunchMode.externalApplication,
+                ),
+              ),
               child: ListRow(
                 leading: const IconBadge(Glyphs2.globe),
                 title: Text(l10n.repository, style: context.listTitleStyle),
-                subtitle: Text('markbang/taildeck-ui', style: context.listCaptionStyle),
+                subtitle: Text(
+                  'markbang/taildeck-ui',
+                  style: context.listCaptionStyle,
+                ),
                 trailing: GlyphIcon(
                   Glyphs.chevronForward,
                   size: 16,
@@ -585,13 +686,16 @@ class _InfoRow extends StatelessWidget {
               textAlign: TextAlign.end,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: (mono
-                      ? AppTextStyle.footnote.of(context).copyWith(
-                          fontFamily: 'DejaVuSansMono',
-                          fontSize: 11,
-                        )
-                      : AppTextStyle.body.of(context))
-                  .copyWith(color: tint ?? scheme.onSurfaceVariant),
+              style:
+                  (mono
+                          ? AppTextStyle.footnote
+                                .of(context)
+                                .copyWith(
+                                  fontFamily: 'DejaVuSansMono',
+                                  fontSize: 11,
+                                )
+                          : AppTextStyle.body.of(context))
+                      .copyWith(color: tint ?? scheme.onSurfaceVariant),
             ),
           ),
         ],
@@ -615,7 +719,10 @@ class _KeyRow extends StatelessWidget {
         ? l10n.publicKeyUnavailable
         : identity.publicKey;
     return ListRow(
-      leading: IconBadge(Glyphs2.key, tint: identity.builtin ? null : scheme.primary),
+      leading: IconBadge(
+        Glyphs2.key,
+        tint: identity.builtin ? null : scheme.primary,
+      ),
       title: Text(
         identity.builtin ? l10n.builtinKey : identity.name,
         style: context.listTitleStyle,
@@ -624,11 +731,13 @@ class _KeyRow extends StatelessWidget {
         subtitle,
         maxLines: 2,
         overflow: TextOverflow.ellipsis,
-        style: AppTextStyle.footnote.of(context).copyWith(
-          fontFamily: 'DejaVuSansMono',
-          fontSize: 11,
-          color: scheme.onSurfaceVariant,
-        ),
+        style: AppTextStyle.footnote
+            .of(context)
+            .copyWith(
+              fontFamily: 'DejaVuSansMono',
+              fontSize: 11,
+              color: scheme.onSurfaceVariant,
+            ),
       ),
       trailing: Row(
         mainAxisSize: MainAxisSize.min,

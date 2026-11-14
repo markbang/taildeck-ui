@@ -56,6 +56,10 @@ prism_ui's surfaces and stroke-icon engine:
   including last-seen and key-expiry dates in the app's language
 - **Services** — grouped by node with the node's own path state in the section header; add and edit with node,
   scheme, port and path, delete with a confirmation, and a 32-port scan through the node
+- **Service icons** — each row shows the site's own favicon: fetched through the node (never a third-party favicon
+  service), following `<link rel=icon>`, web-manifest icons and `/favicon.ico`, with ICO turned into PNG in Go and
+  SVG drawn by `flutter_svg`; cached on the device, revalidated by ETag, 7-day soft expiry, a Settings toggle and
+  "Refresh icons". A row without an icon keeps its initial
 - **Agents (herdr)** — on Android/Linux the list, states and transcripts come from a real herdr server on a node,
   over the same SSH connection as the terminal: sections by workspace, state pills (Working / Blocked / Idle / Done),
   the pane's title and `kind · pane`, a connection card that explains `HERDR_NOT_INSTALLED` / `HERDR_NOT_RUNNING`,
@@ -91,6 +95,7 @@ lib/src/
   backend.dart    node state, peers, services, keys, logs; mock fallback on Web
   herdr.dart      herdr link, agents, transcripts, prompts
   services.dart   saved services, port list, gateway URLs
+  favicons.dart   service icons: fetch policy, disk cache, concurrency (favicons_store_* = disk / memory)
   native/         dart:ffi bridge, terminal, SSH, keys, storage, platform hooks
   data.dart       sample tailnet for the Web preview
   l10n.dart       UiLocalizations for prism_ui's own strings
@@ -102,9 +107,10 @@ Preview params: `/?tab=1` (services), `/?tab=2` (agents), `/?tab=3` (settings), 
 `/?theme=light`, `/?nav=docked` (docked bottom bar instead of the floating dock), `/?anim=fade`,
 `/?login=1` (sign-in), `/?login=waiting` (device approval pending), `/?preview=1` (signed-in shell without a
 node), `/?ssh=devbox` (terminal), `/?lang=zh`,
-`/?ssh=demo` (native libghostty-vt demo session), `/?chat=w1:p1` (a pane's chat on the native build; without a
-herdr connection it shows the real error state), `/?chat=w1:p1&status=working` (the same chat with the agent
-busy, so the prompt queue shows), `/?chat=w1:p1&queue=first%20prompt|second` (prompts that start out queued),
+`/?ssh=demo` (native libghostty-vt demo session), `/?favicons=demo` (two bundled icons in the services list),
+`/?chat=w1:p1` (a pane's chat on the native build; without a herdr connection it shows the real error state),
+`/?chat=w1:p1&status=working` (the same chat with the agent busy, so the prompt queue shows),
+`/?chat=w1:p1&queue=first%20prompt|second` (prompts that start out queued),
 `/?motion=off` (preview the system's reduce-motion setting), `/?splash=0` (skip the launch screen),
 `/?scale=1.3` (preview a text scale; the app clamps 0.9–1.3), `/?sheet=ssh|service|agent|key|dialog` (open that
 sheet over the preview page). The desktop bundle has no URL, so pass the same parameters as

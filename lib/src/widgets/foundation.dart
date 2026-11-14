@@ -7,6 +7,7 @@ import '../l10n.dart';
 import '../glyphs.dart';
 import '../services.dart';
 import 'controls.dart';
+import 'service_avatar.dart';
 
 class PageBody extends StatelessWidget {
   const PageBody({
@@ -36,7 +37,8 @@ class PageBody extends StatelessWidget {
       child: ConstrainedBox(
         constraints: BoxConstraints(maxWidth: maxWidth),
         child: ListView(
-          padding: padding ??
+          padding:
+              padding ??
               EdgeInsets.fromLTRB(
                 20,
                 context.contentTopPadding,
@@ -58,8 +60,10 @@ class PageBody extends StatelessWidget {
                           title,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: AppTextStyle.largeTitle
-                              .of(context, emphasized: true),
+                          style: AppTextStyle.largeTitle.of(
+                            context,
+                            emphasized: true,
+                          ),
                         ),
                       ),
                       if (subtitle != null)
@@ -241,9 +245,7 @@ class NodeBadge extends StatelessWidget {
           _ => Glyphs2.nodes,
         },
         size: size * 0.52,
-        color: node.online
-            ? node.tint
-            : node.tint.withValues(alpha: 0.45),
+        color: node.online ? node.tint : node.tint.withValues(alpha: 0.45),
       ),
     );
   }
@@ -336,7 +338,10 @@ class Connector extends StatelessWidget {
   Widget build(BuildContext context) {
     return CustomPaint(
       size: const Size(22, 38),
-      painter: _ConnectorPainter(color: Divider.colorOf(context), isFirst: isFirst),
+      painter: _ConnectorPainter(
+        color: Divider.colorOf(context),
+        isFirst: isFirst,
+      ),
     );
   }
 }
@@ -355,9 +360,17 @@ class _ConnectorPainter extends CustomPainter {
       ..strokeWidth = 1.4;
     final midY = size.height / 2;
     final x = size.width - 8;
-    canvas.drawLine(Offset(x, isFirst ? midY : 0), Offset(x, size.height), paint);
+    canvas.drawLine(
+      Offset(x, isFirst ? midY : 0),
+      Offset(x, size.height),
+      paint,
+    );
     canvas.drawLine(Offset(x, midY), Offset(size.width - 2, midY), paint);
-    canvas.drawCircle(Offset(size.width - 1.5, midY), 2.2, Paint()..color = color);
+    canvas.drawCircle(
+      Offset(size.width - 1.5, midY),
+      2.2,
+      Paint()..color = color,
+    );
   }
 
   @override
@@ -386,23 +399,7 @@ class ServiceTile extends StatelessWidget {
     return TapFeedback(
       onTap: onPressed ?? () {},
       child: ListRow(
-        leading: ExcludeSemantics(
-          child: Container(
-            width: 38,
-            height: 38,
-            alignment: Alignment.center,
-            decoration: ShapeDecoration(
-              color: service.tint.withValues(alpha: muted ? 0.08 : 0.16),
-              shape: AppShape.all(10),
-            ),
-            child: Text(
-              name.characters.first.toUpperCase(),
-              style: AppTextStyle.headline
-                  .of(context, emphasized: true)
-                  .copyWith(color: service.tint),
-            ),
-          ),
-        ),
+        leading: ServiceAvatar(service, muted: muted),
         title: Semantics(
           label: AppLocalizations.of(context)
               .serviceSemantics(name, service.node, service.port),

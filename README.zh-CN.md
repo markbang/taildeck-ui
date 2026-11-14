@@ -53,6 +53,9 @@ Windows/macOS/iOS 证书。
   日期按应用语言显示
 - **服务** —— 按节点分组，分区标题里带该节点自己的路径状态；添加/编辑可选节点、协议、端口和路径，删除带确认，
   并可经节点扫描 32 个常用端口
+- **服务图标** —— 每行显示站点自己的 favicon：经节点获取（从不经过第三方图标服务），依次看 `<link rel=icon>`、
+  Web App Manifest 图标和 `/favicon.ico`，ICO 在 Go 里转成 PNG，SVG 交给 `flutter_svg` 绘制；图标缓存在本机，
+  用 ETag 校验，7 天软过期，设置里有开关和「刷新图标」。没有图标时保留首字母
 - **Agents（herdr）** —— Android/Linux 上代理列表、状态和会话记录来自节点上的真实 herdr 服务，走与终端相同的
   SSH 连接：按工作区分区，状态胶囊（运行中 / 待确认 / 空闲 / 已完成），显示 pane 标题和 `kind · pane`；
   连接卡片会说明 `HERDR_NOT_INSTALLED` / `HERDR_NOT_RUNNING`；聊天页显示会话记录、输入框、重启和 `/model` 切换。
@@ -88,6 +91,7 @@ lib/src/
   backend.dart   节点状态、对端、服务、密钥、日志；Web 上回退到模拟数据
   herdr.dart     herdr 连接、agents、会话记录、输入
   services.dart  保存的服务、端口表、网关 URL
+  favicons.dart  服务图标：获取策略、磁盘缓存、并发（favicons_store_* = 磁盘 / 内存）
   native/        dart:ffi 桥接、终端、SSH、密钥、存储、平台钩子
   data.dart      网页预览用的示例 tailnet
   l10n.dart      覆盖 prism_ui 自身字符串的 UiLocalizations
@@ -99,8 +103,9 @@ lib/src/
 `/?theme=light`、`/?nav=docked`（停靠式底栏替代浮动底栏）、`/?anim=fade`、
 `/?login=1`（登录）、`/?login=waiting`（等待设备批准）、`/?preview=1`（无节点也能看已登录界面）、
 `/?ssh=devbox`（终端）、`/?lang=zh`、
-`/?ssh=demo`（原生 libghostty-vt 演示会话）、`/?chat=w1:p1`（原生构建下某个 pane 的聊天页；没有 herdr 连接时
-显示真实的错误状态）、`/?chat=w1:p1&status=working`（同一个聊天页，代理处于工作中，可看到排队提示）、
+`/?ssh=demo`（原生 libghostty-vt 演示会话）、`/?favicons=demo`（服务列表里放两个内置图标）、
+`/?chat=w1:p1`（原生构建下某个 pane 的聊天页；没有 herdr 连接时显示真实的错误状态）、
+`/?chat=w1:p1&status=working`（同一个聊天页，代理处于工作中，可看到排队提示）、
 `/?chat=w1:p1&queue=第一条|第二条`（预览已在排队的提示词）、`/?motion=off`（预览系统的「减少动态效果」）、`/?splash=0`（跳过启动画面）、`/?scale=1.3`（预览文字缩放，应用会限制在
 0.9–1.3）。桌面版没有 URL，用 `TAILDECK_QUERY=ssh=demo` 传同样的参数。
 

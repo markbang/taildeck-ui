@@ -4,12 +4,14 @@ import 'dart:convert';
 import 'package:flutter/widgets.dart';
 
 import 'data.dart';
+import 'favicons.dart';
 import 'herdr.dart';
 import 'native/bridge.dart';
 import 'native/node_service.dart';
 import 'native/platform_hooks.dart';
 import 'native/ssh.dart';
 import 'native/storage.dart';
+import 'services.dart';
 import 'notifications.dart';
 import 'ssh_identities.dart';
 
@@ -79,6 +81,7 @@ class TaildeckBackend extends ChangeNotifier {
   List<SshIdentity> _identities = const [];
   bool _identitiesLoaded = false;
   bool _openInApp = false;
+  bool _serviceIcons = true;
   String _platform = 'go';
   String _platformWarning = '';
   bool _herdrAutoTried = false;
@@ -120,6 +123,9 @@ class TaildeckBackend extends ChangeNotifier {
 
   /// Services open in the in-app WebView on Android/iOS, the browser elsewhere.
   bool get openInApp => _openInApp;
+
+  /// Whether service rows show the site's own favicon.
+  bool get serviceIcons => _serviceIcons;
 
   /// Whether agents post an attention notification while the app is away.
   bool get agentNotifications => notifications.enabled;
@@ -196,6 +202,7 @@ class TaildeckBackend extends ChangeNotifier {
       _controlURL = config.controlURL;
       _persistedSignIn = config.signedIn;
       _openInApp = config.openInApp;
+      _serviceIcons = config.serviceIcons;
       notifications.setEnabled(config.agentNotifications);
       _herdrNode = config.herdrNode;
       _herdrUser = config.herdrUser;
@@ -569,6 +576,34 @@ class TaildeckBackend extends ChangeNotifier {
     await _persist();
   }
 
+  Future<void> setServiceIcons(bool value) async {
+    if (value == _serviceIcons) return;
+    _serviceIcons = value;
+    notifyListeners();
+    await _persist();
+  }
+
+  /// The icon of [service], fetched through the node. Null while the node is
+  /// not running: that is a transient state, never a site without an icon.
+  Future<FaviconImage?> favicon(Service service) async {
+    final bridge = _bridge;
+    if (bridge == null || !_started) return null;
+    final reply = await bridge.favicon(
+      host: service.node,
+      port: service.port,
+      scheme: service.scheme,
+    );
+    final raw = reply['bytes'] as String? ?? '';
+    if (raw.isEmpty) return null;
+    return FaviconImage(
+      bytes: base64Decode(raw),
+      contentType: reply['contentType'] as String? ?? '',
+      etag: reply['etag'] as String? ?? '',
+      lastModified: reply['lastModified'] as String? ?? '',
+      url: reply['url'] as String? ?? '',
+    );
+  }
+
   /// Sign-out drops the node key; the next launch starts at the login screen.
   Future<void> signOut() async {
     if (_bridge != null && _started) {
@@ -787,6 +822,7 @@ class TaildeckBackend extends ChangeNotifier {
           controlURL: _controlURL,
           signedIn: persist,
           openInApp: _openInApp,
+          serviceIcons: _serviceIcons,
           agentNotifications: notifications.enabled,
           herdrNode: _herdrNode,
           herdrUser: _herdrUser,

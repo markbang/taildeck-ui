@@ -30,6 +30,7 @@ Flutter 客户端对 [markbang/taildeck](https://github.com/markbang/taildeck)�
 | SSH 登录用户 | 用户名可编辑，随保存的配置记住 | 同样可编辑并校验；依次用该节点/服务上次的登录、节点的 Tailscale 用户、`root` 预填 | 已完成 | 写入 `config.json`，Linux 构建重启后能读回 |
 | 主机密钥信任 | TOFU，可清除已信任主机 | 相同，`td_forget_host_keys` | 未验证 | 这里从未信任过任何主机 |
 | 服务 | 添加、编辑、删除，按节点分组 | `services.json`，按节点、协议、端口、路径添加/编辑/删除 | 已完成 | 已截图；通过原生存储层持久化 |
+| 服务图标 | 每行一个首字母方块 | 经节点取站点 favicon（`td_favicon`），ICO 在 Go 里转 PNG，SVG 交给 `flutter_svg`；本地缓存带 ETag、7 天软过期、1 天失败缓存；设置有开关和「刷新图标」 | 部分 | 获取链路有 Go `httptest` 测试覆盖（link 标签、manifest、ico 回退、svg、超时、体积上限），界面用 `/?favicons=demo` 验证；这里没有对端应答，真实站点还没给过图标 |
 | 端口扫描 | 经节点扫描 32 个常用端口 | `td_probe`，同一份端口表 | 未验证 | 已接到节点；网页预览会提示需要原生构建 |
 | 打开服务 | 应用内 WebView 或经网关用默认浏览器 | 按设置分流：Android/iOS 用应用内 WebView，其他平台用默认浏览器，两者都经 `127.0.0.1:18680` | 未验证 | 共用 `gatewayUrl` 与分流已接好，回退提示有截图；网关仍未实际跑通 |
 | 18680 网关 | 本地回环正向代理，每个服务独立源 | 复用 `bridge/` 里的同一 Go 网关 | 未验证 | 代码原样复用，但需要运行中的节点才能测 |
