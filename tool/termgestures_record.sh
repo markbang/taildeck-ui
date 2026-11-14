@@ -390,19 +390,18 @@ copy_selection() {
 }
 
 paste_clipboard() {
-  # The input bar has its own paste button; the toolbar's is the rightmost
-  # action under the selection.
+  # The flash replaces the buttons for a moment; wait it out, then tap the
+  # toolbar's Paste (the input bar's own button says "Insert from clipboard").
   sleep 2
-  local x1 y1 x2 y2 x y
-  if ! read -r x1 y1 x2 y2 <<< "$(ui bounds 'Selection actions')"; then
-    note "paste: no selection toolbar"
+  local point x y
+  if ! point=$(ui tap 'Paste'); then
+    note "paste: no Paste action"
     return 0
   fi
-  x=$((x2 - $(dp 40)))
-  y=$(((y1 + y2) / 2))
+  read -r x y <<< "$point"
   adb shell input tap "$x" "$y" > /dev/null 2>&1 || true
   sleep 1.5
-  note "paste: tapped the toolbar at $x,$y"
+  note "paste: tapped Paste at $x,$y"
 }
 
 open_link() {
@@ -489,6 +488,25 @@ hardware_keys() {
   sleep 0.4
   ctrl_c
   sleep 1.5
+}
+
+# ---- the font size from Settings -----------------------------------------
+font_step() {
+  launch "$settings_url" || return 0
+  local point x y
+  if point=$(scroll_clear 'Larger font'); then
+    read -r x y <<< "$point"
+    adb shell input tap "$x" "$y" > /dev/null 2>&1 || true
+    sleep 1
+    adb shell input tap "$x" "$y" > /dev/null 2>&1 || true
+    sleep 1.5
+    note "font: settings reads $(ui text 'pinch the grid' || echo unreadable)"
+  else
+    note "font: no Larger font button"
+  fi
+  shot settings-font
+  launch "$demo_url" || true
+  note "font: grid after the step $(grid_cells || echo unknown)"
 }
 
 # ---- run -----------------------------------------------------------------

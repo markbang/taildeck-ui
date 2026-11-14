@@ -1027,7 +1027,7 @@ class _InputBar extends StatelessWidget {
             if (onPaste != null)
               Semantics(
                 button: true,
-                label: AppLocalizations.of(context).paste,
+                label: AppLocalizations.of(context).terminalPasteButton,
                 child: GestureDetector(
                   behavior: HitTestBehavior.opaque,
                   onTap: onPaste,
