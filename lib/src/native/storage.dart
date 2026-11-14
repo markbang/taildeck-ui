@@ -13,6 +13,7 @@ class StoredConfig {
     this.herdrAuth = 'tailscale',
     this.herdrIdentity = '',
     this.sshUsers = const {},
+    this.sshPorts = const {},
   });
 
   factory StoredConfig.fromJson(Map<String, dynamic> json) => StoredConfig(
@@ -31,6 +32,15 @@ class StoredConfig {
         for (final entry in map.entries)
           if (entry.value case final String user when user.isNotEmpty)
             entry.key: user,
+      },
+      _ => const {},
+    },
+    sshPorts: switch (json['sshPorts']) {
+      final Map<String, dynamic> map => {
+        for (final entry in map.entries)
+          if (entry.value case final num port
+              when port >= 1 && port <= 65535)
+            entry.key: port.toInt(),
       },
       _ => const {},
     },
@@ -56,8 +66,10 @@ class StoredConfig {
   final String herdrAuth;
   final String herdrIdentity;
 
-  /// Last SSH login per target (`sshLoginKey`); passwords are never written.
+  /// Last SSH login and port per target (`sshLoginKey`); passwords are never
+  /// written.
   final Map<String, String> sshUsers;
+  final Map<String, int> sshPorts;
 
   Map<String, dynamic> toJson() => {
     'hostname': hostname,
@@ -71,6 +83,7 @@ class StoredConfig {
     'herdrAuth': herdrAuth,
     'herdrIdentity': herdrIdentity,
     'sshUsers': sshUsers,
+    'sshPorts': sshPorts,
   };
 }
 

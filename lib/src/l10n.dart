@@ -165,8 +165,8 @@ class AppLocalizations implements UiLocalizations {
   String get serviceNameHint => _zh ? '默认使用端口号' : 'Defaults to the port';
   String get serviceScheme => _zh ? '协议' : 'Scheme';
   String get servicePort => _zh ? '端口' : 'Port';
-  String get servicePortInvalid =>
-      _zh ? '端口必须在 1–65535 之间' : 'Port must be 1–65535';
+  String get portInvalid => _zh ? '端口必须在 1–65535 之间' : 'Port must be 1–65535';
+  String get suggestions => _zh ? '可选值' : 'Suggestions';
   String get servicePath => _zh ? '路径' : 'Path';
   String get servicePathHint => _zh ? '/ 为可选' : '/ is optional';
   String get save => _zh ? '保存' : 'Save';

@@ -1,5 +1,10 @@
 import 'package:flutter/widgets.dart';
 
+/// What a login may look like: letters, digits and `.` `_` `-`, up to 32.
+final sshUserPattern = RegExp(r'^[A-Za-z0-9_][A-Za-z0-9._-]{0,31}$');
+
+bool isValidSshUser(String user) => sshUserPattern.hasMatch(user.trim());
+
 class NodeItem {
   const NodeItem({
     required this.name,
@@ -54,10 +59,8 @@ class NodeItem {
   String get suggestedSshUser {
     if (tags.isNotEmpty) return '';
     final login = owner.split('@').first;
-    return _loginName.hasMatch(login) ? login : '';
+    return sshUserPattern.hasMatch(login) ? login : '';
   }
-
-  static final _loginName = RegExp(r'^[A-Za-z0-9_][A-Za-z0-9._-]{0,31}$');
 
   Color get tint => switch (os) {
     'macOS' => const Color(0xFF7C8CFF),

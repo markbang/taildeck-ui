@@ -88,6 +88,7 @@ class TaildeckBackend extends ChangeNotifier {
   String _herdrAuth = 'tailscale';
   String _herdrIdentity = '';
   Map<String, String> _sshUsers = const {};
+  Map<String, int> _sshPorts = const {};
   bool _foreground = true;
   bool _refreshing = false;
   bool _cancelStart = false;
@@ -130,13 +131,32 @@ class TaildeckBackend extends ChangeNotifier {
   /// saved yet.
   String sshUserFor(String target) => _sshUsers[target] ?? '';
 
+  /// Last SSH port dialed for [target], 22 when none was saved yet.
+  int sshPortFor(String target) => _sshPorts[target] ?? 22;
+
+  /// What a free login field offers for [target]: its last login, the node's
+  /// tailnet login, then root.
+  List<String> sshUserSuggestions(String target, {String login = ''}) => [
+    for (final value in {sshUserFor(target), login, 'root'})
+      if (value.isNotEmpty) value,
+  ];
+
   /// Remembers the login for [target]; the password stays in memory only.
-  Future<void> rememberSshUser(String target, String user) async {
+  Future<void> rememberSshLogin(
+    String target, {
+    required String user,
+    required int port,
+  }) async {
     final trimmed = user.trim();
-    if (target.isEmpty || trimmed.isEmpty || _sshUsers[target] == trimmed) {
+    if (target.isEmpty ||
+        trimmed.isEmpty ||
+        port < 1 ||
+        port > 65535 ||
+        (_sshUsers[target] == trimmed && _sshPorts[target] == port)) {
       return;
     }
     _sshUsers = {..._sshUsers, target: trimmed};
+    _sshPorts = {..._sshPorts, target: port};
     await _persist();
   }
 
@@ -183,6 +203,7 @@ class TaildeckBackend extends ChangeNotifier {
       _herdrAuth = config.herdrAuth;
       _herdrIdentity = config.herdrIdentity;
       _sshUsers = config.sshUsers;
+      _sshPorts = config.sshPorts;
       // The tsnet state dir keeps the node key, so a previous session can
       // reconnect without a new key.
       if (config.signedIn) await _start('');
@@ -489,6 +510,8 @@ class TaildeckBackend extends ChangeNotifier {
       _herdrPort = port;
       _herdrAuth = auth;
       _herdrIdentity = auth == 'key' ? identityId : '';
+      _sshUsers = {..._sshUsers, node: user};
+      _sshPorts = {..._sshPorts, node: port};
       await _persist();
     }
   }
@@ -771,6 +794,7 @@ class TaildeckBackend extends ChangeNotifier {
           herdrAuth: _herdrAuth,
           herdrIdentity: _herdrIdentity,
           sshUsers: _sshUsers,
+          sshPorts: _sshPorts,
         ),
       );
     } on Object catch (error) {
