@@ -97,7 +97,7 @@ lib/src/
 `/?ssh=devbox`（终端）、`/?lang=zh`、
 `/?ssh=demo`（原生 libghostty-vt 演示会话）、`/?chat=w1:p1`（原生构建下某个 pane 的聊天页；没有 herdr 连接时
 显示真实的错误状态）、`/?chat=w1:p1&status=working`（同一个聊天页，代理处于工作中，可看到排队提示）、
-`/?motion=off`（预览系统的「减少动态效果」）、`/?scale=1.3`（预览文字缩放，应用会限制在
+`/?chat=w1:p1&queue=第一条|第二条`（预览已在排队的提示词）、`/?motion=off`（预览系统的「减少动态效果」）、`/?scale=1.3`（预览文字缩放，应用会限制在
 0.9–1.3）。桌面版没有 URL，用 `TAILDECK_QUERY=ssh=demo` 传同样的参数。
 
 ## 运行
