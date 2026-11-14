@@ -98,9 +98,11 @@ class AppLocalizations implements UiLocalizations {
           : '$minutes min ago';
     }
     final hours = minutes ~/ 60;
-    final days = DateTime(now.year, now.month, now.day)
-        .difference(DateTime(at.year, at.month, at.day))
-        .inDays;
+    final days = DateTime(
+      now.year,
+      now.month,
+      now.day,
+    ).difference(DateTime(at.year, at.month, at.day)).inDays;
     if (hours < 24) {
       if (_zh) return '$hours 小时前';
       return spoken
@@ -112,8 +114,18 @@ class AppLocalizations implements UiLocalizations {
   }
 
   static const _months = [
-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
   ];
 
   @override
@@ -148,27 +160,35 @@ class AppLocalizations implements UiLocalizations {
   String get serviceNameHint => _zh ? '默认使用端口号' : 'Defaults to the port';
   String get serviceScheme => _zh ? '协议' : 'Scheme';
   String get servicePort => _zh ? '端口' : 'Port';
-  String get servicePortInvalid => _zh ? '端口必须在 1–65535 之间' : 'Port must be 1–65535';
+  String get servicePortInvalid =>
+      _zh ? '端口必须在 1–65535 之间' : 'Port must be 1–65535';
   String get servicePath => _zh ? '路径' : 'Path';
   String get servicePathHint => _zh ? '/ 为可选' : '/ is optional';
   String get save => _zh ? '保存' : 'Save';
   String get edit => _zh ? '编辑' : 'Edit';
   String get delete => _zh ? '删除' : 'Delete';
-  String get noServicesAll => _zh ? '还没有服务，点右上角 + 添加。' : 'No services yet — add one with +.';
+  String get noServicesAll =>
+      _zh ? '还没有服务，点右上角 + 添加。' : 'No services yet — add one with +.';
   String get serviceNeedsGateway => _zh
       ? '网关未运行，无法在浏览器中打开。先登录 tailnet。'
       : 'The gateway is not running, so this cannot open in a browser. Sign in to the tailnet first.';
-  String get serviceOpenFailed => _zh ? '无法打开浏览器' : 'Could not open the browser';
+  String get serviceOpenFailed =>
+      _zh ? '无法打开浏览器' : 'Could not open the browser';
   String get scanPorts => _zh ? '扫描常用端口' : 'Scan common ports';
   String get scanning => _zh ? '正在扫描…' : 'Scanning…';
-  String scanFound(int count) => _zh ? '发现 $count 个开放端口' : '$count open ports found';
+  String scanFound(int count) =>
+      _zh ? '发现 $count 个开放端口' : '$count open ports found';
   String get scanNone => _zh ? '没有发现开放的常用端口' : 'No common ports responded';
-  String get scanOffline => _zh ? '节点离线，无法扫描。' : 'The node is offline, so it cannot be scanned.';
+  String get scanOffline =>
+      _zh ? '节点离线，无法扫描。' : 'The node is offline, so it cannot be scanned.';
   String get scanNeedsBackend => _zh
       ? '扫描需要桌面或 Android 构建，网页预览没有原生后端。'
       : 'Scanning needs the desktop or Android build; the web preview has no native backend.';
-  String get nodeNotRunning => _zh ? '节点未运行，先登录 tailnet。' : 'The node is not running; sign in to the tailnet first.';
-  String scanFailed(String error) => _zh ? '扫描失败：$error' : 'Scan failed: $error';
+  String get nodeNotRunning => _zh
+      ? '节点未运行，先登录 tailnet。'
+      : 'The node is not running; sign in to the tailnet first.';
+  String scanFailed(String error) =>
+      _zh ? '扫描失败：$error' : 'Scan failed: $error';
 
   String get needsYou => _zh ? '待你处理' : 'Needs you';
   String get working => _zh ? '运行中' : 'Working';
@@ -186,14 +206,15 @@ class AppLocalizations implements UiLocalizations {
   String get herdrConnectBody => _zh
       ? 'herdr 在节点上通过 SSH 提供代理列表、会话记录和发送消息。'
       : 'herdr serves agents, transcripts and prompts over SSH on the node.';
-  String get herdrNotInstalled => _zh
-      ? '这个节点上没有安装 herdr。'
-      : 'herdr is not installed on this node.';
+  String get herdrNotInstalled =>
+      _zh ? '这个节点上没有安装 herdr。' : 'herdr is not installed on this node.';
   String get herdrNotRunning => _zh
       ? '节点上已安装 herdr，但没有服务在运行。'
       : 'herdr is installed on the node, but no server is running.';
-  String get herdrNotConnected => _zh ? '尚未连接 herdr。' : 'Not connected to herdr.';
-  String get herdrDropped => _zh ? 'herdr 连接已断开。' : 'The herdr connection closed.';
+  String get herdrNotConnected =>
+      _zh ? '尚未连接 herdr。' : 'Not connected to herdr.';
+  String get herdrDropped =>
+      _zh ? 'herdr 连接已断开。' : 'The herdr connection closed.';
   String get herdrNoAgents => _zh
       ? '这个节点上还没有代理，点右上角 + 启动一个。'
       : 'No agents on this node yet — start one with +.';
@@ -235,17 +256,147 @@ class AppLocalizations implements UiLocalizations {
   String agentRestartFailed(String error) =>
       _zh ? '重启失败：$error' : 'Restart failed: $error';
   String get agentModel => _zh ? '模型' : 'Model';
-  String get agentModelEmpty => _zh ? '这个代理没有报告可切换的模型。' : 'This agent reports no models to switch to.';
+  String get agentModelEmpty =>
+      _zh ? '这个代理没有报告可切换的模型。' : 'This agent reports no models to switch to.';
   String agentCreated(String name) => _zh ? '已创建 $name' : 'Created $name';
-  String agentPromptFailed(String error) =>
-      _zh ? '代理已启动，但首条消息发送失败：$error' : 'Agent started, but the first prompt failed: $error';
+  String agentPromptFailed(String error) => _zh
+      ? '代理已启动，但首条消息发送失败：$error'
+      : 'Agent started, but the first prompt failed: $error';
   String agentActionFailed(String error) =>
       _zh ? '操作失败：$error' : 'Failed: $error';
   String get agentTool => _zh ? '工具' : 'tool';
-  String get demoTaskGrafana =>
-      _zh ? '调整 Grafana 告警' : 'Tune Grafana alerts';
-  String get demoTaskRelease =>
-      _zh ? '添加发布流程' : 'Add release workflow';
+
+  String get agentCommands => _zh ? '命令' : 'Commands';
+  String get agentCommandsEmpty => _zh ? '没有匹配的命令' : 'No matching commands';
+  String get agentCommandsHint => _zh
+      ? '输入 / 查看命令，↑↓ 选择，回车插入'
+      : 'Type / for commands; ↑↓ to pick, Enter to insert';
+  String agentCommandLabel(String name, String description) =>
+      description.isEmpty ? '/$name' : '/$name, $description';
+  String get agentCommandSkill => _zh ? '技能' : 'skill';
+  String agentQueuedCount(int count) => _zh ? '$count 条排队中' : '$count queued';
+  String get agentQueueHint => _zh
+      ? '完成后发送 · 可取消或立即发送'
+      : 'Queued until it finishes · cancel or send now';
+  String get agentQueued => _zh ? '排队' : 'Queued';
+  String get agentQueueCancel => _zh ? '取消排队' : 'Cancel queued prompt';
+  String get agentQueueSendNow => _zh ? '立即发送' : 'Send queued prompt now';
+  String get agentSentWhileWorking => _zh ? '工作时发送' : 'Sent while working';
+  String get agentSubagent => _zh ? '子代理' : 'Subagent';
+  String get agentSubagentLoading =>
+      _zh ? '正在读取子代理记录…' : 'Reading the subagent transcript…';
+  String agentSubagentFailed(String error) =>
+      _zh ? '读不到子代理记录：$error' : 'Cannot read the subagent transcript: $error';
+  String get agentSubagentFinished => _zh ? '已完成' : 'Finished';
+  String get agentSubagentRunning => _zh ? '运行中' : 'Running';
+  String get agentImageUnavailable => _zh ? '图片无法加载' : 'Image unavailable';
+  String get agentImageOpen => _zh ? '查看图片' : 'Open image';
+  String get agentImageClose => _zh ? '关闭图片' : 'Close image';
+  String get agentImageLoading => _zh ? '正在读取图片' : 'Loading image';
+
+  /// What a harness's built-in `/<name>` does on [kind]; empty when unknown.
+  String agentBuiltinHelp(String kind, String name) =>
+      (_zh ? _helpZh : _helpEn)['$kind:$name'] ?? '';
+
+  static const _helpEn = {
+    'claude:compact': 'Compact the conversation',
+    'claude:clear': 'Start a new conversation',
+    'claude:context': 'Show context usage',
+    'claude:cost': 'Show usage and cost',
+    'claude:model': 'Switch model',
+    'claude:effort': 'Set thinking effort',
+    'claude:review': 'Review a pull request',
+    'claude:security-review': 'Review pending changes for security issues',
+    'claude:pr-comments': 'Fetch pull request comments',
+    'claude:init': 'Write CLAUDE.md for this project',
+    'codex:compact': 'Summarize the conversation to free context',
+    'codex:recap': 'Summarize the conversation now',
+    'codex:review': 'Review current changes and find issues',
+    'codex:new': 'Start a new chat',
+    'codex:init': 'Create an AGENTS.md file',
+    'codex:diff': 'Show git diff, including untracked files',
+    'codex:status': 'Show session configuration and token usage',
+    'codex:model': 'Choose model and reasoning effort',
+    'codex:plan': 'Switch to Plan mode',
+    'codex:goal': 'Set or view the goal of a long task',
+    'codex:fork': 'Fork the current chat',
+    'codex:side': 'Start a side conversation',
+    'codex:rename': 'Rename the thread',
+    'codex:export': 'Export the conversation as Markdown',
+    'codex:ps': 'List background terminals',
+    'codex:stop': 'Stop all background terminals',
+    'codex:usage': 'View account usage',
+    'codex:mcp': 'List MCP tools',
+    'pi:compact': 'Compact the session context',
+    'pi:new': 'Start a new session',
+    'pi:model': 'Switch model (provider/model)',
+    'pi:thinking': 'Set thinking level',
+    'pi:name': 'Set session display name',
+    'pi:session': 'Show session info and stats',
+    'pi:export': 'Export the session',
+    'pi:clone': 'Duplicate the session at this point',
+    'pi:reload': 'Reload extensions, skills and prompts',
+    'omp:compact': 'Compact the session context',
+    'omp:new': 'Start a new session',
+    'omp:model': 'Switch model (provider/model)',
+    'omp:thinking': 'Set thinking level',
+    'omp:name': 'Set session display name',
+    'omp:session': 'Show session info and stats',
+    'omp:export': 'Export the session',
+    'omp:clone': 'Duplicate the session at this point',
+    'omp:reload': 'Reload extensions, skills and prompts',
+  };
+
+  static const _helpZh = {
+    'claude:compact': '压缩会话',
+    'claude:clear': '开一段新对话',
+    'claude:context': '查看上下文占用',
+    'claude:cost': '查看用量与花费',
+    'claude:model': '切换模型',
+    'claude:effort': '设置思考力度',
+    'claude:review': '审查一个 PR',
+    'claude:security-review': '检查待提交改动的安全问题',
+    'claude:pr-comments': '拉取 PR 评论',
+    'claude:init': '为本项目写 CLAUDE.md',
+    'codex:compact': '总结对话以释放上下文',
+    'codex:recap': '立刻总结对话',
+    'codex:review': '审查当前改动并找问题',
+    'codex:new': '开一段新对话',
+    'codex:init': '创建 AGENTS.md',
+    'codex:diff': '查看 git diff，含未跟踪文件',
+    'codex:status': '查看会话配置与 token 用量',
+    'codex:model': '选择模型与推理力度',
+    'codex:plan': '切到计划模式',
+    'codex:goal': '设置或查看长任务目标',
+    'codex:fork': '分叉当前对话',
+    'codex:side': '开一个旁支对话',
+    'codex:rename': '重命名会话',
+    'codex:export': '把对话导出为 Markdown',
+    'codex:ps': '列出后台终端',
+    'codex:stop': '停掉所有后台终端',
+    'codex:usage': '查看账号用量',
+    'codex:mcp': '列出 MCP 工具',
+    'pi:compact': '压缩会话上下文',
+    'pi:new': '开一个新会话',
+    'pi:model': '切换模型（provider/model）',
+    'pi:thinking': '设置思考级别',
+    'pi:name': '设置会话显示名',
+    'pi:session': '查看会话信息与统计',
+    'pi:export': '导出会话',
+    'pi:clone': '从此处复制会话',
+    'pi:reload': '重新加载扩展、技能和提示词',
+    'omp:compact': '压缩会话上下文',
+    'omp:new': '开一个新会话',
+    'omp:model': '切换模型（provider/model）',
+    'omp:thinking': '设置思考级别',
+    'omp:name': '设置会话显示名',
+    'omp:session': '查看会话信息与统计',
+    'omp:export': '导出会话',
+    'omp:clone': '从此处复制会话',
+    'omp:reload': '重新加载扩展、技能和提示词',
+  };
+  String get demoTaskGrafana => _zh ? '调整 Grafana 告警' : 'Tune Grafana alerts';
+  String get demoTaskRelease => _zh ? '添加发布流程' : 'Add release workflow';
   String get demoTaskHeadscale =>
       _zh ? '升级 headscale 到 0.27' : 'Bump headscale to 0.27';
   String get terminalOutput => _zh ? '终端输出' : 'Terminal output';
@@ -265,7 +416,8 @@ class AppLocalizations implements UiLocalizations {
   String get bottomBar => _zh ? '底部栏' : 'Bottom bar';
   String get floating => _zh ? '悬浮' : 'Floating';
   String get docked => _zh ? '贴底' : 'Docked';
-  String get floatingHint => _zh ? '悬浮在内容之上的玻璃 Dock' : 'Floating dock over the content';
+  String get floatingHint =>
+      _zh ? '悬浮在内容之上的玻璃 Dock' : 'Floating dock over the content';
   String get dockedHint => _zh ? '固定在内容下方的底栏' : 'Docked bar under the content';
   String get tabAnimation => _zh ? '切换动画' : 'Tab animation';
   String get slide => _zh ? '滑动' : 'Slide';
@@ -298,9 +450,8 @@ class AppLocalizations implements UiLocalizations {
       : 'Paste the -----BEGIN OPENSSH PRIVATE KEY----- block';
   String get privateKeyRequired => _zh ? '请粘贴私钥' : 'Paste a private key';
   String get passphrase => _zh ? '口令' : 'Passphrase';
-  String get passphraseOptional => _zh
-      ? '可选，只在本地用于解密'
-      : 'Optional; used locally to decrypt the key';
+  String get passphraseOptional =>
+      _zh ? '可选，只在本地用于解密' : 'Optional; used locally to decrypt the key';
   String get keyNameTaken => _zh ? '这个名称已经用过' : 'That name is already used';
   String get keyImportInvalid => _zh ? '名称不能为空' : 'Name cannot be empty';
   String get keyImportFailed => _zh ? '无法保存密钥' : 'Could not save the key';
@@ -313,14 +464,14 @@ class AppLocalizations implements UiLocalizations {
       ? '无法读取公钥，连接时由服务器验证'
       : 'Public key unreadable; the server checks it on connect';
   String get forgetHostKeys => _zh ? '忘记已知主机' : 'Forget known hosts';
-  String get forgetHostKeysHint => _zh
-      ? '下次连接会重新信任主机密钥。'
-      : 'The next connection trusts host keys again.';
+  String get forgetHostKeysHint =>
+      _zh ? '下次连接会重新信任主机密钥。' : 'The next connection trusts host keys again.';
   String get hostKeysCleared => _zh ? '已清除已知主机密钥' : 'Known host keys cleared';
   String get servicesOpen => _zh ? '服务打开方式' : 'Open services in';
   String get inBrowser => _zh ? '浏览器' : 'Browser';
   String get inApp => _zh ? '应用内' : 'In app';
-  String get inAppHint => _zh ? '服务会在应用内的网页中打开。' : 'Services open in an in-app page.';
+  String get inAppHint =>
+      _zh ? '服务会在应用内的网页中打开。' : 'Services open in an in-app page.';
   String get inAppDesktopOnly => _zh
       ? '应用内网页仅支持 Android 和 iOS，这里会用系统浏览器打开。'
       : 'In-app pages are Android and iOS only, so this opens in your browser.';
@@ -370,13 +521,15 @@ class AppLocalizations implements UiLocalizations {
       : 'Native backend unavailable: libtaildeck_bridge.so not found, showing demo data.';
   String get signInFailed => _zh ? '登录失败' : 'Sign-in failed';
   String get pinging => _zh ? '正在 Ping…' : 'Pinging…';
-  String pingFailed(String error) => _zh ? 'Ping 失败：$error' : 'Ping failed: $error';
+  String pingFailed(String error) =>
+      _zh ? 'Ping 失败：$error' : 'Ping failed: $error';
   String get worksWith => _zh
       ? '支持 Tailscale 与 Headscale 控制服务器。'
       : 'Works with Tailscale and Headscale control servers.';
 
-  String connectedTo(String node) =>
-      _zh ? '已连接到 $node · Tailscale SSH · 18 ms' : 'Connected to $node · Tailscale SSH · 18 ms';
+  String connectedTo(String node) => _zh
+      ? '已连接到 $node · Tailscale SSH · 18 ms'
+      : 'Connected to $node · Tailscale SSH · 18 ms';
   String get typeCommand => _zh ? '输入命令' : 'Type a command';
   @override
   String get close => _zh ? '关闭' : 'Close';
@@ -440,7 +593,8 @@ class _AppLocalizationsDelegate extends LocalizationsDelegate<UiLocalizations> {
   const _AppLocalizationsDelegate();
 
   @override
-  bool isSupported(Locale locale) => const {'en', 'zh'}.contains(locale.languageCode);
+  bool isSupported(Locale locale) =>
+      const {'en', 'zh'}.contains(locale.languageCode);
 
   @override
   Future<UiLocalizations> load(Locale locale) =>

@@ -99,7 +99,9 @@ Preview params: `/?tab=1` (services), `/?tab=2` (agents), `/?tab=3` (settings), 
 `/?login=1` (sign-in), `/?login=waiting` (device approval pending), `/?preview=1` (signed-in shell without a
 node), `/?ssh=devbox` (terminal), `/?lang=zh`,
 `/?ssh=demo` (native libghostty-vt demo session), `/?chat=w1:p1` (a pane's chat on the native build; without a
-herdr connection it shows the real error state), `/?motion=off` (preview the system's reduce-motion setting),
+herdr connection it shows the real error state), `/?chat=w1:p1&status=working` (the same chat with the agent
+busy, so the prompt queue shows), `/?chat=w1:p1&queue=first%20prompt|second` (prompts that start out queued),
+`/?motion=off` (preview the system's reduce-motion setting),
 `/?scale=1.3` (preview a text scale; the app clamps 0.9–1.3). The desktop bundle has no URL, so pass the same
 parameters as `TAILDECK_QUERY=ssh=demo`.
 

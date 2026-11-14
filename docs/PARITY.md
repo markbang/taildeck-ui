@@ -37,10 +37,10 @@ https://markbang.github.io/taildeck-ui/ runs on mock data; no row below counts t
 | Agents list | herdr panes by workspace, states, errors | Real `agent.list` over SSH, workspace sections, state pills, connection card | Partial | Implemented and error states verified; live panes untested |
 | Agent chat | Transcript, prompt, restart, model switch, more history | Transcript or screen text, prompt, restart, `/model` and effort picker, paging | Partial | Same gap: no live herdr; see the rows below for what is missing |
 | Notifications | Allow / deny / reply from a notification | — | Not yet | No notification channel or action receiver |
-| Prompt queues | Queue prompts while an agent works | — | Not yet | The box sends immediately or shows an error |
-| Subagent transcripts | Open a subagent's call transcript | — | Not yet | |
-| Images | Show transcript images and files the agent names | — | Not yet | |
-| Slash commands | Completion for `/` commands | — | Not yet | Plain text input |
+| Prompt queues | Queue prompts while an agent works | Holds prompts locally, sends one per settle, cancel or send now | Partial | Queued while the agent works and released on `done`/`idle`; no live herdr to watch it change the agent's turn |
+| Subagent transcripts | Open a subagent's call transcript | `td_herdr_subagent` reads the pane session's subagent file, with type, description and finished state | Partial | Claude only and error states only; no live subagent ran |
+| Images | Show transcript images and files the agent names | `td_herdr_image` for `img:` refs, thumbnails in the transcript, full-screen zoom view, upload of a picked file via `td_herdr_upload` | Partial | Rendering and the full-screen view are implemented; the composer has no attach button yet, and node paths (not `img:` refs) stay as placeholders |
+| Slash commands | Completion for `/` commands | Built-in list per harness plus `/` commands and skills read from the node, ↑↓/Esc, inserts the chosen command | Partial | Popup verified against the built-in list; node commands untested without a node |
 | Settings and logs | Tailnet, device, services, SSH keys, logs | Tailnet/device info, service open mode, navigation, tab motion, language, logs page | Done | Screenshotted (M3b, a11y pass) |
 | Sign out | Stop and log out the node | `td_logout` with a confirmation | Unverified | Needs a signed-in node |
 | Android foreground service | Keeps the node alive when backgrounded | — | Not yet | No service in the manifest; the node lives as long as the process |

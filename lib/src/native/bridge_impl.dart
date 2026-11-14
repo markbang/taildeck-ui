@@ -73,6 +73,29 @@ String _runHerdrIsolate(String libPath, String symbol, List<String> args) {
   return text;
 }
 
+/// Uploads bytes the same way: the isolate owns the copied buffer and the
+/// returned JSON string until td_free runs here.
+String _runHerdrUploadIsolate(String libPath, String name, Uint8List data) {
+  final lib = libPath.isEmpty
+      ? DynamicLibrary.process()
+      : DynamicLibrary.open(libPath);
+  final free = lib.lookupFunction<_FreeNative, _Free>('td_free');
+  final upload = lib.lookupFunction<_UploadNative, _Upload>('td_herdr_upload');
+  final cname = name.toNativeUtf8(allocator: calloc).cast<Int8>();
+  final buffer = calloc<Uint8>(data.isEmpty ? 1 : data.length);
+  try {
+    buffer.asTypedList(data.length).setAll(0, data);
+    final result = upload(cname, buffer, data.length);
+    if (result.address == 0) throw 'bridge returned null';
+    final text = result.cast<Utf8>().toDartString();
+    free(result);
+    return text;
+  } finally {
+    calloc.free(cname);
+    calloc.free(buffer);
+  }
+}
+
 typedef _StrFnNative = Pointer<Int8> Function();
 typedef _StrFn = Pointer<Int8> Function();
 typedef _StrArgNative = Pointer<Int8> Function(Pointer<Int8>);
@@ -92,6 +115,8 @@ typedef _ResizeNative = Pointer<Int8> Function(Int32, Int32, Int32);
 typedef _Resize = Pointer<Int8> Function(int, int, int);
 typedef _TwoStrNative = Pointer<Int8> Function(Pointer<Int8>, Pointer<Int8>);
 typedef _TwoStr = Pointer<Int8> Function(Pointer<Int8>, Pointer<Int8>);
+typedef _UploadNative = Pointer<Int8> Function(Pointer<Int8>, Pointer<Uint8>, Int32);
+typedef _Upload = Pointer<Int8> Function(Pointer<Int8>, Pointer<Uint8>, int);
 
 class FfiBridge implements NativeBridge {
   FfiBridge(DynamicLibrary lib, this._path)
@@ -331,6 +356,32 @@ class FfiBridge implements NativeBridge {
   }
 
   @override
+  Future<String> herdrCommands(String kind, String cwd) async {
+    final reply = _decode(await _herdr('td_herdr_commands', [kind, cwd]));
+    return reply['result'] as String? ?? '';
+  }
+
+  @override
+  Future<Uint8List> herdrImage(String ref) async {
+    final reply = _decode(await _herdr('td_herdr_image', [ref]));
+    final data = reply['data'] as String? ?? '';
+    if (data.isEmpty) throw const BridgeException('image has no data');
+    return base64Decode(data);
+  }
+
+  @override
+  Future<String> herdrUpload(String name, Uint8List data) async {
+    final reply = _decode(await _herdrUpload(_path, name, data));
+    return reply['path'] as String? ?? '';
+  }
+
+  @override
+  Future<String> herdrSubagent(String pane, String callId) async {
+    final reply = _decode(await _herdr('td_herdr_subagent', [pane, callId]));
+    return reply['result'] as String? ?? '';
+  }
+
+  @override
   Future<void> herdrClose() async {
     try {
       _decode(await _herdr('td_herdr_close', []));
@@ -342,6 +393,11 @@ class FfiBridge implements NativeBridge {
   Future<String> _herdr(String symbol, List<String> args) {
     final path = _path;
     return Isolate.run(() => _runHerdrIsolate(path, symbol, args));
+  }
+
+  Future<String> _herdrUpload(String path, String name, Uint8List data) {
+    final bytes = Uint8List.fromList(data);
+    return Isolate.run(() => _runHerdrUploadIsolate(path, name, bytes));
   }
 
   @override

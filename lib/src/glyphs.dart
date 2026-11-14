@@ -160,6 +160,17 @@ abstract final class Glyphs2 {
     GlyphPolyline([GlyphVertex(16.6, 8.4), GlyphVertex(20.4, 12, 0.8), GlyphVertex(16.6, 15.6)], role: GlyphRole.line),
   ]);
 
+  static const schedule = Glyph([
+    GlyphCircle(12, 12, 8.4, role: GlyphRole.line),
+    GlyphPolyline([GlyphVertex(12, 7.4), GlyphVertex(12, 12), GlyphVertex(15.4, 13.8)], role: GlyphRole.line),
+  ]);
+
+  static const photo = Glyph([
+    GlyphBox(3.8, 4.8, 20.2, 19.2, 3, role: GlyphRole.line),
+    GlyphCircle(9, 9.6, 1.6, role: GlyphRole.line, solid: true),
+    GlyphPolyline([GlyphVertex(4.6, 17.4), GlyphVertex(9.8, 12.6), GlyphVertex(13.2, 15.4), GlyphVertex(16.2, 12.8), GlyphVertex(19.4, 16.2)], role: GlyphRole.line),
+  ]);
+
   static const doc = Glyph([
     GlyphPolyline([
       GlyphVertex(6, 3.8),
