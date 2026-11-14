@@ -48,7 +48,7 @@ focus=$(adb shell dumpsys window 2>/dev/null | grep -m1 mCurrentFocus | tr -d '\
 [ -n "$pid" ] || fail "process $app is gone; the app died within ${wait_s}s of launch"
 
 # The crash buffer keeps the last crash only; scan both buffers for this launch.
-crash=$(grep -hE 'FATAL EXCEPTION|Fatal signal|AndroidRuntime.*Process: ' \
+crash=$(grep -hE 'FATAL EXCEPTION|Fatal signal|Abort message|JNI DETECTED ERROR|AndroidRuntime.*Process: ' \
   "$out/logcat.txt" "$out/logcat-crash.txt" 2>/dev/null | head -n 5 || true)
 if [ -n "$crash" ]; then
   printf '%s\n' "$crash" | tee -a "$out/summary.txt"
@@ -62,3 +62,8 @@ if [ -n "$anr" ]; then
 fi
 
 echo "ok: $app alive after ${wait_s}s with no crash" | tee -a "$out/summary.txt"
+
+# Evidence for the launcher entry: its label and icon as installed.
+adb shell input keyevent KEYCODE_HOME > /dev/null 2>&1 || true
+sleep 3
+adb exec-out screencap -p > "$out/launcher.png" || true

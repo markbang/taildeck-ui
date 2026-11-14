@@ -6,9 +6,13 @@ on:
   workflow_call:
     inputs:
       apk-artifact:
-        description: Artifact in the caller's run holding a taildeck-android-x64-*.apk
+        description: Artifact holding a taildeck-android-x64-*.apk (empty to skip)
         type: string
         default: android
+      apk-run-id:
+        description: Run that holds the artifact (empty for the caller's run)
+        type: string
+        default: ''
       application-id:
         description: Package to install, launch and watch
         type: string
@@ -19,6 +23,10 @@ on:
         description: APK to download and smoke
         type: string
         default: https://github.com/markbang/taildeck-ui/releases/download/v0.2.8/taildeck-android-x64-v0.2.8.apk
+      apk-run-id:
+        description: Run whose 'android' artifact holds the x86_64 APK (empty for this run)
+        type: string
+        default: ''
       build:
         description: Build a release-signed x86_64 APK from this ref instead of downloading one
         type: boolean
@@ -132,7 +140,7 @@ jobs:
         run: rm -f android/app/release.jks android/key.properties
 
       - name: Download the APK
-        if: ${{ !inputs.build && inputs.apk-url != '' }}
+        if: ${{ !inputs.build && (inputs.apk-url || '') != '' }}
         run: |
           mkdir -p build
           curl -fsSL -o build/smoke.apk "${{ inputs.apk-url }}"
@@ -144,6 +152,8 @@ jobs:
         with:
           name: ${{ inputs.apk-artifact }}
           path: build/artifact
+          run-id: ${{ inputs.apk-run-id || github.run_id }}
+          github-token: ${{ github.token }}
       - name: Resolve the APK under test
         run: |
           set -euo pipefail
