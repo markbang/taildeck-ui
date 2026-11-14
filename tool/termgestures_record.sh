@@ -149,58 +149,60 @@ swipe_on_grid() { adb shell input swipe "$1" "$2" "$3" "$4" "${5:-400}" > /dev/n
 root_on() { adb root > /dev/null 2>&1 || true; adb wait-for-device; }
 root_off() { adb unroot > /dev/null 2>&1 || true; adb wait-for-device; }
 
-# ---- one finger per device, two for a pinch ------------------------------
-mt_devices() { # prints "device kind" for every multi-touch device
-  adb shell getevent -pl 2> /dev/null | awk '
-    /^add device/ { if (dev != "") print dev, mt ? (slot ? "slot" : "plain") : "none"; dev = $4; mt = 0; slot = 0 }
-    /ABS_MT_POSITION_X/ { mt = 1 }
-    /ABS_MT_SLOT/ { slot = 1 }
-    END { if (dev != "") print dev, mt ? (slot ? "slot" : "plain") : "none" }' \
-    | awk '$2 != "none"'
+mindev() { # <device-name> -> /dev/input/eventN
+  adb shell getevent -pl 2> /dev/null | awk -v want="$1" '
+    /^add device/ { dev = $4 }
+    /name:/ { if (index($0, "\"" want "\"") > 0) { print dev; exit } }'
 }
 
+# Each virtio finger is its own device and reports positions over 0..32767,
+# not screen pixels.
 pinch() { # <out|in> [centre "x y"]
-  local mode=${1:-out} centre=${2:-} cx cy w h
-  local devices first second kind
-  mapfile -t devices < <(mt_devices)
-  if [ "${#devices[@]}" -eq 0 ]; then
-    note "pinch: no multi-touch device, not injected"
-    return 0
-  fi
+  local mode=${1:-out} centre=${2:-} cx cy w h dev1 dev2
+  local i d script=""
+  dev1=$(mindev virtio_input_multi_touch_1)
+  dev2=$(mindev virtio_input_multi_touch_2)
+  dev1=${dev1:-/dev/input/event2}
+  dev2=${dev2:-/dev/input/event3}
   if [ -z "$centre" ]; then
     read -r cx cy <<< "$(cell 20 10)" || return 0
   else
     read -r cx cy <<< "$centre"
   fi
-  local near=40 far=300 step i d script=""
-  if [ "$mode" = "in" ]; then near=300; far=40; fi
-  if [ "${#devices[@]}" -ge 2 ]; then
-    first=${devices[0]%% *}
-    second=${devices[1]%% *}
-    note "pinch: two devices $first $second"
-    for i in $(seq 0 11); do
-      d=$((near + (far - near) * i / 11))
-      script+="sendevent $first 3 57 1; sendevent $first 3 53 $((cx - d)); sendevent $first 3 54 $cy; sendevent $first 0 0 0; "
-      script+="sendevent $second 3 57 2; sendevent $second 3 53 $((cx + d)); sendevent $second 3 54 $cy; sendevent $second 0 0 0; sleep 0.04; "
-    done
-    script+="sendevent $first 3 57 -1; sendevent $first 0 0 0; sendevent $second 3 57 -1; sendevent $second 0 0 0"
-  else
-    first=${devices[0]%% *}
-    kind=${devices[0]##* }
-    note "pinch: device $first ($kind)"
-    for i in $(seq 0 11); do
-      d=$((near + (far - near) * i / 11))
-      script+="sendevent $first 3 47 0; sendevent $first 3 57 1; sendevent $first 3 53 $((cx - d)); sendevent $first 3 54 $cy; "
-      if [ "$kind" = "slot" ]; then
-        script+="sendevent $first 3 47 1; sendevent $first 3 57 2; sendevent $first 3 53 $((cx + d)); sendevent $first 3 54 $cy; "
-      fi
-      script+="sendevent $first 0 0 0; sleep 0.04; "
-    done
-    script+="sendevent $first 3 57 -1; sendevent $first 0 0 0"
-  fi
+  read -r w h <<< "$(adb shell wm size | sed -n 's/.*: \([0-9]*\)x\([0-9]*\).*/\1 \2/p' | tr -d '\r')"
+  w=${w:-1080}
+  h=${h:-2400}
+  local near=90 far=330
+  if [ "$mode" = "in" ]; then near=330; far=90; fi
+  scale() { awk -v v="$1" -v max="$2" -v span="$3" 'BEGIN { printf "%d", v * max / span }'; }
+  local sx1 sy sx2
+  for i in $(seq 0 11); do
+    d=$((near + (far - near) * i / 11))
+    sx1=$(scale $((cx - d)) 32767 "$w")
+    sx2=$(scale $((cx + d)) 32767 "$w")
+    sy=$(scale "$cy" 32767 "$h")
+    script+="sendevent $dev1 3 47 0; sendevent $dev1 3 57 1; sendevent $dev1 3 53 $sx1; sendevent $dev1 3 54 $sy; sendevent $dev1 3 48 5; sendevent $dev1 0 0 0; "
+    script+="sendevent $dev2 3 47 0; sendevent $dev2 3 57 2; sendevent $dev2 3 53 $sx2; sendevent $dev2 3 54 $sy; sendevent $dev2 3 48 5; sendevent $dev2 0 0 0; sleep 0.04; "
+  done
+  script+="sendevent $dev1 3 57 -1; sendevent $dev1 0 0 0; sendevent $dev2 3 57 -1; sendevent $dev2 0 0 0"
+  note "pinch: $mode on $dev1 $dev2 around $cx,$cy"
   if ! adb shell "$script" > "$out/pinch.txt" 2>&1; then
     note "pinch: sendevent failed, see pinch.txt"
   fi
+}
+
+pinch_only() {
+  pinch out
+  sleep 0.6
+  pinch in
+}
+
+pinch_step() {
+  root_on
+  record pinch 12 pinch_only
+  root_off
+  sleep 1
+  note "pinch: grid $(grid_cells || echo unknown)"
 }
 
 # ---- hardware keys -------------------------------------------------------
@@ -227,7 +229,6 @@ ctrl_c() {
 }
 
 # ---- actions -------------------------------------------------------------
-pinch_out() { root_on; pinch out; root_off; }
 landscape() { rotate 1; }
 title='Key row with a hardware keyboard'
 
@@ -285,20 +286,27 @@ hold_arrow() {
   sleep 1.5
 }
 
-select_word() {
-  local n m row x y attempt
-  read -r n m <<< "$(last_rows)" || return 0
-  for attempt in 2 3 4; do
+select_until() { # <toolbar label> [max rows up]
+  local label=$1 tries=${2:-12} n m row attempt x y
+  read -r n m <<< "$(last_rows)" || return 1
+  for attempt in 1 2 3 4 5 6 7 8 9 10 11 12; do
+    [ "$attempt" -gt "$tries" ] && break
     row=$((m - attempt))
+    [ "$row" -lt 1 ] && break
     read -r x y <<< "$(cell 6 "$row")"
     double_tap "$x" "$y"
     sleep 1.2
-    if ui has 'Copy' > /dev/null 2>&1; then
+    if ui has "$label" > /dev/null 2>&1; then
       note "selection: double tap at $x,$y (row $row of $m)"
       return 0
     fi
   done
-  note "selection: no word under rows $((m - 4))..$((m - 2)) of $m"
+  note "selection: nothing selectable in the last $tries rows of $m"
+  return 1
+}
+
+select_word() {
+  select_until 'Copy'
 }
 
 copy_selection() {
@@ -332,7 +340,7 @@ paste_clipboard() {
 }
 
 open_link() {
-  select_word
+  select_until 'Open link' 14 || return 0
   sleep 0.5
   local point
   point=$(ui tap 'Open link') || point=""
@@ -427,7 +435,7 @@ shot hold-arrow
 
 # 3. pinch zoom, then the persisted size
 before=$(grid_cells || true)
-record pinch 10 pinch_out
+pinch_step
 shot pinch-out
 after=$(grid_cells || true)
 note "pinch: grid $before -> $after"
