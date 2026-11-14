@@ -153,12 +153,17 @@ _record_once() { # <name> <seconds> <command...>
 
 tap_point() { tapxy "$1"; }
 hold_point() { holdxy "$1" 900; sleep 1; }
+ime_hide() { adb shell input keyevent 111 > /dev/null 2>&1 || true; sleep 0.4; }
+
+# Keeps the last dump beside a clip that could not find its control, so the
+# artifact says what the screen really showed.
+keep_ui() { cp "$out/ui.xml" "$out/fail-$1.xml" > /dev/null 2>&1 || true; }
 
 # Records one gesture on an element found just before the recording starts, so
 # a layout that moved since the last dump cannot send the tap elsewhere.
 record_tap() { # <name> <seconds> <text> [hold]
   local name=$1 seconds=$2 text=$3 mode=${4:-tap} point
-  point=$(ui tap "$text") || { note "$name: no node for '$text'"; return 0; }
+  point=$(ui tap "$text") || { note "$name: no node for '$text'"; keep_ui "$name"; return 0; }
   if [ "$mode" = hold ]; then
     record "$name" "$seconds" hold_point "$point"
   else
@@ -168,130 +173,211 @@ record_tap() { # <name> <seconds> <text> [hold]
   return 0
 }
 
-# The dock's four items share a row: find one of them, derive the rest.
-dock_row() { # <text>
-  local point
-  point=$(ui tap "$1") || return 1
-  DOCK_Y=${point#* }
+# A press and hold that is let go in place: the ripple runs, the surface
+# squashes, and the tap it ends with opens the same section in both apps.
+record_hold() { # <name> <seconds> <text>
+  local name=$1 seconds=$2 text=$3 point
+  point=$(ui tap "$text") || { note "$name: no node for '$text'"; keep_ui "$name"; return 0; }
+  record "$name" "$seconds" hold_point "$point"
+}
+
+wait_for() { # <text> <seconds>
+  local i=0
+  while [ "$i" -lt "$2" ]; do
+    ui has "$1" > /dev/null 2>&1 && return 0
+    sleep 1
+    i=$((i + 1))
+  done
+  return 1
+}
+
+read_size() {
   read -r W H <<< "$(adb shell wm size | sed -n 's/.*: \([0-9]*\)x\([0-9]*\).*/\1 \2/p' | tr -d '\r')"
-  TAB_NODES="$((W / 8)) $DOCK_Y"
-  TAB_SERVICES="$((W * 3 / 8)) $DOCK_Y"
-  TAB_AGENTS="$((W * 5 / 8)) $DOCK_Y"
   [ -n "${W:-}" ]
 }
 
-flutter_tabs() {
-  tapxy "$TAB_SERVICES"; sleep 1.4
-  tapxy "$TAB_AGENTS"; sleep 1.4
-  tapxy "$TAB_NODES"; sleep 1.2
+# Both apps label their tabs, so a tab switch is the same three taps in each.
+tap_tabs() { # <first> <second> <back to>
+  local point
+  for label in "$1" "$2" "$3"; do
+    if point=$(ui tap "$label"); then tapxy "$point"; fi
+    sleep 1.4
+  done
 }
 
-# Tabs through the bottom bar of either app, found from one label.
-tabs_row() { dock_row Services; }
-
-swipe_down() { # 'x y1 y2'
-  # shellcheck disable=SC2086
-  adb shell input swipe $1 "${2:-400} ${3:-900}" "${4:-400}" > /dev/null 2>&1 || true
+swipe_down() { # <x> <y1> <y2> [ms]
+  adb shell input swipe "$1" "$2" "$1" "$3" "${4:-500}" > /dev/null 2>&1 || true
   sleep 0.6
 }
 
-# ---- signed in (needs a control server) ----
+# ---- the two sign-in flows, so both apps reach the same screens ----
 
-kotlin_login() { # <control-url> <auth-key>
-  local field
-  field=$(ui tap Advanced) || return 1
-  tapxy "$field"; sleep 1.2
-  field=$(ui tap "Control server") || return 1
-  tapxy "$field"; sleep 0.8
-  type_text "$1"
-  field=$(ui tap "Auth key") || return 1
-  tapxy "$field"; sleep 0.8
-  type_text "$2"
-  adb shell input keyevent 4 > /dev/null 2>&1 || true
-  sleep 0.8
-  field=$(ui tap "Sign in") || return 1
-  tapxy "$field"
-  local waited=0
-  while [ "$waited" -lt 40 ]; do
-    sleep 1
-    waited=$((waited + 1))
-    ui has "Scan ports" > /dev/null 2>&1 && break
-  done
-  ui tap "Nodes" > /dev/null 2>&1
+kotlin_login() { # <control-url> <key>
+  local point
+  if point=$(ui tap "Device name"); then
+    tapxy "$point"; type_text "pixel-motion"; ime_hide
+  fi
+  point=$(ui tap Advanced) && { tapxy "$point"; sleep 1; }
+  point=$(ui tap "Control server") || return 1
+  tapxy "$point"; type_text "$1"; ime_hide
+  point=$(ui tap "Auth key") || return 1
+  tapxy "$point"; type_text "$2"; ime_hide
+  point=$(ui tap "Sign in") || return 1
+  tapxy "$point"
+  wait_for "Services" 45
 }
 
-kotlin_tailnet() {
+flutter_login() { # <control-url> <key>
+  local point
+  point=$(ui tap "Use an auth key") && { tapxy "$point"; sleep 1; }
+  point=$(ui tap "Control server") && { tapxy "$point"; sleep 1; }
+  # The control URL sits under its section button, the key under "Connect".
+  point=$(ui below "Control server" 48) && { tapxy "$point"; type_text "$1"; ime_hide; }
+  point=$(ui tap "Connect") || return 1
+  point=$(ui above "Connect" 46) || return 1
+  tapxy "$point"; type_text "$2"; ime_hide
+  point=$(ui tap "Connect") || return 1
+  tapxy "$point"
+  wait_for "This device" 60
+}
+
+# ---- signed-out clips: the login screen both apps share ----
+
+signed_out_kotlin() { # <hanging-url>
+  launch "$kotlin_apk" "$app"
+  record_hold kotlin-ripple 3 Advanced
+  check kotlin-ripple "Control server"
+  record_hold kotlin-press 3 "Control server"
+  adb shell input keyevent 4 > /dev/null 2>&1 || true
+  sleep 1
+  # A control server that never answers keeps the app on its loading stage.
+  if point=$(ui tap "Control server"); then
+    tapxy "$point"; type_text "$1"; ime_hide
+    if point=$(ui tap "Sign in"); then
+      record kotlin-loading 6 tap_point "$point"
+      check kotlin-loading "Connecting"
+    else
+      note "kotlin-loading: no Sign in button"
+    fi
+    if point=$(ui tap Cancel); then tapxy "$point"; sleep 2; fi
+    # Clear the URL for the real sign-in that follows.
+    if point=$(ui tap "Control server"); then
+      tapxy "$point"
+      for _ in $(seq 1 40); do adb shell input keyevent 67 > /dev/null 2>&1; done
+      ime_hide
+    fi
+  fi
+}
+
+signed_out_flutter() { # <hanging-url>
+  launch "$flutter_apk" "$app"
+  record_hold flutter-ripple 3 "Control server"
+  record_hold flutter-press 3 "Control server"
+  if point=$(ui tap "Control server"); then tapxy "$point"; sleep 1; fi
+  if point=$(ui below "Control server" 48); then
+    tapxy "$point"; type_text "$1"; ime_hide
+  fi
+  if point=$(ui tap "Use an auth key"); then tapxy "$point"; sleep 1; fi
+  if point=$(ui tap "Connect"); then
+    if point=$(ui above "Connect" 46); then
+      tapxy "$point"; type_text "tskey-hang"; ime_hide
+    fi
+    point=$(ui tap "Connect") || point=
+    [ -n "$point" ] && record flutter-loading 6 tap_point "$point"
+  fi
+  if point=$(ui tap Cancel); then tapxy "$point"; sleep 2; fi
+  if point=$(ui tap "Use an auth key"); then tapxy "$point"; sleep 0.6; fi
+  if point=$(ui tap "Control server"); then
+    tapxy "$point"
+    for _ in $(seq 1 40); do adb shell input keyevent 67 > /dev/null 2>&1; done
+    ime_hide
+  fi
+}
+
+# ---- signed-in clips ----
+
+kotlin_tailnet() { # <control-url> <key>
   local point
   if ! kotlin_login "$1" "$2"; then
-    note "kotlin login: could not find the login controls"
+    note "kotlin sign in: still on the login screen"
     return 0
   fi
-  if ! ui has "Nodes" > /dev/null 2>&1; then
-    note "kotlin login: still on the login screen (control server $1)"
+  note "kotlin sign in: signed in"
+  read_size
+  record kotlin-tabs 6 tap_tabs Services Nodes Services
+  check kotlin-tabs "Nodes"
+  record kotlin-refresh 6 swipe_down "$((W / 2)) 420 1000"
+  # The scan block joins the list and resizes: the same gesture is recorded
+  # once for the row and once for the content size.
+  for clip in kotlin-scan-row kotlin-content-size; do
+    launch "$kotlin_apk" "$app"
+    sleep 2
+    point=$(ui tap "pixel-motion") || point=$(ui tap "This device") || point=
+    if [ -n "$point" ]; then
+      tapxy "$point"; sleep 2
+      record_tap "$clip" 10 "Scan ports"
+      adb shell input keyevent 4 > /dev/null 2>&1 || true
+      sleep 1.5
+    else
+      note "$clip: no node row to open"
+    fi
+  done
+  # Dialog motion: the sign-out confirm, opened and cancelled.
+  if point=$(ui tap Settings); then
+    tapxy "$point"; sleep 2
+    point=$(ui tap "Sign out") || point=
+    if [ -n "$point" ]; then
+      record kotlin-dialog 5 tap_point "$point"
+      check kotlin-dialog "Sign out and remove"
+      point=$(ui tap Cancel) && tapxy "$point"
+    else
+      note "kotlin-dialog: no sign-out row"
+    fi
+  fi
+}
+
+flutter_tailnet() { # <control-url> <key>
+  local point
+  if ! flutter_login "$1" "$2"; then
+    note "flutter sign in: did not reach the shell"
     return 0
   fi
-  note "kotlin login: signed in"
-  if tabs_row; then
-    record kotlin-tabs 6 flutter_tabs
-    check kotlin-tabs "Services"
+  note "flutter sign in: signed in"
+  read_size
+  record flutter-tabs 6 tap_tabs Services Agents Nodes
+  check flutter-tabs "Nodes"
+  record flutter-refresh 6 swipe_down "$((W / 2)) 420 1000"
+  for clip in flutter-scan-row flutter-content-size; do
+    launch "$flutter_apk" "$app"
+    sleep 3
+    point=$(ui tap "This device") || point=
+    if [ -n "$point" ]; then
+      tapxy "$point"; sleep 2
+      record_tap "$clip" 10 "Scan common ports"
+      adb shell input keyevent 4 > /dev/null 2>&1 || true
+      sleep 1.5
+    else
+      note "$clip: no node row to open"
+    fi
+  done
+  if point=$(ui tap Settings); then
+    tapxy "$point"; sleep 2
+    point=$(ui tap "Sign out of the tailnet") || point=
+    if [ -n "$point" ]; then
+      record flutter-dialog 5 tap_point "$point"
+      check flutter-dialog "Sign out?"
+      point=$(ui tap Cancel) && tapxy "$point"
+    else
+      note "flutter-dialog: no sign-out row"
+    fi
   fi
-  point=$(ui tap devbox) || point=$(ui tap nas) || point=
-  if [ -n "$point" ]; then
-    record kotlin-detail 6 tap_point "$point"
-    record_tap kotlin-ping 8 "Ping" tap
-    record_tap kotlin-scan 10 "Scan ports" tap
-    adb shell input keyevent 4 > /dev/null 2>&1 || true
-    sleep 1.5
-  else
-    note "kotlin-detail: no peer listed"
-  fi
-  record kotlin-refresh 6 swipe_down "$((W / 2)) 420 980 500"
 }
 
-flutter_tailnet() {
-  local point
-  if dock_row Services; then
-    record flutter-tabs 6 flutter_tabs
-  fi
-  point=$(ui tap devbox) || point=$(ui tap nas) || point=
-  if [ -n "$point" ]; then
-    record flutter-detail 6 tap_point "$point"
-    record_tap flutter-ping 8 "Ping" tap
-    record_tap flutter-scan 10 "Scan ports" tap
-    adb shell input keyevent 4 > /dev/null 2>&1 || true
-    sleep 1.5
-  fi
-  record flutter-refresh 6 swipe_down "$((W / 2)) 420 980 500"
-}
+W= H=
+hang_url=${HANG_URL:-http://10.0.2.2:9}
 
-flutter_detail() {
-  local point
-  point=$(ui tap devbox) || { note "flutter-detail: no node for 'devbox'"; return 0; }
-  record flutter-detail 6 tap_point "$point"
-  adb shell input keyevent 4 > /dev/null 2>&1 || true
-  sleep 1.5
-}
-
-W= TAB_SERVICES= TAB_AGENTS= TAB_NODES=
-
-# ---- signed-out gestures: the one screen both apps share ----
 install_app "$kotlin_apk" || true
-launch "$kotlin_apk" "$app"
-# A fresh install has no device name, and Sign in stays disabled without one.
-if point=$(ui tap "Device name"); then
-  tapxy "$point"; sleep 0.6
-  type_text "pixel-motion"
-  adb shell input keyevent 4 > /dev/null 2>&1 || true
-  sleep 0.6
-fi
-record_tap kotlin-expand 3 Advanced tap "Control server"
-record_tap kotlin-press 3 "Control server" hold "Advanced"
-# Collapse the section again so Sign in is back on screen, then press it: the
-# ripple runs, the pill's corners squash, and the app shows its loading dot
-# while the node starts.
-if point=$(ui tap Advanced); then tapxy "$point"; sleep 1; fi
-record_tap kotlin-start 8 "Sign in" tap
-adb shell input keyevent 4 > /dev/null 2>&1 || true
+signed_out_kotlin "$hang_url"
 
 if [ -n "$control_url" ]; then
   kotlin_tailnet "$control_url" "${auth_key:-tskey-test}"
@@ -300,35 +386,19 @@ else
 fi
 
 install_app "$flutter_apk" || true
-launch "$flutter_apk" "$app" "taildeck://preview/?login=1&lang=en"
-record_tap flutter-loading 6 "Continue in browser" tap
-# The preview shell runs on mock data: no tailnet needed for the tabs.
-launch "$flutter_apk" "$app" "taildeck://preview/?preview=1&tab=0&lang=en"
-if dock_row Services; then
-  record flutter-tabs 6 flutter_tabs
-  check flutter-tabs "Add service"
-else
-  note "flutter-tabs: no dock row found"
-fi
-launch "$flutter_apk" "$app" "taildeck://preview/?preview=1&tab=0&lang=en"
-flutter_detail
-check flutter-detail "Search nodes"
+signed_out_flutter "$hang_url"
 
-# Signing in with a key would start a node; no browser on this device keeps a
-# real sign-in from leaving the app.
-adb shell pm disable-user --user 0 com.android.chrome > /dev/null 2>&1 || true
-launch "$flutter_apk" "$app" "taildeck://preview/?login=1&lang=en"
-record_tap flutter-expand 3 "auth key" tap "Connect"
-record_tap flutter-press 3 "Control server" hold
-record_tap flutter-press 3 "Control server" hold
-record_tap flutter-start 6 "Continue in browser" tap
-adb shell pm enable com.android.chrome > /dev/null 2>&1 || true
+if [ -n "$control_url" ]; then
+  flutter_tailnet "$control_url" "${auth_key:-tskey-test}"
+else
+  note "no control server: the screens behind login stay unrecorded"
+fi
 
 # ---- put them side by side: Kotlin on the left, this build on the right ----
 label() { # <mp4> <text> <dest>
   ffmpeg -loglevel error -y -i "$1" -vf \
-    "pad=iw:ih+34:0:34:color=0x101214,drawtext=text='$2':fontcolor=0xE8EAED:fontsize=18:x=12:y=8" \
-    -an "$3" || true
+    "scale=404:-2,pad=404:ih+34:0:34:color=0x101214,drawtext=text='$2':fontcolor=0xE8EAED:fontsize=18:x=12:y=8" \
+    -an -c:v libx264 -preset veryfast -crf 26 "$3" || true
 }
 
 pair() { # <kotlin clip> <flutter clip> <name>
@@ -336,23 +406,23 @@ pair() { # <kotlin clip> <flutter clip> <name>
   label "$out/$1.mp4" "Kotlin" "$out/$1.labeled.mp4"
   label "$out/$2.mp4" "Flutter" "$out/$2.labeled.mp4"
   ffmpeg -loglevel error -y -i "$out/$1.labeled.mp4" -i "$out/$2.labeled.mp4" \
-    -filter_complex '[0:v]scale=404:-2,pad=404:ih:0:0:color=0x101214[l];[1:v]scale=404:-2,pad=404:ih:0:0:color=0x101214[r];[l][r]hstack=inputs=2' \
-    -an "$out/$3.mp4" || true
+    -filter_complex '[0:v]scale=404:932:force_original_aspect_ratio=increase,crop=404:932[l];[1:v]scale=404:932:force_original_aspect_ratio=increase,crop=404:932[r];[l][r]hstack=inputs=2' \
+    -an -c:v libx264 -preset veryfast -crf 26 -pix_fmt yuv420p "$out/$3.mp4" || true
   [ -s "$out/$3.mp4" ] && note "$3: $(stat -c%s "$out/$3.mp4") bytes"
   return 0
 }
 
 pair kotlin-expand flutter-expand login-expand
-pair kotlin-press flutter-press press
-pair kotlin-start flutter-loading loading
-pair kotlin-tabs flutter-tabs motion-tabs
-pair kotlin-detail flutter-detail motion-detail
-pair kotlin-ping flutter-ping motion-ping
-pair kotlin-scan flutter-scan motion-scan
-pair kotlin-refresh flutter-refresh motion-refresh
+pair kotlin-ripple flutter-ripple ripple
+pair kotlin-press flutter-press press-squish
+pair kotlin-loading flutter-loading loading
+pair kotlin-refresh flutter-refresh refresh
+pair kotlin-scan-row flutter-scan-row scan-row
+pair kotlin-content-size flutter-content-size content-size
+pair kotlin-dialog flutter-dialog dialog
 
 # A GIF is what a pull request can show inline.
-for name in login-expand press loading motion-tabs motion-detail motion-ping motion-scan motion-refresh; do
+for name in login-expand ripple press-squish loading refresh scan-row content-size dialog; do
   [ -s "$out/$name.mp4" ] || continue
   ffmpeg -loglevel error -y -i "$out/$name.mp4" -vf \
     'fps=12,scale=640:-1:flags=lanczos,split[a][b];[a]palettegen[p];[b][p]paletteuse' \
