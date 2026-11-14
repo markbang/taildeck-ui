@@ -36,6 +36,19 @@ ui() {
   return 1
 }
 
+scroll_to() { # <needle> [tries]
+  local attempt point
+  for attempt in $(seq 1 "${2:-6}"); do
+    if point=$(ui tap "$1"); then
+      echo "$point"
+      return 0
+    fi
+    adb shell input swipe 540 1700 540 900 300 > /dev/null 2>&1 || true
+    sleep 1
+  done
+  return 1
+}
+
 shot() { # <name>
   adb exec-out screencap -p > "$out/$1.png" 2> /dev/null || rm -f "$out/$1.png"
   [ -s "$out/$1.png" ] && note "$1: $(stat -c%s "$out/$1.png") bytes"
@@ -69,7 +82,7 @@ launch() { # [url]
     adb shell am force-stop "$app" > /dev/null 2>&1 || true
     sleep 1
     if [ -n "$url" ]; then
-      adb shell am start -W -a android.intent.action.VIEW -d "$url" "$app" > /dev/null 2>&1 || true
+      adb shell "am start -W -a android.intent.action.VIEW -d '$url' '$app'" > /dev/null 2>&1 || true
     else
       adb shell monkey -p "$app" -c android.intent.category.LAUNCHER 1 > /dev/null 2>&1 || true
     fi
@@ -147,6 +160,11 @@ install_app "$apk" || exit 0
 
 # ---- 1. the bar, and the soft keyboard under it -------------------------
 launch "$demo_url"
+if ui has 'Extra key row' > /dev/null 2>&1; then
+  note "terminal page: key row present"
+else
+  note "terminal page: no key row, the deep link did not open the terminal"
+fi
 esc=$(ui tap Escape) || esc=""
 # The emulator reports a hardware keyboard, which hides the IME by default.
 adb shell settings put secure show_ime_with_hard_keyboard 1 > /dev/null 2>&1 || true
@@ -183,12 +201,8 @@ fi
 
 # ---- 4. the haptics setting and the key row editor --------------------
 launch "taildeck://preview/?preview=1&tab=3&lang=en"
-for _ in 1 2 3; do
-  adb shell input swipe 540 1700 540 900 300 > /dev/null 2>&1 || true
-  sleep 0.8
-done
 shot settings-terminal
-haptics=$(ui tap 'Terminal key haptics') || haptics=""
+haptics=$(scroll_to 'Terminal key haptics') || haptics=""
 if [ -n "$haptics" ]; then
   record haptics 6 toggle_haptics
   shot haptics-off
@@ -200,7 +214,7 @@ if [ -n "$haptics" ]; then
 else
   note "haptics: no row found"
 fi
-row=$(ui tap 'Extra key row') || row=""
+row=$(scroll_to 'Extra key row') || row=""
 if [ -n "$row" ]; then
   record keyrow-editor 9 edit_keys
   shot keyrow-editor
