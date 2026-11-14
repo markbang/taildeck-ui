@@ -113,24 +113,25 @@ class _SplashGateState extends State<SplashGate> {
 
   @override
   Widget build(BuildContext context) {
-    if (!_showing) return widget.child;
+    // The child keeps its slot so removing the splash does not rebuild the app
+    // underneath; the overlay is decoration and lets input through.
     return Stack(
       children: [
         widget.child,
-        // The splash is decoration: input reaches the app under it.
-        Positioned.fill(
-          child: IgnorePointer(
-            child: AnimatedOpacity(
-              opacity: _fading ? 0 : 1,
-              duration: widget.fade,
-              curve: Curves.easeOut,
-              child: ColoredBox(
-                color: splashBackground,
-                child: Center(child: SplashMark(size: widget.iconSize)),
+        if (_showing)
+          Positioned.fill(
+            child: IgnorePointer(
+              child: AnimatedOpacity(
+                opacity: _fading ? 0 : 1,
+                duration: widget.fade,
+                curve: Curves.easeOut,
+                child: ColoredBox(
+                  color: splashBackground,
+                  child: Center(child: SplashMark(size: widget.iconSize)),
+                ),
               ),
             ),
           ),
-        ),
       ],
     );
   }
