@@ -157,7 +157,8 @@ pyftsubset /usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc --font-number=
 M0–M4 已落地：原生桥接与终端 FFI、SSH 会话、服务与网关、herdr agents、设置/密钥/日志、Android 网络钩子，
 以及未签名的 Windows/macOS/iOS 打包。与 Kotlin 版逐项对比见 [docs/PARITY.zh-CN.md](docs/PARITY.zh-CN.md)，
 原生边界见 [docs/ARCHITECTURE.zh-CN.md](docs/ARCHITECTURE.zh-CN.md)，发布签名见
-[docs/SIGNING.zh-CN.md](docs/SIGNING.zh-CN.md)。
+[docs/SIGNING.zh-CN.md](docs/SIGNING.zh-CN.md)，按钮状态、加载反馈、选择器、动效与文案见
+[docs/UI-GUIDELINES.zh-CN.md](docs/UI-GUIDELINES.zh-CN.md)。
 
 仍缺：应用内 WebView（链接目前在系统浏览器打开）、通知里的允许/拒绝/回复、代理忙时的消息队列、子代理会话、
 图片附件、斜杠命令补全，以及让节点在退到后台后继续运行的 Android 前台服务。验证卡在上面说的 tailnet 访问，

@@ -11,6 +11,7 @@ import '../herdr.dart';
 import '../l10n.dart';
 import '../native/bridge.dart';
 import '../ssh_identities.dart';
+import '../widgets/controls.dart';
 import '../widgets/foundation.dart';
 import '../widgets/select_row.dart';
 import 'agent_chat.dart';
@@ -48,6 +49,7 @@ class _AgentsPageState extends State<AgentsPage> {
       } else {
         _demo[index].items.add(item);
       }
+      _notice = AppLocalizations.of(context).agentCreated(choice.harness);
     });
   }
 
@@ -62,9 +64,11 @@ class _AgentsPageState extends State<AgentsPage> {
     );
     if (created == null || !mounted) return;
     final promptError = created.promptError;
-    if (promptError.isNotEmpty) {
-      setState(() => _notice = l10n.agentPromptFailed(promptError));
-    }
+    setState(() {
+      _notice = promptError.isNotEmpty
+          ? l10n.agentPromptFailed(promptError)
+          : l10n.agentCreated(created.harness);
+    });
   }
 
   static Future<List<({String id, String label})>> _workspaces(
@@ -122,24 +126,33 @@ class _AgentsPageState extends State<AgentsPage> {
                     .copyWith(color: context.colorScheme.onSurfaceVariant),
               ),
             ) else
-          for (final group in _groups(herdr.agents))
+          for (final (index, group) in _groups(herdr.agents).indexed)
             ...[
-              SectionLabel(
-                group.section == 'Needs you' ? l10n.needsYou : group.section,
+              Reveal(
+                key: ValueKey('agents-heading-${group.section}'),
+                index: index,
+                child: SectionLabel(
+                  group.section == 'Needs you' ? l10n.needsYou : group.section,
+                ),
               ),
-              GroupCard(
-                dividerInset: 56,
-                children: [
-                  for (final agent in group.items)
-                    RowSemantics(
-                      label: _liveAgentLabel(context, l10n, agent),
-                      onTap: () => _openAgent(herdr, agent),
-                      child: _LiveAgentRow(
-                        agent: agent,
+              Reveal(
+                key: ValueKey('agents-card-${group.section}'),
+                index: index,
+                child: AnimatedGroupCard(
+                  dividerInset: 56,
+                  children: [
+                    for (final agent in group.items)
+                      RowSemantics(
+                        key: ValueKey(agent.paneId),
+                        label: _liveAgentLabel(context, l10n, agent),
                         onTap: () => _openAgent(herdr, agent),
+                        child: _LiveAgentRow(
+                          agent: agent,
+                          onTap: () => _openAgent(herdr, agent),
+                        ),
                       ),
-                    ),
-                ],
+                  ],
+                ),
               ),
               const SizedBox(height: 16),
             ],
@@ -204,20 +217,33 @@ class _AgentsPageState extends State<AgentsPage> {
           text: l10n.herdrNeedsBackend,
           tint: scheme.onSurfaceVariant,
         ),
+        if (_notice.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          InlineNotice(text: _notice, tint: scheme.onSurfaceVariant),
+        ],
         const SizedBox(height: 6),
-        for (final group in _demo) ...[
-          SectionLabel(
-            group.section == 'Needs you' ? l10n.needsYou : group.section,
+        for (final (index, group) in _demo.indexed) ...[
+          Reveal(
+            key: ValueKey('demo-heading-${group.section}'),
+            index: index,
+            child: SectionLabel(
+              group.section == 'Needs you' ? l10n.needsYou : group.section,
+            ),
           ),
-          GroupCard(
-            dividerInset: 56,
-            children: [
-              for (final agent in group.items)
-                RowSemantics(
-                  label: _demoAgentLabel(l10n, agent),
-                  child: _DemoAgentRow(agent: agent),
-                ),
-            ],
+          Reveal(
+            key: ValueKey('demo-card-${group.section}'),
+            index: index,
+            child: AnimatedGroupCard(
+              dividerInset: 56,
+              children: [
+                for (final agent in group.items)
+                  RowSemantics(
+                    key: ValueKey('${agent.project}/${agent.name}/${agent.task}'),
+                    label: _demoAgentLabel(l10n, agent),
+                    child: _DemoAgentRow(agent: agent),
+                  ),
+              ],
+            ),
           ),
           const SizedBox(height: 16),
         ],
@@ -292,7 +318,7 @@ class _LiveAgentRow extends StatelessWidget {
     final (label, tint) = _statusOf(context, agent.status);
     final scheme = context.colorScheme;
     final detail = agent.title.isNotEmpty ? agent.title : agent.cwd;
-    return PressRegion(
+    return TapFeedback(
       onTap: onTap,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
@@ -385,7 +411,7 @@ class _DemoAgentRow extends StatelessWidget {
       DemoTask.headscaleBump => l10n.demoTaskHeadscale,
       null => agent.task,
     };
-    return PressRegion(
+    return TapFeedback(
       onTap: () {},
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
@@ -676,9 +702,10 @@ class _HerdrConnectCardState extends State<_HerdrConnectCard> {
             ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-            child: FilledButton(
-              onPressed: _busy || !widget.backend.signedIn ? null : _connect,
-              child: Text(_busy ? l10n.connecting : l10n.connect),
+            child: LoadingButton(
+              label: l10n.connect,
+              loading: _busy,
+              onPressed: widget.backend.signedIn ? _connect : null,
             ),
           ),
         ],

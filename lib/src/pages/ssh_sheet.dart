@@ -12,6 +12,8 @@ import '../native/ssh.dart';
 import '../native/storage.dart';
 import '../services.dart';
 import '../ssh_identities.dart';
+import '../widgets/controls.dart';
+import '../widgets/select_row.dart';
 
 typedef SshChoice = ({String user, int port, SshSession? session});
 
@@ -227,14 +229,15 @@ class _SshSheetState extends State<_SshSheet> {
                     enabled: !_busy,
                   ),
                   const _RowDivider(),
-                  _SelectRow<int>(
+                  SelectRow<int>(
                     label: l10n.sshPort,
                     value: _port,
                     options: const [(22, '22'), (2222, '2222'), (2200, '2200')],
+                    enabled: !_busy,
                     onChanged: (value) => setState(() => _port = value),
                   ),
                   const _RowDivider(),
-                  _SelectRow<_Auth>(
+                  SelectRow<_Auth>(
                     label: l10n.sshAuth,
                     value: _auth,
                     options: [
@@ -242,6 +245,7 @@ class _SshSheetState extends State<_SshSheet> {
                       (_Auth.password, l10n.authPassword),
                       (_Auth.key, l10n.authKey),
                     ],
+                    enabled: !_busy,
                     onChanged: (value) => setState(() => _auth = value),
                   ),
                   if (_auth == _Auth.password) ...[
@@ -276,46 +280,19 @@ class _SshSheetState extends State<_SshSheet> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       if (_identities.length > 1) ...[
-                        PopupAnchor(
-                          targetBuilder: (open) => PressRegion(
-                            onTap: open,
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 4),
-                              child: Row(
-                                children: [
-                                  Expanded(
-                                    child: Text(
-                                      l10n.sshIdentity,
-                                      style: context.listTitleStyle,
-                                    ),
-                                  ),
-                                  Text(
-                                    _identity?.name ?? _identityId,
-                                    style: AppTextStyle.body.of(context).copyWith(
-                                      color: scheme.onSurfaceVariant,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 4),
-                                  GlyphIcon(
-                                    Glyphs.chevronDown,
-                                    size: 14,
-                                    color: scheme.onSurfaceVariant.opacity50,
-                                  ),
-                                ],
+                        SelectRow<String>(
+                          label: l10n.sshIdentity,
+                          value: _identityId,
+                          options: [
+                            for (final key in _identities)
+                              (
+                                key.id,
+                                key.builtin ? l10n.builtinKey : key.name,
                               ),
-                            ),
-                          ),
-                          popupBuilder: (context) => PopupMenu(
-                            items: [
-                              for (final key in _identities)
-                                PopupMenuItem(
-                                  label: key.builtin ? l10n.builtinKey : key.name,
-                                  checked: key.id == _identityId,
-                                  onPressed: () =>
-                                      setState(() => _identityId = key.id),
-                                ),
-                            ],
-                          ),
+                          ],
+                          enabled: !_busy,
+                          onChanged: (value) =>
+                              setState(() => _identityId = value),
                         ),
                         const Divider(height: 16, thickness: 0.5),
                       ],
@@ -369,9 +346,10 @@ class _SshSheetState extends State<_SshSheet> {
               ),
             ],
             const SizedBox(height: 16),
-            FilledButton(
-              onPressed: _busy || _userError.isNotEmpty ? null : _connect,
-              child: Text(_busy ? l10n.connecting : l10n.connect),
+            LoadingButton(
+              label: l10n.connect,
+              loading: _busy,
+              onPressed: _userError.isNotEmpty ? null : _connect,
             ),
           ],
         ),
@@ -447,61 +425,6 @@ class _RowDivider extends StatelessWidget {
     return const Padding(
       padding: EdgeInsets.only(left: 16),
       child: Divider(height: 0.5, thickness: 0.5),
-    );
-  }
-}
-
-class _SelectRow<T> extends StatelessWidget {
-  const _SelectRow({
-    required this.label,
-    required this.value,
-    required this.options,
-    required this.onChanged,
-  });
-
-  final String label;
-  final T value;
-  final List<(T, String)> options;
-  final ValueChanged<T> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = context.colorScheme;
-    final current = options.firstWhere((o) => o.$1 == value).$2;
-    return PopupAnchor(
-      targetBuilder: (open) => PressRegion(
-        onTap: open,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
-          child: Row(
-            children: [
-              Expanded(child: Text(label, style: context.listTitleStyle)),
-              Text(
-                current,
-                style: AppTextStyle.body
-                    .of(context)
-                    .copyWith(color: scheme.onSurfaceVariant),
-              ),
-              const SizedBox(width: 4),
-              GlyphIcon(
-                Glyphs.chevronDown,
-                size: 14,
-                color: scheme.onSurfaceVariant.opacity50,
-              ),
-            ],
-          ),
-        ),
-      ),
-      popupBuilder: (context) => PopupMenu(
-        items: [
-          for (final (option, text) in options)
-            PopupMenuItem(
-              label: text,
-              checked: option == value,
-              onPressed: () => onChanged(option),
-            ),
-        ],
-      ),
     );
   }
 }

@@ -15,7 +15,9 @@ import '../shell.dart';
 import '../ssh_identities.dart';
 import '../theme.dart';
 import '../webview/web_page.dart';
+import '../widgets/controls.dart';
 import '../widgets/foundation.dart';
+import '../widgets/select_row.dart';
 import 'key_sheet.dart';
 import 'logs.dart';
 
@@ -49,6 +51,8 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _showLogs = false;
   String _notice = '';
   String _error = '';
+  bool _forgetting = false;
+  bool _notificationsBusy = false;
 
   @override
   void didChangeDependencies() {
@@ -129,24 +133,34 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _forgetHosts() async {
+    if (_forgetting) return;
     final backend = BackendScope.of(context);
     final l10n = AppLocalizations.of(context);
+    setState(() {
+      _forgetting = true;
+      _error = '';
+    });
     try {
       await backend.forgetSshHostKeys();
-      if (mounted) {
-        setState(() {
-          _notice = l10n.hostKeysCleared;
-          _error = '';
-        });
-      }
+      if (mounted) setState(() => _notice = l10n.hostKeysCleared);
     } on Object catch (error) {
       if (mounted) setState(() => _error = _message(error));
+    } finally {
+      if (mounted) setState(() => _forgetting = false);
     }
   }
 
   Future<void> _setNotifications(bool value) async {
+    if (_notificationsBusy) return;
     final backend = BackendScope.of(context);
-    await backend.setAgentNotifications(value);
+    setState(() => _notificationsBusy = true);
+    try {
+      await backend.setAgentNotifications(value);
+    } on Object catch (error) {
+      if (mounted) setState(() => _error = _message(error));
+    } finally {
+      if (mounted) setState(() => _notificationsBusy = false);
+    }
   }
 
   Future<void> _signOut() async {
@@ -248,7 +262,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       ? null
                       : () => unawaited(_delete(identity)),
                 ),
-              PressRegion(
+              TapFeedback(
                 onTap: () => unawaited(_import()),
                 child: ListRow(
                   leading: const IconBadge(Glyphs2.plus),
@@ -261,8 +275,8 @@ class _SettingsPageState extends State<SettingsPage> {
                   ),
                 ),
               ),
-              PressRegion(
-                onTap: () => unawaited(_forgetHosts()),
+              TapFeedback(
+                onTap: _forgetting ? null : () => unawaited(_forgetHosts()),
                 child: ListRow(
                   leading: const IconBadge(Glyphs2.refresh),
                   title: Text(l10n.forgetHostKeys, style: context.listTitleStyle),
@@ -270,6 +284,12 @@ class _SettingsPageState extends State<SettingsPage> {
                     l10n.forgetHostKeysHint,
                     style: context.listCaptionStyle,
                   ),
+                  trailing: _forgetting
+                      ? const SizedBox.square(
+                          dimension: 18,
+                          child: ActivityIndicator(size: 18),
+                        )
+                      : null,
                 ),
               ),
             ],
@@ -280,31 +300,16 @@ class _SettingsPageState extends State<SettingsPage> {
         GroupCard(
           dividerInset: 16,
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(l10n.servicesOpen, style: context.listTitleStyle),
-                  const SizedBox(height: 10),
-                  SegmentedControl<bool>(
-                    segments: [
-                      (false, l10n.inBrowser),
-                      (true, l10n.inApp),
-                    ],
-                    value: backend.openInApp,
-                    onChanged: (value) =>
-                        unawaited(backend.setOpenInApp(value)),
-                  ),
-                  if (backend.openInApp) ...[
-                    const SizedBox(height: 8),
-                    Text(
-                      inAppWebViewSupported ? l10n.inAppHint : l10n.inAppDesktopOnly,
-                      style: context.listCaptionStyle,
-                    ),
-                  ],
-                ],
-              ),
+            SelectRow<bool>(
+              label: l10n.servicesOpen,
+              subtitle: backend.openInApp
+                  ? (inAppWebViewSupported
+                        ? l10n.inAppHint
+                        : l10n.inAppDesktopOnly)
+                  : null,
+              value: backend.openInApp,
+              options: [(false, l10n.inBrowser), (true, l10n.inApp)],
+              onChanged: (value) => unawaited(backend.setOpenInApp(value)),
             ),
           ],
         ),
@@ -345,13 +350,25 @@ class _SettingsPageState extends State<SettingsPage> {
                       ),
                     ),
                     const SizedBox(width: 12),
-                    Switch(
-                      value: backend.agentNotifications,
-                      onChanged: backend.notifications.supported
-                          ? (value) => unawaited(_setNotifications(value))
-                          : null,
-                      semanticLabel: l10n.agentNotifications,
-                    ),
+                    if (_notificationsBusy)
+                      SizedBox(
+                        width: 51,
+                        height: 31,
+                        child: Center(
+                          child: ActivityIndicator(
+                            size: 18,
+                            semanticLabel: l10n.pleaseWait,
+                          ),
+                        ),
+                      )
+                    else
+                      Switch(
+                        value: backend.agentNotifications,
+                        onChanged: backend.notifications.supported
+                            ? (value) => unawaited(_setNotifications(value))
+                            : null,
+                        semanticLabel: l10n.agentNotifications,
+                      ),
                   ],
                 ),
               ),
@@ -368,7 +385,7 @@ class _SettingsPageState extends State<SettingsPage> {
         GroupCard(
           dividerInset: 60,
           children: [
-            PressRegion(
+            TapFeedback(
               onTap: () => setState(() {
                 _showLogs = true;
                 _notice = '';
@@ -395,7 +412,7 @@ class _SettingsPageState extends State<SettingsPage> {
         GroupCard(
           dividerInset: 16,
           children: [
-            PressRegion(
+            TapFeedback(
               onTap: () => unawaited(_signOut()),
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
@@ -425,45 +442,34 @@ class _SettingsPageState extends State<SettingsPage> {
         GroupCard(
           dividerInset: 16,
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(l10n.theme, style: context.listTitleStyle),
-                  const SizedBox(height: 10),
-                  SegmentedControl<ThemeMode>(
-                    segments: [
-                      (ThemeMode.system, l10n.system),
-                      (ThemeMode.light, l10n.light),
-                      (ThemeMode.dark, l10n.dark),
-                    ],
-                    value: widget.theme.mode,
-                    onChanged: (value) => widget.theme.setMode(value),
-                  ),
-                  const SizedBox(height: 18),
-                  Text(l10n.language, style: context.listTitleStyle),
-                  const SizedBox(height: 10),
-                  SegmentedControl<String>(
-                    segments: [
-                      ('system', l10n.system),
-                      ('en', l10n.english),
-                      ('zh', l10n.chinese),
-                    ],
-                    value: switch (widget.theme.locale?.languageCode) {
-                      'en' => 'en',
-                      'zh' => 'zh',
-                      _ => 'system',
-                    },
-                    onChanged: (value) => widget.theme.setLocale(
-                      switch (value) {
-                        'en' => const Locale('en'),
-                        'zh' => const Locale('zh'),
-                        _ => null,
-                      },
-                    ),
-                  ),
-                ],
+            SelectRow<ThemeMode>(
+              label: l10n.theme,
+              value: widget.theme.mode,
+              options: [
+                (ThemeMode.system, l10n.system),
+                (ThemeMode.light, l10n.light),
+                (ThemeMode.dark, l10n.dark),
+              ],
+              onChanged: widget.theme.setMode,
+            ),
+            SelectRow<String>(
+              label: l10n.language,
+              value: switch (widget.theme.locale?.languageCode) {
+                'en' => 'en',
+                'zh' => 'zh',
+                _ => 'system',
+              },
+              options: [
+                ('system', l10n.system),
+                ('en', l10n.english),
+                ('zh', l10n.chinese),
+              ],
+              onChanged: (value) => widget.theme.setLocale(
+                switch (value) {
+                  'en' => const Locale('en'),
+                  'zh' => const Locale('zh'),
+                  _ => null,
+                },
               ),
             ),
           ],
@@ -473,53 +479,36 @@ class _SettingsPageState extends State<SettingsPage> {
         GroupCard(
           dividerInset: 16,
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(l10n.bottomBar, style: context.listTitleStyle),
-                  const SizedBox(height: 2),
-                  Text(
-                    widget.floatingNavigation ? l10n.floatingHint : l10n.dockedHint,
-                    style: context.listCaptionStyle,
-                  ),
-                  const SizedBox(height: 10),
-                  SegmentedControl<bool>(
-                    segments: [
-                      (true, l10n.floating),
-                      (false, l10n.docked),
-                    ],
-                    value: widget.floatingNavigation,
-                    onChanged: widget.onFloatingNavigationChanged,
-                  ),
-                  const SizedBox(height: 18),
-                  Text(l10n.tabAnimation, style: context.listTitleStyle),
-                  const SizedBox(height: 2),
-                  Text(
-                    widget.tabAnimation == TabAnimation.fade
-                        ? l10n.fadeHint
-                        : l10n.slideHint,
-                    style: context.listCaptionStyle,
-                  ),
-                  const SizedBox(height: 10),
-                  SegmentedControl<TabAnimation>(
-                    segments: [
-                      (TabAnimation.slide, l10n.slide),
-                      (TabAnimation.fade, l10n.fade),
-                    ],
-                    value: widget.tabAnimation,
-                    onChanged: widget.onTabAnimationChanged,
-                  ),
-                  if (context.disableAnimations) ...[
-                    const SizedBox(height: 8),
-                    Text(l10n.motionHint, style: context.listCaptionStyle),
-                  ],
-                ],
-              ),
+            SelectRow<bool>(
+              label: l10n.bottomBar,
+              subtitle: widget.floatingNavigation
+                  ? l10n.floatingHint
+                  : l10n.dockedHint,
+              value: widget.floatingNavigation,
+              options: [(true, l10n.floating), (false, l10n.docked)],
+              onChanged: widget.onFloatingNavigationChanged,
+            ),
+            SelectRow<TabAnimation>(
+              label: l10n.tabAnimation,
+              subtitle: widget.tabAnimation == TabAnimation.fade
+                  ? l10n.fadeHint
+                  : l10n.slideHint,
+              value: widget.tabAnimation,
+              options: [
+                (TabAnimation.slide, l10n.slide),
+                (TabAnimation.fade, l10n.fade),
+              ],
+              onChanged: widget.onTabAnimationChanged,
             ),
           ],
         ),
+        if (context.disableAnimations) ...[
+          const SizedBox(height: 8),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 6),
+            child: Text(l10n.motionHint, style: context.listCaptionStyle),
+          ),
+        ],
         const SizedBox(height: 20),
         SectionLabel(l10n.about),
         GroupCard(
@@ -530,7 +519,7 @@ class _SettingsPageState extends State<SettingsPage> {
               title: Text('Taildeck', style: context.listTitleStyle),
               trailing: Text(l10n.version(appVersion), style: context.listCaptionStyle),
             ),
-            PressRegion(
+            TapFeedback(
               onTap: () => unawaited(launchUrl(
                 Uri.parse(repoUrl),
                 mode: LaunchMode.externalApplication,

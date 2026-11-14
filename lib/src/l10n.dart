@@ -521,6 +521,12 @@ class AppLocalizations implements UiLocalizations {
   String version(String value) => _zh ? '版本 $value' : 'Version $value';
   String get repository => _zh ? '项目主页' : 'Repository';
 
+  String get pleaseWait => _zh ? '处理中…' : 'Working…';
+  String get serviceSaved => _zh ? '服务已保存' : 'Service saved';
+  String get serviceDeleted => _zh ? '服务已删除' : 'Service deleted';
+  String serviceSaveFailed(String error) =>
+      _zh ? '保存失败：$error' : 'Save failed: $error';
+
   String get tagline =>
       _zh ? '你的 tailnet，不占 VPN 通道。' : 'Your tailnet, without the VPN slot.';
   String get continueInBrowser => _zh ? '在浏览器中继续' : 'Continue in browser';

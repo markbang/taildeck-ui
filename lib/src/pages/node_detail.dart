@@ -12,6 +12,7 @@ import '../native/bridge.dart';
 import '../service_open.dart';
 import '../services.dart';
 import '../webview/web_page.dart';
+import '../widgets/controls.dart';
 import '../widgets/foundation.dart';
 import 'service_sheet.dart';
 
@@ -143,9 +144,10 @@ class _NodeDetailPageState extends State<NodeDetailPage> {
       nodes: [widget.node],
       initialNode: widget.node.name,
       initialPort: port,
+      onSave: store.upsert,
     );
-    if (service == null) return;
-    await store.upsert(service);
+    if (service == null || !mounted) return;
+    setState(() => _notice = AppLocalizations.of(context).serviceSaved);
   }
 
   @override
@@ -159,7 +161,7 @@ class _NodeDetailPageState extends State<NodeDetailPage> {
       fontSize: 14.5,
       height: 1.5,
     );
-    return PageBody(
+    final body = PageBody(
       title: node.name,
       subtitle: '${node.os} · ${node.online ? l10n.online : l10n.offline}',
       leading: Padding(
@@ -187,11 +189,13 @@ class _NodeDetailPageState extends State<NodeDetailPage> {
               label: l10n.ping,
               glyph: Glyphs2.ping,
               onPressed: _runPing,
+              loading: _pinging,
             ),
             ActionPill(
               label: l10n.scanPorts,
               glyph: Glyphs2.radar,
               onPressed: _scan,
+              loading: _scanning,
             ),
           ],
         ),
@@ -233,7 +237,7 @@ class _NodeDetailPageState extends State<NodeDetailPage> {
           ),
         ],
         const SizedBox(height: 14),
-        PressRegion(
+        TapFeedback(
           onTap: widget.onOpenAgents,
           shape: AppShape.all(AppCorner.xxl),
           child: Card(
@@ -338,6 +342,7 @@ class _NodeDetailPageState extends State<NodeDetailPage> {
         ),
       ],
     );
+    return Reveal(key: ValueKey('node-${node.name}'), child: body);
   }
 }
 

@@ -11,6 +11,7 @@ import '../glyphs.dart';
 import '../service_open.dart';
 import '../services.dart';
 import '../webview/web_page.dart';
+import '../widgets/controls.dart';
 import '../widgets/foundation.dart';
 import 'service_sheet.dart';
 
@@ -23,11 +24,16 @@ class ServicesPage extends StatefulWidget {
 
 class _ServicesPageState extends State<ServicesPage> {
   String _notice = '';
+  String _deleting = '';
 
   Future<void> _addService(ServiceStore store, List<NodeItem> nodes) async {
-    final service = await showServiceSheet(context, nodes: nodes);
-    if (service == null) return;
-    await store.upsert(service);
+    final service = await showServiceSheet(
+      context,
+      nodes: nodes,
+      onSave: store.upsert,
+    );
+    if (service == null || !mounted) return;
+    setState(() => _notice = AppLocalizations.of(context).serviceSaved);
   }
 
   Future<void> _editService(ServiceStore store, List<NodeItem> nodes, Service service) async {
@@ -35,9 +41,10 @@ class _ServicesPageState extends State<ServicesPage> {
       context,
       nodes: nodes,
       initial: service,
+      onSave: store.upsert,
     );
-    if (edited == null) return;
-    await store.upsert(edited);
+    if (edited == null || !mounted) return;
+    setState(() => _notice = AppLocalizations.of(context).serviceSaved);
   }
 
   Future<void> _deleteService(ServiceStore store, Service service) async {
@@ -60,7 +67,18 @@ class _ServicesPageState extends State<ServicesPage> {
         child: Text(l10n.deleteServiceBody(service.name)),
       ),
     );
-    if (confirmed == true) await store.remove(service.id);
+    if (confirmed != true || !mounted) return;
+    setState(() => _deleting = service.id);
+    try {
+      await store.remove(service.id);
+      if (mounted) {
+        setState(() => _notice = AppLocalizations.of(context).serviceDeleted);
+      }
+    } on Object catch (error) {
+      if (mounted) setState(() => _notice = '$error');
+    } finally {
+      if (mounted) setState(() => _deleting = '');
+    }
   }
 
   Future<void> _openService(Service service) async {
@@ -111,42 +129,59 @@ class _ServicesPageState extends State<ServicesPage> {
                   .copyWith(color: context.colorScheme.onSurfaceVariant),
             ),
           ),
-        for (final nodeName in store.nodes) ...[
-          _NodeHeading(name: nodeName, node: byName[nodeName]),
-          GroupCard(
-            dividerInset: 62,
-            children: [
-              for (final service in store.forNode(nodeName))
-                ServiceTile(
-                  service,
-                  muted: byName[nodeName]?.online == false,
-                  onPressed: () => unawaited(_openService(service)),
-                  trailing: PopupAnchor(
-                    targetBuilder: (open) => IconButton(
-                      onPressed: open,
-                      icon: const GlyphIcon(Glyphs.more),
-                      tooltip: l10n.more,
-                    ),
-                    popupBuilder: (context) => PopupMenu(
-                      items: [
-                        PopupMenuItem(
-                          label: l10n.edit,
-                          glyph: Glyphs2.sliders,
-                          onPressed: () => unawaited(
-                            _editService(store, nodes, service),
+        for (final (index, nodeName) in store.nodes.indexed) ...[
+          Reveal(
+            key: ValueKey('services-heading-$nodeName'),
+            index: index,
+            child: _NodeHeading(name: nodeName, node: byName[nodeName]),
+          ),
+          Reveal(
+            key: ValueKey('services-card-$nodeName'),
+            index: index,
+            child: AnimatedGroupCard(
+              dividerInset: 62,
+              children: [
+                for (final service in store.forNode(nodeName))
+                  ServiceTile(
+                    key: ValueKey(service.id),
+                    service,
+                    muted: byName[nodeName]?.online == false,
+                    onPressed: _deleting == service.id
+                        ? null
+                        : () => unawaited(_openService(service)),
+                    trailing: _deleting == service.id
+                        ? const SizedBox.square(
+                            dimension: 18,
+                            child: ActivityIndicator(size: 18),
+                          )
+                        : PopupAnchor(
+                            targetBuilder: (open) => IconButton(
+                              onPressed: open,
+                              icon: const GlyphIcon(Glyphs.more),
+                              tooltip: l10n.more,
+                            ),
+                            popupBuilder: (context) => PopupMenu(
+                              items: [
+                                PopupMenuItem(
+                                  label: l10n.edit,
+                                  glyph: Glyphs2.sliders,
+                                  onPressed: () => unawaited(
+                                    _editService(store, nodes, service),
+                                  ),
+                                ),
+                                PopupMenuItem(
+                                  label: l10n.delete,
+                                  danger: true,
+                                  onPressed: () => unawaited(
+                                    _deleteService(store, service),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
-                        PopupMenuItem(
-                          label: l10n.delete,
-                          danger: true,
-                          onPressed: () =>
-                              unawaited(_deleteService(store, service)),
-                        ),
-                      ],
-                    ),
                   ),
-                ),
-            ],
+              ],
+            ),
           ),
           const SizedBox(height: 18),
         ],

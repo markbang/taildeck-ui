@@ -6,6 +6,7 @@ import '../data.dart';
 import '../l10n.dart';
 import '../glyphs.dart';
 import '../services.dart';
+import 'controls.dart';
 
 class PageBody extends StatelessWidget {
   const PageBody({
@@ -382,7 +383,7 @@ class ServiceTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = context.colorScheme;
     final name = service.name.isEmpty ? service.address : service.name;
-    return PressRegion(
+    return TapFeedback(
       onTap: onPressed ?? () {},
       child: ListRow(
         leading: ExcludeSemantics(
@@ -430,19 +431,22 @@ class ActionPill extends StatelessWidget {
     required this.glyph,
     this.selected = false,
     this.onPressed,
+    this.loading = false,
   });
 
   final String label;
   final Glyph glyph;
   final bool selected;
   final VoidCallback? onPressed;
+  final bool loading;
 
   @override
   Widget build(BuildContext context) {
     final scheme = context.colorScheme;
     final fg = selected ? scheme.onPrimary : scheme.onSurface;
-    return PressRegion(
-      onTap: onPressed,
+    return TapFeedback(
+      onTap: loading ? null : onPressed,
+      scale: true,
       shape: AppShape.full,
       child: Container(
         constraints: const BoxConstraints(minHeight: 44),
@@ -455,7 +459,12 @@ class ActionPill extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            GlyphIcon(glyph, size: 15, color: fg),
+            SizedBox.square(
+              dimension: 15,
+              child: loading
+                  ? ActivityIndicator(size: 15, color: fg)
+                  : GlyphIcon(glyph, size: 15, color: fg),
+            ),
             const SizedBox(width: 6),
             Text(
               label,

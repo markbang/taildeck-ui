@@ -8,6 +8,7 @@ import 'package:prism_ui/prism_ui.dart';
 import '../glyphs.dart';
 import '../herdr.dart';
 import '../l10n.dart';
+import '../widgets/controls.dart';
 import '../widgets/foundation.dart';
 
 /// One agent pane: its transcript, a prompt box, restart and model switching.
@@ -41,6 +42,7 @@ class _AgentChatPageState extends State<AgentChatPage> {
   bool _loading = true;
   bool _sending = false;
   bool _restarting = false;
+  bool _switchingModel = false;
   Timer? _reload;
   List<HerdrCommand> _commands = const [];
   List<HerdrCommand> _suggestions = const [];
@@ -327,7 +329,7 @@ class _AgentChatPageState extends State<AgentChatPage> {
               dividerInset: 16,
               children: [
                 for (final model in options.models)
-                  PressRegion(
+                  TapFeedback(
                     onTap: () => Navigator.of(context).pop(model.id),
                     child: Padding(
                       padding: const EdgeInsets.symmetric(
@@ -354,6 +356,10 @@ class _AgentChatPageState extends State<AgentChatPage> {
       ),
     );
     if (chosen == null || !mounted) return;
+    setState(() {
+      _switchingModel = true;
+      _notice = '';
+    });
     try {
       await widget.herdr.setModel(_pane, chosen);
       await _load();
@@ -361,6 +367,8 @@ class _AgentChatPageState extends State<AgentChatPage> {
       if (mounted) {
         setState(() => _notice = l10n.agentActionFailed(_message(error)));
       }
+    } finally {
+      if (mounted) setState(() => _switchingModel = false);
     }
   }
 
@@ -486,14 +494,26 @@ class _AgentChatPageState extends State<AgentChatPage> {
             ),
           ),
           IconButton(
-            onPressed: _restarting ? null : () => unawaited(_pickModel()),
-            icon: const GlyphIcon(Glyphs2.sliders),
+            onPressed: _restarting || _switchingModel
+                ? null
+                : () => unawaited(_pickModel()),
+            icon: _switchingModel
+                ? ActivityIndicator(
+                    size: 16,
+                    semanticLabel: l10n.pleaseWait,
+                  )
+                : const GlyphIcon(Glyphs2.sliders),
             tooltip: l10n.agentModel,
           ),
           IconButton(
-            onPressed: _restarting ? null : () => unawaited(_restart()),
+            onPressed: _restarting || _switchingModel
+                ? null
+                : () => unawaited(_restart()),
             icon: _restarting
-                ? const ActivityIndicator(size: 16)
+                ? ActivityIndicator(
+                    size: 16,
+                    semanticLabel: l10n.agentRestarting,
+                  )
                 : const GlyphIcon(Glyphs2.refresh),
             tooltip: _restarting ? l10n.agentRestarting : l10n.agentRestart,
           ),
@@ -759,7 +779,7 @@ class _CommandPopup extends StatelessWidget {
                   commands[i].description,
                 ),
                 onTap: () => onPick(i),
-                child: PressRegion(
+                child: TapFeedback(
                   onTap: () => onPick(i),
                   child: Container(
                     color: i == selected
@@ -917,7 +937,7 @@ class _MessageBlock extends StatelessWidget {
                   '${l10n.agentSubagent}, '
                   '${message.summary.isEmpty ? name : message.summary}',
               onTap: () => onOpenSubagent(message),
-              child: PressRegion(
+              child: TapFeedback(
                 onTap: () => onOpenSubagent(message),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 4),
@@ -1124,7 +1144,7 @@ class _RemoteImageState extends State<_RemoteImage> {
       return Semantics(
         button: true,
         label: l10n.agentImageOpen,
-        child: PressRegion(
+        child: TapFeedback(
           onTap: () => widget.onOpen(bytes),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(10),
