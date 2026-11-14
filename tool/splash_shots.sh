@@ -47,6 +47,9 @@ record() { # <label> <apk> <night yes|no>
     | tail -n 1 | tr -d '\r')
   [ -n "$activity" ] || { note "$label: no launcher activity"; return 1; }
   adb shell am force-stop "$app" > /dev/null 2>&1 || true
+  # The recording must start on the launcher, not on whatever the previous
+  # step left in front, or the first cut in it is not the launch screen.
+  adb shell input keyevent KEYCODE_HOME > /dev/null 2>&1 || true
   sleep 3
   adb logcat -c > /dev/null 2>&1 || true
   adb shell rm -f /sdcard/rec.mp4 > /dev/null 2>&1 || true
@@ -66,15 +69,21 @@ record() { # <label> <apk> <night yes|no>
   note "$label: ${total:-TotalTime missing} | ${displayed:-Displayed missing}"
   [ -n "$displayed" ] || return 1
 
-  start=$(scene_start "$out/$label.mp4" || true)
-  [ -n "$start" ] || start=1.5
-  note "$label: launch screen at ${start}s"
+  # am start runs 1.5s into the recording; the launch screen follows within a
+  # few hundred ms. Trust the first cut only when it lands in that window.
+  start=$(awk -v d="$(scene_start "$out/$label.mp4" || true)" \
+    'BEGIN{print (d > 0.8 && d < 3.5) ? d : 1.7}')
+  # am start's TotalTime is where the launch screen ends in the recording.
+  first=$(awk -v t="${total#*: }" 'BEGIN{print t/1000}')
+  note "$label: launch screen at ${start}s, first frame ${first}s later"
 
-  for shot in "splash:0.20" "app:1.60"; do
-    local name=${shot%%:*} offset=${shot#*:}
-    ffmpeg -loglevel error -y -ss "$(awk -v a="$start" -v b="$offset" 'BEGIN{print a+b}')" \
-      -i "$out/$label.mp4" -frames:v 1 "$out/$label-$name.png" || true
-  done
+  grab() { # <seconds after the launch screen> <name>
+    ffmpeg -loglevel error -y \
+      -ss "$(awk -v a="$start" -v b="$1" 'BEGIN{print a+b}')" \
+      -i "$out/$label.mp4" -frames:v 1 "$out/$label-$2.png" || true
+  }
+  grab 0.25 splash
+  grab "$(awk -v t="$first" 'BEGIN{print t+0.6}')" app
   [ -s "$out/$label-splash.png" ] && note "$label: mark $(mark_box "$out/$label-splash.png")"
 
   ffmpeg -loglevel error -y -ss "$(awk -v a="$start" -v b=0.3 'BEGIN{print (a>b?a-b:0)}')" \
