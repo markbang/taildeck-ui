@@ -39,6 +39,25 @@ keys inside that row.
 | Hardware keyboard | Blink hides its Smart Keys when a keyboard is attached | Ctrl, Alt, Meta, arrows, Esc and Tab go through `td_term_encode_key` from the input line's focus node. The row hides while Android reports a physical keyboard (`Configuration.keyboard`), unless Settings → Terminal keeps it or the soft keyboard is up. iOS and desktop keep their current behaviour: desktop always hides, iOS cannot tell | Implemented |
 | Snippets, sessions, custom key sequences | Termius snippets, Blink Snips | Not in this change | Later |
 
+## Verification
+
+`tool/termgestures_record.sh` (workflow `termgestures-record`) records the
+gesture layer on the Android emulator: swipe arrows on both axes, a held arrow
+key, word selection with its handles, copy with the toolbar's confirmation,
+paste, opening the URL a selection holds (Chrome came to the front), landscape,
+the soft keyboard shrinking the grid with the cursor still above the key row,
+hardware Esc/Tab/Ctrl+C/arrows, and the font size stepping from Settings and
+surviving a relaunch. The stills are `docs/screenshots/term-*.png`, the clips
+`docs/screenshots/term-*.mp4`.
+
+What the emulator could not exercise: the pinch itself. Its touch input is a
+set of `virtio_input_multi_touch_*` devices without `INPUT_PROP_DIRECT`, so
+injected two-finger contacts reach the app as mouse drags, and `adb shell
+input` has no multi-pointer command. The zoom maths are covered by
+`test/terminal_gestures_test.dart`, and Settings exercises the same setter and
+the same grid resize. No tailnet was reachable from here either, so nothing ran
+against a real shell (vim, htop, tmux).
+
 ## Sources
 
 - Termius, *Mobile terminal* — keyboard add-on, extended keyboard, key groups, volume buttons, gestures: <https://docs.termius.com/terminal/mobile-terminal>

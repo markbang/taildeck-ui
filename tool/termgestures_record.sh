@@ -390,15 +390,19 @@ copy_selection() {
 }
 
 paste_clipboard() {
-  local point
-  point=$(ui tap 'Paste') || point=$(ui tap 'paste') || point=""
-  if [ -z "$point" ]; then
-    note "paste: no Paste action"
+  # The input bar has its own paste button; the toolbar's is the rightmost
+  # action under the selection.
+  sleep 2
+  local x1 y1 x2 y2 x y
+  if ! read -r x1 y1 x2 y2 <<< "$(ui bounds 'Selection actions')"; then
+    note "paste: no selection toolbar"
     return 0
   fi
-  read -r x y <<< "$point"
+  x=$((x2 - $(dp 40)))
+  y=$(((y1 + y2) / 2))
   adb shell input tap "$x" "$y" > /dev/null 2>&1 || true
   sleep 1.5
+  note "paste: tapped the toolbar at $x,$y"
 }
 
 open_link() {
@@ -473,6 +477,10 @@ rotate() { # <0|1>
 }
 
 hardware_keys() {
+  if [ "$(ime_state)" = "mInputShown=true" ]; then
+    adb shell input keyevent KEYCODE_BACK > /dev/null 2>&1 || true
+    sleep 1.5
+  fi
   adb shell input keyevent KEYCODE_TAB > /dev/null 2>&1 || true
   sleep 0.4
   adb shell input keyevent KEYCODE_ESCAPE > /dev/null 2>&1 || true
@@ -488,6 +496,10 @@ install_app "$apk" || exit 0
 adb shell getevent -pl > "$out/getevent.txt" 2>&1 || true
 prepare_ime
 settings_shot
+
+# 0. the font size from Settings, kept across a relaunch
+record font-step 14 font_step
+shot font-step
 
 launch "$demo_url" || exit 0
 if ui has 'Extra key row' > /dev/null 2>&1; then
@@ -539,10 +551,6 @@ if ! ui has 'Terminal output' > /dev/null 2>&1; then
 fi
 record hardware 10 hardware_keys
 shot hardware
-
-# 8. the font size from Settings, kept across a relaunch
-record font-step 12 font_step
-shot font-step
 
 # 9. pinch zoom: the emulator's touch devices take one contact each, so this
 # is reported either way and runs last, after the other evidence is taken.
