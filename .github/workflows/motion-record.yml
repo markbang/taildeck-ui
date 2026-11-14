@@ -16,18 +16,50 @@ concurrency:
   group: motion-record-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  GOPROXY: https://proxy.golang.org,direct
+  GOTOOLCHAIN: auto
+
 jobs:
   record:
     name: motion on the emulator
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+      - uses: actions/setup-go@v6
+        with:
+          go-version: 1.27.x
+          cache-dependency-path: native/bridge/go.sum
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.1
+      - name: Pin the Android NDK
+        run: |
+          sdk="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+          ndk="$sdk/ndk/28.2.13676358"
+          if [ ! -d "$ndk" ]; then
+            sdkmanager_bin="$(ls "$sdk"/cmdline-tools/*/bin/sdkmanager | sort -V | tail -1)"
+            yes | "$sdkmanager_bin" --licenses > /dev/null 2>&1 || true
+            "$sdkmanager_bin" --install "ndk;28.2.13676358"
+          fi
+          test -d "$ndk"
+          echo "ANDROID_NDK_HOME=$ndk" >> "$GITHUB_ENV"
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: 3.47.9
           channel: stable
           cache: true
       - run: flutter pub get
+      - name: Build the native libs (x86_64)
+        run: |
+          set -o pipefail
+          tool/build_native.sh android-x86_64 | tee /tmp/build_native.log
+          tool/build_term.sh android-x86_64 | tee /tmp/build_term.log
       - name: Build a profile APK (x86_64)
         run: |
           flutter build apk --profile --target-platform android-x64
