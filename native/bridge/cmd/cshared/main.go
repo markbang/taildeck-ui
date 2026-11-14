@@ -65,117 +65,152 @@ var (
 
 //export td_start
 func td_start(configJSON *C.char) *C.char {
-	var cfg config
-	if raw := C.GoString(configJSON); raw != "" {
-		if err := json.Unmarshal([]byte(raw), &cfg); err != nil {
-			return fail(fmt.Errorf("parse config: %w", err))
+	return guard("td_start", func() *C.char {
+		var cfg config
+		if raw := C.GoString(configJSON); raw != "" {
+			if err := json.Unmarshal([]byte(raw), &cfg); err != nil {
+				return fail(fmt.Errorf("parse config: %w", err))
+			}
 		}
-	}
-	if cfg.Dir == "" {
-		return fail(errors.New("config.dir is required"))
-	}
-	if cfg.Hostname == "" {
-		cfg.Hostname = "taildeck"
-	}
-	var platform tsbridge.Platform
-	switch cfg.Platform {
-	case "", "go":
-		platform = goPlatform{}
-	case "host":
-		if !hostHooksReady() {
-			return fail(errors.New("platform \"host\" needs td_set_platform_cb first"))
+		if cfg.Dir == "" {
+			return fail(errors.New("config.dir is required"))
 		}
-		platform = hostPlatform{}
-	default:
-		return fail(fmt.Errorf("unknown platform %q (want \"go\" or \"host\")", cfg.Platform))
-	}
-	if err := tsbridge.Start(cfg.Dir, cfg.Hostname, cfg.ControlURL, cfg.AuthKey, cfg.GatewayPort, platform, listener{}); err != nil {
-		return fail(err)
-	}
-	startTail()
-	return ok(map[string]any{"gatewayPort": tsbridge.GatewayPort()})
+		if cfg.Hostname == "" {
+			cfg.Hostname = "taildeck"
+		}
+		var platform tsbridge.Platform
+		switch cfg.Platform {
+		case "", "go":
+			platform = goPlatform{}
+		case "host":
+			if !hostHooksReady() {
+				return fail(errors.New("platform \"host\" needs td_set_platform_cb first"))
+			}
+			platform = hostPlatform{}
+		default:
+			return fail(fmt.Errorf("unknown platform %q (want \"go\" or \"host\")", cfg.Platform))
+		}
+		if err := tsbridge.Start(cfg.Dir, cfg.Hostname, cfg.ControlURL, cfg.AuthKey, cfg.GatewayPort, platform, listener{}); err != nil {
+			return fail(err)
+		}
+		startTail()
+		return ok(map[string]any{"gatewayPort": tsbridge.GatewayPort()})
+	})
 }
 
 //export td_stop
 func td_stop() *C.char {
-	closeHerdr()
-	tsbridge.Stop()
-	stopTail()
-	return ok(nil)
+	return guard("td_stop", func() *C.char {
+		closeHerdr()
+		tsbridge.Stop()
+		stopTail()
+		return ok(nil)
+	})
 }
 
 //export td_logout
 func td_logout() *C.char {
-	closeHerdr()
-	if err := tsbridge.Logout(); err != nil {
-		return fail(err)
-	}
-	return ok(nil)
+	return guard("td_logout", func() *C.char {
+		closeHerdr()
+		if err := tsbridge.Logout(); err != nil {
+			return fail(err)
+		}
+		return ok(nil)
+	})
 }
 
 //export td_network_changed
 func td_network_changed() *C.char {
-	tsbridge.NetworkChanged()
-	return ok(nil)
+	return guard("td_network_changed", func() *C.char {
+		tsbridge.NetworkChanged()
+		return ok(nil)
+	})
 }
 
 //export td_status
 func td_status() *C.char {
-	raw, err := tsbridge.Status()
-	if err != nil {
-		return fail(err)
-	}
-	return okJSON(raw)
+	return guard("td_status", func() *C.char {
+		raw, err := tsbridge.Status()
+		if err != nil {
+			return fail(err)
+		}
+		return okJSON(raw)
+	})
 }
 
 //export td_logs
 func td_logs() *C.char {
-	return ok(map[string]any{"logs": tsbridge.Logs()})
+	return guard("td_logs", func() *C.char {
+		return ok(map[string]any{"logs": tsbridge.Logs()})
+	})
 }
 
 //export td_gateway_port
 func td_gateway_port() C.int {
-	return C.int(tsbridge.GatewayPort())
+	return guardInt("td_gateway_port", func() C.int {
+		return C.int(tsbridge.GatewayPort())
+	}, 0)
 }
 
 //export td_ping
 func td_ping(ip *C.char) *C.char {
-	raw, err := tsbridge.Ping(C.GoString(ip))
-	if err != nil {
-		return fail(err)
-	}
-	return okJSON(raw)
+	return guard("td_ping", func() *C.char {
+		raw, err := tsbridge.Ping(C.GoString(ip))
+		if err != nil {
+			return fail(err)
+		}
+		return okJSON(raw)
+	})
+}
+
+// td_ping_cancel stops a ping in flight to ip, so leaving the page does not
+// leave a call running in the library.
+//
+//export td_ping_cancel
+func td_ping_cancel(ip *C.char) *C.char {
+	return guard("td_ping_cancel", func() *C.char {
+		return ok(map[string]any{"cancelled": tsbridge.CancelPing(C.GoString(ip))})
+	})
 }
 
 //export td_probe
 func td_probe(host *C.char, portsCSV *C.char) *C.char {
-	raw, err := tsbridge.Probe(C.GoString(host), C.GoString(portsCSV))
-	if err != nil {
-		return fail(err)
-	}
-	return ok(map[string]any{"ports": json.RawMessage(raw)})
+	return guard("td_probe", func() *C.char {
+		raw, err := tsbridge.Probe(C.GoString(host), C.GoString(portsCSV))
+		if err != nil {
+			return fail(err)
+		}
+		return ok(map[string]any{"ports": json.RawMessage(raw)})
+	})
 }
 
 //export td_set_event_cb
 func td_set_event_cb(cb C.td_event_fn, ctx C.uintptr_t) {
-	cbMu.Lock()
-	cbFn, cbCtx = cb, ctx
-	cbMu.Unlock()
+	guardVoid("td_set_event_cb", func() {
+		cbMu.Lock()
+		cbFn, cbCtx = cb, ctx
+		cbMu.Unlock()
+	})
 }
 
 //export td_free
 func td_free(p *C.char) {
-	C.free(unsafe.Pointer(p))
+	guardVoid("td_free", func() {
+		C.free(unsafe.Pointer(p))
+	})
 }
 
 // td_set_platform_cb installs the host's network hooks: Android 11+ blocks
 // Go's netlink access and has no resolv.conf. Each hook returns a malloc'd
 // UTF-8 string, which hostPlatform frees.
+//
 //export td_set_platform_cb
 func td_set_platform_cb(ifaces C.td_ifaces_fn, def C.td_default_if_fn, lookup C.td_lookup_fn, ctx C.uintptr_t) {
-	hostHooks.mu.Lock()
-	hostHooks.ifaces, hostHooks.def, hostHooks.lookup, hostHooks.ctx = ifaces, def, lookup, ctx
-	hostHooks.mu.Unlock()
+	guardVoid("td_set_platform_cb", func() {
+		hostHooks.mu.Lock()
+		hostHooks.ifaces, hostHooks.def, hostHooks.lookup, hostHooks.ctx = ifaces, def, lookup, ctx
+		hostHooks.mu.Unlock()
+	})
 }
 
 var hostHooks struct {
@@ -274,6 +309,11 @@ func (listener) OnState(state, authURL string) {
 
 // tailLogs turns new ring-log lines into log events.
 func tailLogs(stop chan struct{}) {
+	defer func() {
+		if r := recover(); r != nil {
+			_ = tsbridge.NotePanic("tailLogs", r)
+		}
+	}()
 	for {
 		select {
 		case <-stop:

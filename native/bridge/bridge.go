@@ -38,6 +38,10 @@ type StateListener interface {
 	OnState(state string, authURL string)
 }
 
+// statusTimeout bounds the local API call behind Status; the client polls it
+// every few seconds and must never queue behind a stuck backend.
+const statusTimeout = 8 * time.Second
+
 type engine struct {
 	srv      *tsnet.Server
 	lc       *local.Client
@@ -112,7 +116,14 @@ func Start(dir, hostname, controlURL, authKey string, gatewayPort int, platform 
 	e.gw = gw
 	ctx, cancel := context.WithCancel(context.Background())
 	e.cancel = cancel
-	go e.watch(ctx, listener)
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				logs.add(fmt.Sprintf("panic in state watch: %v", r))
+			}
+		}()
+		e.watch(ctx, listener)
+	}()
 	cur = e
 	return nil
 }
@@ -164,6 +175,11 @@ func GatewayPort() int {
 
 func Logs() string {
 	return logs.String()
+}
+
+// Note records a line in the ring log the app shows on its log page.
+func Note(line string) {
+	logs.add(line)
 }
 
 func current() (*engine, error) {
@@ -240,7 +256,7 @@ func Status() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), statusTimeout)
 	defer cancel()
 	st, err := e.lc.Status(ctx)
 	if err != nil {
@@ -316,31 +332,6 @@ func toNode(p *ipnStatusPeer, user string) nodeJSON {
 		}
 	}
 	return n
-}
-
-// Ping sends a disco ping and returns JSON {latencyMs, endpoint, derp, error}.
-func Ping(ip string) (string, error) {
-	e, err := current()
-	if err != nil {
-		return "", err
-	}
-	addr, err := netip.ParseAddr(ip)
-	if err != nil {
-		return "", err
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	res, err := e.lc.Ping(ctx, addr, tailcfg.PingDisco)
-	if err != nil {
-		return "", err
-	}
-	b, err := json.Marshal(map[string]any{
-		"latencyMs": res.LatencySeconds * 1000,
-		"endpoint":  res.Endpoint,
-		"derp":      res.DERPRegionCode,
-		"error":     res.Err,
-	})
-	return string(b), err
 }
 
 type ifaceJSON struct {

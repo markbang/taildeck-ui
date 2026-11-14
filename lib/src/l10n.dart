@@ -554,6 +554,8 @@ class AppLocalizations implements UiLocalizations {
   String get pinging => _zh ? '正在 Ping…' : 'Pinging…';
   String pingFailed(String error) =>
       _zh ? 'Ping 失败：$error' : 'Ping failed: $error';
+  String get pingDirect => _zh ? '直连' : 'direct';
+  String pingRelay(String region) => 'DERP $region';
   String get worksWith => _zh
       ? '支持 Tailscale 与 Headscale 控制服务器。'
       : 'Works with Tailscale and Headscale control servers.';

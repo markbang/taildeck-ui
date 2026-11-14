@@ -89,6 +89,9 @@ class TaildeckBackend extends ChangeNotifier {
   String _herdrIdentity = '';
   Map<String, String> _sshUsers = const {};
   bool _foreground = true;
+  bool _refreshing = false;
+  bool _cancelStart = false;
+  String _pingIp = '';
   bool _serviceRunning = false;
 
   bool get available => _bridge != null && _storage != null;
@@ -193,6 +196,7 @@ class TaildeckBackend extends ChangeNotifier {
     if (!available) return;
     await _configure(controlURL);
     _waitingForLogin = true;
+    _cancelStart = false;
     _error = '';
     notifyListeners();
     await _start(authKey.trim());
@@ -202,37 +206,70 @@ class TaildeckBackend extends ChangeNotifier {
     if (!available) return;
     await _configure(controlURL);
     _waitingForLogin = true;
+    _cancelStart = false;
     _error = '';
     notifyListeners();
     await _start('');
   }
 
   Future<void> refresh() async {
-    if (_bridge == null || !_started) return;
+    final bridge = _bridge;
+    if (bridge == null || !_started) return;
+    if (_refreshing) return;
+    _refreshing = true;
     try {
-      _applyStatus(_bridge.status());
+      final status = await bridge.status();
+      if (!_started) return;
+      _applyStatus(status);
     } on BridgeException catch (error) {
       // Keep the last known state: a status timeout must not sign the user out.
       _error = error.message;
       notifyListeners();
+    } finally {
+      _refreshing = false;
     }
   }
 
+  /// Pings [ip]. Go gives up after 5 s; the 6 s guard here still answers when
+  /// the library never returns, so the button cannot spin forever.
   Future<PingResult> ping(String ip) async {
     if (_bridge == null || !_started) {
       return const PingResult(error: 'node is not running');
     }
+    return _pingThrough(ip);
+  }
+
+  /// The `?ping=1` preview calls the library even before the node is signed in,
+  /// so the Android smoke test reaches the FFI path without a tailnet.
+  Future<PingResult> previewPing(String ip) => _pingThrough(ip);
+
+  Future<PingResult> _pingThrough(String ip) async {
+    final bridge = _bridge;
+    if (bridge == null) return const PingResult(error: 'node is not running');
+    if (_pingIp.isNotEmpty && _pingIp != ip) pingCancel(_pingIp);
+    _pingIp = ip;
     try {
-      final reply = _bridge.ping(ip);
+      final reply = await bridge.ping(ip).timeout(const Duration(seconds: 6));
       return PingResult(
         latencyMs: (reply['latencyMs'] as num?)?.toDouble(),
         endpoint: reply['endpoint'] as String?,
         derp: reply['derp'] as String?,
         error: reply['error'] as String?,
       );
+    } on TimeoutException {
+      bridge.pingCancel(ip);
+      return const PingResult(error: 'ping timed out after 6 s');
     } on BridgeException catch (error) {
       return PingResult(error: error.message);
+    } finally {
+      if (_pingIp == ip) _pingIp = '';
     }
+  }
+
+  /// Stops the ping in flight to [ip], so leaving the page frees the node.
+  void pingCancel(String ip) {
+    _bridge?.pingCancel(ip);
+    if (_pingIp == ip) _pingIp = '';
   }
 
   /// Probes [ports] on [host] through the node; the reply lists the open ones.
@@ -241,7 +278,7 @@ class TaildeckBackend extends ChangeNotifier {
     if (bridge == null || !_started) {
       throw const BridgeException('the tailnet node is not running');
     }
-    final open = bridge.probe(host, ports.join(','));
+    final open = await bridge.probe(host, ports.join(','));
     open.sort();
     return open;
   }
@@ -399,7 +436,7 @@ class TaildeckBackend extends ChangeNotifier {
       throw const BridgeException('native backend is unavailable');
     }
     final key = await sshKeyFor(identityId);
-    final reply = bridge.sshDial(
+    final reply = await bridge.sshDial(
       host: host,
       port: port,
       user: user,
@@ -469,7 +506,9 @@ class TaildeckBackend extends ChangeNotifier {
   /// `td_logs()` on native; the event buffer when there is no bridge.
   String logsText() {
     final bridge = _bridge;
-    final head = _platformWarning.isEmpty ? '' : 'platform: $_platformWarning\n';
+    final head = _platformWarning.isEmpty
+        ? ''
+        : 'platform: $_platformWarning\n';
     if (bridge == null) return head + _logs.join('\n');
     try {
       return head + bridge.logs();
@@ -511,11 +550,11 @@ class TaildeckBackend extends ChangeNotifier {
   Future<void> signOut() async {
     if (_bridge != null && _started) {
       try {
-        _bridge.logout();
+        await _bridge.logout();
       } on BridgeException catch (error) {
         _error = error.message;
       }
-      _stopNode();
+      await _stopNode();
     }
     _self = null;
     _peers = const [];
@@ -528,7 +567,8 @@ class TaildeckBackend extends ChangeNotifier {
 
   /// Cancels a pending sign-in without dropping an existing key.
   Future<void> cancelSignIn() async {
-    _stopNode();
+    _cancelStart = true;
+    await _stopNode();
     await _persist(signedIn: false);
     notifyListeners();
   }
@@ -537,15 +577,14 @@ class TaildeckBackend extends ChangeNotifier {
   void dispose() {
     _refreshTimer?.cancel();
     _events?.cancel();
-    if (_bridge != null && _started) {
-      try {
-        _bridge.stop();
-      } on BridgeException {
-        // Shutting down anyway.
-      }
-    }
+    final bridge = _bridge;
+    // The event callback stays registered until the node is down: Go may still
+    // emit while it closes, and calling a closed NativeCallable crashes.
+    final stopping = bridge != null && _started
+        ? bridge.stop().catchError((Object _) {})
+        : Future<void>.value();
     _herdr?.dispose();
-    _bridge?.dispose();
+    unawaited(stopping.whenComplete(() => bridge?.dispose()));
     if (_serviceRunning) unawaited(_service.stop());
     _serviceRunning = false;
     super.dispose();
@@ -562,7 +601,7 @@ class TaildeckBackend extends ChangeNotifier {
     if (bridge == null || storage == null) return;
     try {
       final dir = await storage.stateDir();
-      final reply = bridge.start(
+      final reply = await bridge.start(
         dir: dir,
         hostname: _hostname,
         controlURL: _controlURL,
@@ -571,6 +610,11 @@ class TaildeckBackend extends ChangeNotifier {
         platform: _platform,
       );
       _started = true;
+      if (_cancelStart) {
+        // Sign-in was cancelled while the node was coming up.
+        await _stopNode();
+        return;
+      }
       _gatewayPort = (reply['gatewayPort'] as num?)?.toInt() ?? 0;
       _rawState = 'Starting';
       _state = BackendState.starting;
@@ -586,12 +630,14 @@ class TaildeckBackend extends ChangeNotifier {
     }
   }
 
-  void _stopNode() {
+  Future<void> _stopNode() async {
     _refreshTimer?.cancel();
     _refreshTimer = null;
-    if (_bridge != null && _started) {
+    final bridge = _bridge;
+    if (bridge != null && _started) {
+      _started = false;
       try {
-        _bridge.stop();
+        await bridge.stop();
       } on BridgeException catch (error) {
         _error = error.message;
       }
@@ -621,7 +667,9 @@ class TaildeckBackend extends ChangeNotifier {
         final line = event.line;
         if (line.isEmpty) return;
         _logs.add(line);
-        if (_logs.length > _logLimit) _logs.removeRange(0, _logs.length - _logLimit);
+        if (_logs.length > _logLimit) {
+          _logs.removeRange(0, _logs.length - _logLimit);
+        }
       case BridgeEventKind.sshData || BridgeEventKind.sshClosed:
         // Session frames reach their own stream, not the backend.
         return;
@@ -637,7 +685,9 @@ class TaildeckBackend extends ChangeNotifier {
     if (url.isNotEmpty) _authUrl = url;
     _tailnet = status['tailnet'] as String? ?? _tailnet;
     final self = status['self'];
-    _self = self is Map<String, dynamic> ? nodeFromJson(self, isSelf: true) : null;
+    _self = self is Map<String, dynamic>
+        ? nodeFromJson(self, isSelf: true)
+        : null;
     _peers = [
       for (final peer in status['peers'] as List? ?? const [])
         if (peer is Map<String, dynamic>) nodeFromJson(peer),

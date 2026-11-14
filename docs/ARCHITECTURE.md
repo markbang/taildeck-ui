@@ -45,6 +45,20 @@ upgrade does not break the other side.
 - CI builds the Android debug APK, the Linux bundle (run on Xvfb for a screenshot) and the Web preview on every PR;
   Windows, macOS and iOS packages build unsigned on a tag or manual run.
 
+### Threading and failures
+
+The Go library is process state, so any isolate can call it, but only calls that finish in microseconds may run on
+the UI isolate (`td_free`, `td_logs`, `td_gateway_port`, SSH write/resize/close, `td_ping_cancel`). Everything that
+reaches the network (`td_start`, `td_stop`, `td_logout`, `td_status`, `td_ping`, `td_probe`, `td_ssh_dial`, herdr) runs
+on a short-lived worker isolate through `Isolate.run` and returns a future: a blocking FFI call on the UI isolate
+freezes the frame loop and Android kills the app for not responding. Event callbacks stay on the root isolate through
+`NativeCallable.listener`. Every export is wrapped in a panic guard (`tsbridge.Recover`) that answers with the usual
+`{"ok":false,"error":...}` envelope, because a Go panic unwinding into C aborts the process.
+
+Timeouts are bounded on the Go side: ping 5 s (cancellable with `td_ping_cancel`), status 8 s, port probe 1 s per
+port and 8 s overall, SSH connect 20 s. Dart adds a 6 s ping guard so a library that never returns still yields an
+answer.
+
 ### Android platform hooks
 
 Android 11+ blocks the netlink calls behind Go's `net.Interfaces`, and apps have no `resolv.conf`, so the node
