@@ -76,6 +76,16 @@ emulator in Dart.
 | macOS | Go c-shared dylib (arm64 + x86_64) | `libghostty-vt` | in-process loopback | unsigned `.app` zip for now, not yet run; notarization and App Sandbox network entitlements are release-time work |
 | Web | mock backend with fixtures | mock terminal | none | `dart:ffi` unavailable; preview/debug only, deployed to GitHub Pages |
 
+### Icons
+
+`android/app/src/main/res` keeps the Kotlin app's adaptive icon verbatim — `mipmap-anydpi-v26/ic_launcher.xml`,
+`drawable/ic_launcher_fg.xml` (3x3 dots, accent in the middle) and the `ic_bg`/`ic_fg`/`ic_accent` colours — so both
+APKs carry the same icon bytes. Do not redraw it and do not let `flutter_launcher_icons` generate one: a change starts
+in `markbang/taildeck` and is copied here. `tool/gen_icons.py` renders the Windows `.ico`, the macOS and iOS
+`AppIcon.appiconset` entries, the Linux PNG and the Web icons from those same resources, cropped to the 72dp visible
+part of the 108dp adaptive viewport the way the launcher mask shows it. `tool/compare_apk_icons.py` diffs the icon
+resources of two APKs with `aapt2`, and the `icon-compare` workflow also screenshots both icons on an emulator.
+
 ## CI
 
 - Every PR: `ci.yml` builds Android (APK with both native libraries), Linux (bundle, launched on Xvfb for a

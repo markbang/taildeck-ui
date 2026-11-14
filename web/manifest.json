@@ -1,11 +1,11 @@
 {
-    "name": "taildeck_ui",
-    "short_name": "taildeck_ui",
+    "name": "Taildeck",
+    "short_name": "Taildeck",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#15181B",
+    "theme_color": "#15181B",
+    "description": "Taildeck redesign, built with prism_ui.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

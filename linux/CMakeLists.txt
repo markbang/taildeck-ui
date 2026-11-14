@@ -128,6 +128,11 @@ else()
   message(STATUS "taildeck: linux/lib/libtaildeck_term.so missing, run tool/build_term.sh")
 endif()
 
+# Taskbar icon rendered by tool/gen_icons.py, loaded by runner/my_application.cc.
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/runner/resources/app_icon.png"
+  DESTINATION "${INSTALL_BUNDLE_DATA_DIR}"
+  COMPONENT Runtime)
+
 # Copy the native assets provided by the build.dart from all packages.
 set(NATIVE_ASSETS_DIR "${PROJECT_BUILD_DIR}native_assets/linux/")
 install(DIRECTORY "${NATIVE_ASSETS_DIR}"
