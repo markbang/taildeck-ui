@@ -2,6 +2,9 @@ name: smoke-call-test
 
 on:
   workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/smoke-call-test.yml'
 
 permissions:
   contents: read
