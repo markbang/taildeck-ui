@@ -43,7 +43,7 @@ scroll_to() { # <needle> [tries]
       echo "$point"
       return 0
     fi
-    adb shell input swipe 540 1700 540 900 300 > /dev/null 2>&1 || true
+    adb shell input swipe 540 1500 540 800 300 > /dev/null 2>&1 || true
     sleep 1
   done
   return 1
@@ -129,11 +129,21 @@ ctrl_c() { # arm Ctrl, then type a letter
   sleep 2.5
 }
 
+drag() { # a finger drag with real move steps, which input swipe lacks
+  local y=$1 step start
+  start=$(dp 330)
+  adb shell input motionevent DOWN "$start" "$y" > /dev/null 2>&1 || return 1
+  for step in 300 270 240 210 180 150 120 90; do
+    adb shell input motionevent MOVE "$(dp "$step")" "$y" > /dev/null 2>&1 || true
+  done
+  adb shell input motionevent UP "$(dp 70)" "$y" > /dev/null 2>&1 || true
+}
+
 swipe_pages() { # one page per swipe, twice
   read -r _ y <<< "$ctrl"
-  adb shell input swipe "$(dp 340)" "$y" "$(dp 40)" "$y" 260 > /dev/null 2>&1 || true
+  drag "$y"
   sleep 1.6
-  adb shell input swipe "$(dp 340)" "$y" "$(dp 40)" "$y" 260 > /dev/null 2>&1 || true
+  drag "$y"
   sleep 1.6
 }
 
@@ -147,8 +157,12 @@ edit_keys() {
   read -r x y <<< "$row"
   adb shell input tap "$x" "$y" > /dev/null 2>&1 || true
   sleep 2.5
+  if ! ui has 'Choose which keys' > /dev/null 2>&1; then
+    note "keyrow-editor: the sheet did not open"
+    return 0
+  fi
   local chip
-  chip=$(ui tap 'Page up') || chip=$(ui tap 'Home') || chip=""
+  chip=$(ui tap 'Vertical bar') || chip=""
   if [ -n "$chip" ]; then
     read -r cx cy <<< "$chip"
     adb shell input tap "$cx" "$cy" > /dev/null 2>&1 || true
@@ -189,12 +203,26 @@ fi
 # ---- 3. swipe to the next page ----------------------------------------
 if [ -n "$ctrl" ]; then
   record keybar-pages 8 swipe_pages
-  shot keybar-page3
   if ui has 'page 3 of 3' > /dev/null 2>&1; then
     note "keybar-pages: verified (two swipes reached page 3)"
   else
-    note "keybar-pages: no page 3 after the swipes"
+    read -r _ page_y <<< "$ctrl"
+    adb shell input swipe "$(dp 330)" "$page_y" "$(dp 70)" "$page_y" 900 > /dev/null 2>&1 || true
+    sleep 1.2
+    adb shell input swipe "$(dp 330)" "$page_y" "$(dp 70)" "$page_y" 900 > /dev/null 2>&1 || true
+    sleep 1.2
+    ui has 'page 3 of 3' > /dev/null 2>&1 && note "keybar-pages: verified (input swipe reached page 3)"
   fi
+  if ! ui has 'page 3 of 3' > /dev/null 2>&1; then
+    note "keybar-pages: swipes missed, stepping with the page dots"
+    for _ in 1 2; do
+      point=$(ui tap 'Key row page') || point=""
+      [ -n "$point" ] && adb shell input tap $point > /dev/null 2>&1
+      sleep 1.2
+    done
+    ui has 'page 3 of 3' > /dev/null 2>&1 && note "keybar-pages: dots reached page 3"
+  fi
+  shot keybar-page3
 else
   note "keybar-pages: no Control key found"
 fi
@@ -214,7 +242,14 @@ if [ -n "$haptics" ]; then
 else
   note "haptics: no row found"
 fi
-row=$(scroll_to 'Extra key row') || row=""
+row=$(ui tap 'Extra key row') || row=""
+if [ -z "$row" ]; then
+  for _ in 1 2 3; do
+    adb shell input swipe 540 800 540 1500 400 > /dev/null 2>&1 || true
+    sleep 1
+    row=$(ui tap 'Extra key row') && break
+  done
+fi
 if [ -n "$row" ]; then
   record keyrow-editor 9 edit_keys
   shot keyrow-editor
