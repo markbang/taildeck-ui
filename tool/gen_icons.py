@@ -22,6 +22,7 @@ RES = os.path.join(ROOT, "android/app/src/main/res")
 ANDROID = "{http://schemas.android.com/apk/res/android}"
 SS = 4  # supersampling factor
 SQUIRCLE = 0.2237  # macOS icon corner radius relative to its side
+MARK_CANVAS = 150  # the launch mark's box in dp; its grid spans 118dp
 
 
 def colors() -> dict[str, str]:
@@ -66,6 +67,24 @@ def render(size: int, rounded: bool) -> Image.Image:
     return image.resize((size, size), Image.LANCZOS)
 
 
+def render_mark(size: int) -> Image.Image:
+    """The dot grid on transparent, for the launch screens.
+
+    |size| is the canvas; the grid spans 44/56 of it, i.e. the 118dp Android 12
+    draws its splash icon at inside a [MARK_CANVAS]dp box, so the app, the
+    platform splash and the other hosts all draw the same mark.
+    """
+    c, d = colors(), dots()
+    side = size * SS
+    image = Image.new("RGBA", (side, side), (0, 0, 0, 0))
+    unit = side / 56
+    draw = ImageDraw.Draw(image)
+    for cx, cy, r, name, alpha in d:
+        x, y, rr = (cx - 26) * unit, (cy - 26) * unit, r * unit
+        draw.ellipse([x - rr, y - rr, x + rr, y + rr], fill=rgba(c[name], alpha))
+    return image.resize((size, size), Image.LANCZOS)
+
+
 def save(image: Image.Image, path: str, opaque: bool = False) -> None:
     path = os.path.join(ROOT, path)
     os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -88,6 +107,13 @@ def main() -> int:
              sizes=[(s, s) for s in (16, 24, 32, 48, 64, 128, 256)])
     save(render(512, True), "linux/runner/resources/app_icon.png")
     save(render(32, False), "web/favicon.png")
+    # Launch screens, at Android's 3x and iOS's 3x.
+    save(render_mark(MARK_CANVAS * 3),
+         "android/app/src/main/res/drawable-nodpi/splash_logo.png")
+    for scale in (1, 2, 3):
+        suffix = f"@{scale}x" if scale > 1 else ""
+        save(render_mark(MARK_CANVAS * scale),
+             f"ios/Runner/Assets.xcassets/LaunchImage.imageset/LaunchImage{suffix}.png")
     for size in (192, 512):
         save(render(size, False), f"web/icons/Icon-{size}.png")
         save(render(size, False), f"web/icons/Icon-maskable-{size}.png")

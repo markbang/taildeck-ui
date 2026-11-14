@@ -1,18 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Theme applied to the Android Window while the process is starting when the OS's Dark Mode setting is off -->
-    <style name="LaunchTheme" parent="@android:style/Theme.Light.NoTitleBar">
-        <!-- Show a splash screen on the activity. Automatically removed when
-             the Flutter engine draws its first frame -->
+    <!-- Base of the launch screen. The Kotlin app is dark in both themes (it
+         has no values-night), so light and dark resolve to the same colours
+         and nothing is left to inherit a white platform background. -->
+    <style name="LaunchTheme.Base" parent="@android:style/Theme.Black.NoTitleBar">
         <item name="android:windowBackground">@drawable/launch_background</item>
+        <item name="android:statusBarColor">@color/bg</item>
+        <item name="android:navigationBarColor">@color/bg</item>
+        <item name="android:windowLightStatusBar">false</item>
     </style>
-    <!-- Theme applied to the Android Window as soon as the process has started.
-         This theme determines the color of the Android Window while your
-         Flutter UI initializes, as well as behind your Flutter UI while its
-         running.
 
-         This Theme is only used starting with V2 of Flutter's Android embedding. -->
-    <style name="NormalTheme" parent="@android:style/Theme.Light.NoTitleBar">
-        <item name="android:windowBackground">?android:colorBackground</item>
-    </style>
+    <!-- Applied while the process starts and until Flutter draws its first
+         frame; values-v31 replaces it with the Android 12 splash attributes. -->
+    <style name="LaunchTheme" parent="LaunchTheme.Base" />
+
+    <!-- Applied as soon as the activity exists. It keeps the launch screen
+         bitmap (background and mark) behind the Flutter view, so the window is
+         never blank or white before the first Flutter frame. -->
+    <style name="NormalTheme" parent="LaunchTheme.Base" />
 </resources>
