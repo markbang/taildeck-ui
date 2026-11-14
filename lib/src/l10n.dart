@@ -242,6 +242,36 @@ class AppLocalizations implements UiLocalizations {
   String agentActionFailed(String error) =>
       _zh ? '操作失败：$error' : 'Failed: $error';
   String get agentTool => _zh ? '工具' : 'tool';
+
+  String get agentCommands => _zh ? '命令' : 'Commands';
+  String get agentCommandsEmpty => _zh ? '没有匹配的命令' : 'No matching commands';
+  String get agentCommandsHint => _zh
+      ? '输入 / 查看命令，↑↓ 选择，回车插入'
+      : 'Type / for commands; ↑↓ to pick, Enter to insert';
+  String agentCommandLabel(String name, String description) =>
+      description.isEmpty ? '/$name' : '/$name, $description';
+  String get agentCommandSkill => _zh ? '技能' : 'skill';
+  String agentQueuedCount(int count) =>
+      _zh ? '$count 条排队中' : '$count queued';
+  String get agentQueueHint => _zh
+      ? '完成后发送 · 可取消或立即发送'
+      : 'Queued until it finishes · cancel or send now';
+  String get agentQueued => _zh ? '排队' : 'Queued';
+  String get agentQueueCancel => _zh ? '取消排队' : 'Cancel queued prompt';
+  String get agentQueueSendNow => _zh ? '立即发送' : 'Send queued prompt now';
+  String get agentSentWhileWorking => _zh ? '工作时发送' : 'Sent while working';
+  String get agentSubagent => _zh ? '子代理' : 'Subagent';
+  String get agentSubagentLoading =>
+      _zh ? '正在读取子代理记录…' : 'Reading the subagent transcript…';
+  String agentSubagentFailed(String error) => _zh
+      ? '读不到子代理记录：$error'
+      : 'Cannot read the subagent transcript: $error';
+  String get agentSubagentFinished => _zh ? '已完成' : 'Finished';
+  String get agentSubagentRunning => _zh ? '运行中' : 'Running';
+  String get agentImageUnavailable => _zh ? '图片无法加载' : 'Image unavailable';
+  String get agentImageOpen => _zh ? '查看图片' : 'Open image';
+  String get agentImageClose => _zh ? '关闭图片' : 'Close image';
+  String get agentImageLoading => _zh ? '正在读取图片' : 'Loading image';
   String get demoTaskGrafana =>
       _zh ? '调整 Grafana 告警' : 'Tune Grafana alerts';
   String get demoTaskRelease =>

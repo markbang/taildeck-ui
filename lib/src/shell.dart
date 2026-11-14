@@ -145,7 +145,8 @@ class _TaildeckShellState extends State<TaildeckShell>
       );
     }
     // `?chat=<pane>`: open a pane's chat on the preview build. Without a
-    // herdr connection the page shows its real error state.
+    // herdr connection the page shows its real error state; `?status=` fakes
+    // the agent's state so the queue chip can be reviewed on a desk.
     final previewChat = previewParam('chat');
     final herdr = backend.herdr;
     if (previewChat != null && herdr != null) {
@@ -154,7 +155,7 @@ class _TaildeckShellState extends State<TaildeckShell>
           paneId: previewChat,
           kind: previewParam('kind') ?? 'claude',
           label: previewChat,
-          status: HerdrStatus.unknown,
+          status: HerdrStatus.of(previewParam('status') ?? ''),
           workspace: '',
         ),
         herdr: herdr,
