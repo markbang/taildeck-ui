@@ -5,6 +5,9 @@ name: motion-record
 
 on:
   workflow_dispatch:
+  # Temporary: dispatch only reaches a workflow that is on the default branch.
+  push:
+    branches: [feat/motion-parity]
 
 permissions:
   contents: read
