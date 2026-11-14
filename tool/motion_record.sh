@@ -228,6 +228,15 @@ swipe_down() { # <x> <y1> <y2> [ms]
 # Pull the list down from its top, the gesture both apps' refresh boxes watch.
 pull_refresh() { swipe_down "$((W / 2))" 420 1000; }
 
+# Both settings pages put the sign-out row last.
+scroll_to_bottom() {
+  local _ i
+  for i in 1 2 3 4; do
+    adb shell input swipe 540 1900 540 500 400 > /dev/null 2>&1 || true
+    sleep 0.8
+  done
+}
+
 app_uid() {
   adb shell dumpsys package "$app" 2> /dev/null |
     sed -n 's/.*userId=\([0-9]*\).*/\1/p' | head -1 | tr -d '\r'
@@ -377,6 +386,7 @@ kotlin_tailnet() { # <key>
   for clip in kotlin-scan-row kotlin-content-size; do
     launch "$kotlin_apk" "$app"
     sleep 3
+    point=$(ui tap "Nodes") && { tapxy "$point"; sleep 1.5; }
     point=$(ui wide "pixel-motion") || point=$(ui wide "This device") || point=
     if [ -n "$point" ]; then
       tapxy "$point"; sleep 2
@@ -397,10 +407,7 @@ kotlin_tailnet() { # <key>
   done
   if point=$(ui tap Settings); then
     tapxy "$point"; sleep 2
-    adb shell input swipe 540 1800 540 900 500 > /dev/null 2>&1 || true
-    sleep 1
-    adb shell input swipe 540 1800 540 900 500 > /dev/null 2>&1 || true
-    sleep 1
+    scroll_to_bottom
     point=$(ui tap "Sign out") || point=
     if [ -n "$point" ]; then
       record kotlin-dialog 5 tap_point "$point"
@@ -430,6 +437,9 @@ flutter_tailnet() { # <key>
   for clip in flutter-scan-row flutter-content-size; do
     launch "$flutter_apk" "$app"
     sleep 3
+    if ! ui has "This device" > /dev/null 2>&1; then
+      point=$(ui tap "Nodes") && { tapxy "$point"; sleep 1.5; }
+    fi
     point=$(ui wide "This device") || point=$(ui wide "pixel-motion") || point=
     if [ -n "$point" ]; then
       tapxy "$point"; sleep 2
@@ -446,10 +456,7 @@ flutter_tailnet() { # <key>
   done
   if point=$(ui tap Settings); then
     tapxy "$point"; sleep 2
-    adb shell input swipe 540 1800 540 900 500 > /dev/null 2>&1 || true
-    sleep 1
-    adb shell input swipe 540 1800 540 900 500 > /dev/null 2>&1 || true
-    sleep 1
+    scroll_to_bottom
     point=$(ui tap "Sign out of the tailnet") || point=
     if [ -n "$point" ]; then
       record flutter-dialog 5 tap_point "$point"
