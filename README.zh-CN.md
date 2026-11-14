@@ -22,6 +22,10 @@
 
 ## 平台
 
+Android 发布包用 Kotlin 版自己的密钥签名（`top.bangwu.taildeck`，同一证书），因此可以直接升级覆盖 Kotlin 版，
+保留其数据；应用身份、密钥库与 CI secret 见 [docs/SIGNING.zh-CN.md](docs/SIGNING.zh-CN.md)，里面也列出了仍缺的
+Windows/macOS/iOS 证书。
+
 **Android 和 Linux** 跑的是真东西。应用通过 `dart:ffi` 加载 [markbang/taildeck](https://github.com/markbang/taildeck)
 里的 Go tsnet 节点：可以浏览器登录或使用 auth key，查看带直连/中继路径的对端并 ping，打开 SSH 会话
 （Tailscale SSH、密码、内置 ed25519 密钥或导入的密钥，支持主机密钥信任），并使用
@@ -152,7 +156,8 @@ pyftsubset /usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc --font-number=
 
 M0–M4 已落地：原生桥接与终端 FFI、SSH 会话、服务与网关、herdr agents、设置/密钥/日志、Android 网络钩子，
 以及未签名的 Windows/macOS/iOS 打包。与 Kotlin 版逐项对比见 [docs/PARITY.zh-CN.md](docs/PARITY.zh-CN.md)，
-原生边界见 [docs/ARCHITECTURE.zh-CN.md](docs/ARCHITECTURE.zh-CN.md)。
+原生边界见 [docs/ARCHITECTURE.zh-CN.md](docs/ARCHITECTURE.zh-CN.md)，发布签名见
+[docs/SIGNING.zh-CN.md](docs/SIGNING.zh-CN.md)。
 
 仍缺：应用内 WebView（链接目前在系统浏览器打开）、通知里的允许/拒绝/回复、代理忙时的消息队列、子代理会话、
 图片附件、斜杠命令补全，以及让节点在退到后台后继续运行的 Android 前台服务。验证卡在上面说的 tailnet 访问，

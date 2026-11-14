@@ -22,6 +22,10 @@ built on [prism_ui](https://github.com/chen08209/prism_ui) — the iOS-style des
 
 ## Platforms
 
+Android releases are signed with the Kotlin app's own key (`top.bangwu.taildeck`, same certificate), so this client
+upgrades over the Kotlin app and keeps its data; [docs/SIGNING.md](docs/SIGNING.md) covers the identity, the keystore
+and the CI secrets, and which Windows/macOS/iOS certificates are still missing.
+
 **Android and Linux** run the real thing. The app loads the Go tsnet node from
 [markbang/taildeck](https://github.com/markbang/taildeck) over `dart:ffi`: sign in with a browser or an auth key,
 see peers with direct/relay paths, ping them, open SSH sessions (Tailscale SSH, password, the built-in ed25519 key
@@ -158,8 +162,9 @@ Drop `U+AC00-D7A3` to save ~1.1 MB if Korean is not needed.
 
 M0–M4 have landed: the native bridge and terminal FFI, SSH sessions, services and the gateway, herdr agents,
 settings, keys and logs, Android host network hooks, and unsigned Windows/macOS/iOS packaging. See
-[docs/PARITY.md](docs/PARITY.md) for the feature-by-feature comparison with the Kotlin app and
-[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the native boundary.
+[docs/PARITY.md](docs/PARITY.md) for the feature-by-feature comparison with the Kotlin app,
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the native boundary and [docs/SIGNING.md](docs/SIGNING.md) for the
+release signing.
 
 Still missing: an in-app WebView (links open in the system browser), notification actions with allow/deny/reply,
 prompt queues while an agent is busy, subagent transcripts, image attachments, slash-command completion, and an

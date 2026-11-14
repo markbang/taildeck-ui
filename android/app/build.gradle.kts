@@ -7,8 +7,8 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
-// Populated by CI (or a local release build) from android/key.properties;
-// absent means the release build stays debug-signed.
+// Release signing material, written by CI (or a local release build) outside git;
+// see docs/SIGNING.md.
 val keystorePropertiesFile = rootProject.file("key.properties")
 val keystoreProperties =
     Properties().apply {
@@ -16,6 +16,9 @@ val keystoreProperties =
             FileInputStream(keystorePropertiesFile).use { load(it) }
         }
     }
+val releaseSigningError =
+    "Release builds need android/key.properties with storeFile, storePassword, keyAlias and keyPassword " +
+        "(see docs/SIGNING.md). Debug builds keep working without it."
 
 android {
     namespace = "top.bangwu.taildeck_ui"
@@ -30,11 +33,10 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "top.bangwu.taildeck_ui"
-        // You can update the following values to match your application needs.
-        // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
+        // Same identity as the Kotlin app: the Flutter client upgrades over it.
+        applicationId = "top.bangwu.taildeck"
+        // Matches the Kotlin app's minSdk so the same devices are supported.
+        minSdk = 26
         targetSdk = flutter.targetSdkVersion
         // Uses the version code from pubspec.yaml. When using split APKs, 1000 * ABI_VERSION
         // is added automatically by Flutter. (https://developer.android.com/studio/build/configure-apk-splits#configure-APK-versions)
@@ -51,25 +53,33 @@ android {
                 storePassword = keystoreProperties.getProperty("storePassword")
                 keyAlias = keystoreProperties.getProperty("keyAlias")
                 keyPassword = keystoreProperties.getProperty("keyPassword")
+                // v2/v3 only: v1 (JAR) is not needed at minSdk 26.
+                enableV2Signing = true
+                enableV3Signing = true
             }
         }
     }
 
     buildTypes {
         release {
-            // Debug keys keep `flutter run --release` working without a keystore.
-            signingConfig =
-                if (keystorePropertiesFile.exists()) {
-                    signingConfigs.getByName("release")
-                } else {
-                    signingConfigs.getByName("debug")
-                }
+            signingConfig = signingConfigs.findByName("release")
         }
     }
 }
 
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+}
+
+// Without this Gradle would silently debug-sign the release APK; fail instead.
+gradle.taskGraph.whenReady {
+    val releaseTaskRequested =
+        allTasks.any {
+            it.project == project && it.name.matches(Regex("(assemble|bundle|package|sign).*Release.*"))
+        }
+    if (releaseTaskRequested && !keystorePropertiesFile.exists()) {
+        throw GradleException(releaseSigningError)
+    }
 }
 
 kotlin {

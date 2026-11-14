@@ -25,8 +25,6 @@ jobs:
   android:
     name: android apks
     runs-on: ubuntu-latest
-    outputs:
-      signed: ${{ steps.signing.outputs.signed }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -68,96 +66,145 @@ jobs:
         with:
           path: native/term/build/ghostty
           key: ghostty-vt-${{ steps.ghostty.outputs.rev }}-zig0.17.1-${{ runner.os }}-${{ runner.arch }}
-      - name: Build the native libs (arm64-v8a + x86_64)
+      - name: Build the native libs (arm64-v8a, armeabi-v7a, x86_64)
         run: |
           set -o pipefail
-          tool/build_native.sh android android-x86_64 | tee /tmp/build_native.log
+          tool/build_native.sh android android-armv7 android-x86_64 | tee /tmp/build_native.log
           if grep -qi skipped /tmp/build_native.log; then
             echo '::error::tool/build_native.sh skipped an Android ABI; the APK would fall back to the mock backend.'
             exit 1
           fi
-          for abi in android android-x86_64; do
+          for abi in android android-armv7 android-x86_64; do
             tool/build_term.sh "$abi" | tee "/tmp/build_term_$abi.log"
             if grep -qi skipped "/tmp/build_term_$abi.log"; then
               echo "::error::tool/build_term.sh skipped $abi; the terminal would be unavailable."
               exit 1
             fi
           done
-          for lib in \
-            android/app/src/main/jniLibs/arm64-v8a/libtaildeck_bridge.so \
-            android/app/src/main/jniLibs/arm64-v8a/libtaildeck_term.so \
-            android/app/src/main/jniLibs/x86_64/libtaildeck_bridge.so \
-            android/app/src/main/jniLibs/x86_64/libtaildeck_term.so; do
-            test -s "$lib" || { echo "::error::$lib missing"; exit 1; }
-            echo "$lib $(stat -c%s "$lib") bytes"
+          for abi in arm64-v8a armeabi-v7a x86_64; do
+            for lib in libtaildeck_bridge.so libtaildeck_term.so; do
+              path="android/app/src/main/jniLibs/$abi/$lib"
+              test -s "$path" || { echo "::error::$path missing"; exit 1; }
+              echo "$path $(stat -c%s "$path") bytes"
+            done
           done
       - name: Configure Android signing
-        id: signing
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          if [ -z "$KEYSTORE_BASE64" ]; then
-            echo "No ANDROID_KEYSTORE_BASE64 secret: the APKs will be debug-signed."
-            echo "signed=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          echo "$KEYSTORE_BASE64" | base64 -d > android/app/release.keystore
-          # printf keeps '$' in a password literal.
+          for name in KEYSTORE_BASE64 KEYSTORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
+            if [ -z "${!name}" ]; then
+              echo "::error::$name is empty; release APKs must be signed (see docs/SIGNING.md)"
+              exit 1
+            fi
+          done
+          umask 077
+          echo "$KEYSTORE_BASE64" | base64 -d > android/release.jks
+          chmod 600 android/release.jks
+          # storeFile is resolved against android/, and printf keeps '$' literal.
           {
-            echo "storeFile=release.keystore"
+            echo "storeFile=release.jks"
             printf 'storePassword=%s\n' "$KEYSTORE_PASSWORD"
             printf 'keyAlias=%s\n' "$KEY_ALIAS"
             printf 'keyPassword=%s\n' "$KEY_PASSWORD"
           } > android/key.properties
-          echo "signed=true" >> "$GITHUB_OUTPUT"
-      - name: Build release APKs
+          chmod 600 android/key.properties
+      - name: Build release APKs and the AAB
+        env:
+          # SHA-256 of the release certificate (same key as the Kotlin app v0.1.0).
+          EXPECTED_SHA256: A76AFE7FFB0787C18BE80DB3FF2D383A09E6EDCD2F67D023A48E3CE4FCABAD61
         run: |
-          asset_suffix=""
-          if [ "${{ steps.signing.outputs.signed }}" != "true" ]; then
-            asset_suffix="-debug-signed"
-          fi
-          jni=android/app/src/main/jniLibs
-          # Flutter only filters the AOT engine per target platform, so the
-          # other ABI's jniLibs are moved aside to keep each APK single-ABI.
-          build_abi() {
-            local abi=$1 target=$2 asset=$3 dir
-            mkdir -p /tmp/jni-hidden
-            for dir in "$jni"/*/; do
-              case "$(basename "$dir")" in
-                "$abi") ;;
-                *) mv "$dir" /tmp/jni-hidden/ ;;
+          set -euo pipefail
+          sdk="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+          build_tools="$(ls -d "$sdk"/build-tools/*/ | sort -V | tail -1)"
+          apksigner="$build_tools/apksigner"
+          aapt2="$build_tools/aapt2"
+
+          flutter build apk --release --split-per-abi
+          flutter build apk --release
+          flutter build appbundle --release
+
+          out=build/app/outputs
+          cp "$out/flutter-apk/app-arm64-v8a-release.apk" "build/taildeck-android-arm64-${VERSION}.apk"
+          cp "$out/flutter-apk/app-armeabi-v7a-release.apk" "build/taildeck-android-armv7-${VERSION}.apk"
+          cp "$out/flutter-apk/app-x86_64-release.apk" "build/taildeck-android-x64-${VERSION}.apk"
+          cp "$out/flutter-apk/app-release.apk" "build/taildeck-android-universal-${VERSION}.apk"
+          cp "$out/bundle/release/app-release.aab" "build/taildeck-android-${VERSION}.aab"
+
+          verify_apk() {
+            local apk=$1 abi=$2 badging sha code listing
+            "$apksigner" verify "$apk" > /dev/null
+            sha="$("$apksigner" verify --print-certs "$apk" \
+              | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | tr -d ':')"
+            if [ "$(echo "$sha" | tr 'a-f' 'A-F')" != "$EXPECTED_SHA256" ]; then
+              echo "::error::$apk is signed by ${sha:0:8}..., expected ${EXPECTED_SHA256:0:8}..."
+              exit 1
+            fi
+            badging="$("$aapt2" dump badging "$apk")"
+            badging="${badging%%$'\n'*}"
+            case "$badging" in
+              *"name='top.bangwu.taildeck'"*) ;;
+              *) echo "::error::$apk has the wrong applicationId: $badging"; exit 1 ;;
+            esac
+            case "$badging" in
+              *"versionName='0.2.6'"*) ;;
+              *) echo "::error::$apk has the wrong versionName: $badging"; exit 1 ;;
+            esac
+            code="$(echo "$badging" | sed -n "s/.*versionCode='\([0-9]*\)'.*/\1/p")"
+            [ "$code" -ge 26 ] || { echo "::error::$apk versionCode $code <= 25 cannot upgrade the Kotlin app"; exit 1; }
+            listing="$(unzip -l "$apk")"
+            if [ -n "$abi" ]; then
+              case "$listing" in
+                *"lib/$abi/libtaildeck_bridge.so"*) ;;
+                *) echo "::error::$apk lacks lib/$abi/libtaildeck_bridge.so"; exit 1 ;;
               esac
-            done
-            flutter build apk --release --target-platform "$target"
-            cp build/app/outputs/flutter-apk/app-release.apk "$asset"
-            mv /tmp/jni-hidden/* "$jni"/
+              case "$listing" in
+                *"lib/$abi/libtaildeck_term.so"*) ;;
+                *) echo "::error::$apk lacks lib/$abi/libtaildeck_term.so"; exit 1 ;;
+              esac
+              # Flutter's ABI splits must keep each APK single-ABI.
+              [ "$(echo "$listing" | grep -c 'lib/.*/libtaildeck_bridge.so')" = "1" ] \
+                || { echo "::error::$apk ships more than one ABI"; exit 1; }
+            fi
+            echo "$(basename "$apk"): versionCode=$code signed by ${sha:0:8}..."
           }
-          build_abi arm64-v8a android-arm64 \
-            "build/taildeck-android-arm64-${VERSION}${asset_suffix}.apk"
-          build_abi x86_64 android-x64 \
-            "build/taildeck-android-x64-${VERSION}${asset_suffix}.apk"
-          unzip -l "build/taildeck-android-arm64-${VERSION}${asset_suffix}.apk" > /tmp/apk-arm64.log
-          unzip -l "build/taildeck-android-x64-${VERSION}${asset_suffix}.apk" > /tmp/apk-x64.log
-          grep -q 'lib/arm64-v8a/libtaildeck_bridge.so' /tmp/apk-arm64.log || {
-            echo '::error::arm64 bridge missing from the APK'; exit 1; }
-          grep -q 'lib/arm64-v8a/libtaildeck_term.so' /tmp/apk-arm64.log || {
-            echo '::error::arm64 terminal missing from the APK'; exit 1; }
-          grep -q 'lib/x86_64/libtaildeck_bridge.so' /tmp/apk-x64.log || {
-            echo '::error::x86_64 bridge missing from the APK'; exit 1; }
-          grep -q 'lib/x86_64/libtaildeck_term.so' /tmp/apk-x64.log || {
-            echo '::error::x86_64 terminal missing from the APK'; exit 1; }
-          grep -q 'lib/x86_64/libtaildeck_bridge.so' /tmp/apk-arm64.log && {
-            echo '::error::arm64 APK ships the x86_64 native libs'; exit 1; }
-          grep -q 'lib/arm64-v8a/libtaildeck_bridge.so' /tmp/apk-x64.log && {
-            echo '::error::x64 APK ships the arm64 native libs'; exit 1; }
-          ls -l build/taildeck-android-*.apk
+
+          verify_apk "build/taildeck-android-arm64-${VERSION}.apk" arm64-v8a
+          verify_apk "build/taildeck-android-armv7-${VERSION}.apk" armeabi-v7a
+          verify_apk "build/taildeck-android-x64-${VERSION}.apk" x86_64
+          verify_apk "build/taildeck-android-universal-${VERSION}.apk" ""
+
+          aab="build/taildeck-android-${VERSION}.aab"
+          aab_sha="$(keytool -printcert -jarfile "$aab" | sed -n 's/.*SHA256: //p' | tr -d ':')"
+          if [ "$(echo "$aab_sha" | tr 'a-f' 'A-F')" != "$EXPECTED_SHA256" ]; then
+            echo "::error::$aab is signed by ${aab_sha:0:8}..., expected ${EXPECTED_SHA256:0:8}..."
+            exit 1
+          fi
+          aab_listing="$(unzip -l "$aab")"
+          for abi in arm64-v8a armeabi-v7a x86_64; do
+            case "$aab_listing" in
+              *"base/lib/$abi/libtaildeck_bridge.so"*) ;;
+              *) echo "::error::$aab lacks the $abi bridge"; exit 1 ;;
+            esac
+            case "$aab_listing" in
+              *"base/lib/$abi/libtaildeck_term.so"*) ;;
+              *) echo "::error::$aab lacks the $abi terminal"; exit 1 ;;
+            esac
+          done
+          echo "aab signed by ${aab_sha:0:8}..."
+          ls -l build/taildeck-android-*
+      - name: Drop the signing material
+        if: always()
+        run: rm -f android/release.jks android/key.properties
       - uses: actions/upload-artifact@v4
         with:
           name: android
-          path: build/taildeck-android-*.apk
+          path: |
+            build/taildeck-android-*.apk
+            build/taildeck-android-*.aab
           if-no-files-found: error
 
   linux:
@@ -395,58 +442,61 @@ jobs:
           done
           ls taildeck-android-*.apk > /dev/null 2>&1 || {
             echo "::error::no Android APK"; exit 1; }
+          ls taildeck-android-*.aab > /dev/null 2>&1 || {
+            echo "::error::no Android AAB"; exit 1; }
           sha256sum taildeck-* > SHA256SUMS
           cat SHA256SUMS
       - name: Compose release notes
-        env:
-          ANDROID_SIGNED: ${{ needs.android.outputs.signed }}
         run: |
-          if [ "$ANDROID_SIGNED" = "true" ]; then
-            apk_suffix=""
-            apk_signing="release keystore"
-            apk_note_en="signed with the release keystore"
-            apk_note_zh="使用发布密钥签名"
-          else
-            apk_suffix="-debug-signed"
-            apk_signing="Android debug key"
-            apk_note_en="signed with the Android debug key: installable for testing, rejected by Google Play"
-            apk_note_zh="使用 Android 调试密钥签名，可安装测试，但无法上架 Google Play"
-          fi
           cat > notes.md <<EOF
           ## Taildeck ${VERSION}
 
-          First release of the Flutter client for Android, Linux, Windows, macOS and iOS.
+          Flutter client for Android, Linux, Windows, macOS and iOS.
           The tsnet node and the libghostty-vt terminal ship as native libraries inside every package.
+
+          **Most phones: arm64-v8a.** Anything else is for older 32-bit devices, x86_64 emulators, or a single
+          package that covers every ABI.
 
           | Asset | Platform | Signing |
           | --- | --- | --- |
-          | \`taildeck-android-arm64-${VERSION}${apk_suffix}.apk\` | Android 7+ (arm64) | ${apk_signing} |
-          | \`taildeck-android-x64-${VERSION}${apk_suffix}.apk\` | Android x86_64 (emulators) | ${apk_signing} |
+          | \`taildeck-android-arm64-${VERSION}.apk\` | Android 8+ (arm64-v8a, most phones) | release keystore |
+          | \`taildeck-android-armv7-${VERSION}.apk\` | Android 8+ (armeabi-v7a, 32-bit) | release keystore |
+          | \`taildeck-android-x64-${VERSION}.apk\` | Android x86_64 (emulators) | release keystore |
+          | \`taildeck-android-universal-${VERSION}.apk\` | Android 8+, every ABI in one file | release keystore |
+          | \`taildeck-android-${VERSION}.aab\` | Android App Bundle (Play) | release keystore |
           | \`taildeck-linux-x64-${VERSION}.tar.gz\` | Linux x64 (extract, run \`bundle/taildeck_ui\`) | not signed |
           | \`taildeck-windows-x64-${VERSION}-unsigned.zip\` | Windows x64 | unsigned |
           | \`taildeck-macos-${VERSION}-unsigned.zip\` | macOS (universal) | unsigned |
           | \`taildeck-ios-${VERSION}-unsigned.zip\` | iOS arm64 (unsigned Runner.app) | unsigned |
 
-          - Android APKs are ${apk_note_en}.
-          - Windows, macOS and iOS packages are unsigned: SmartScreen and Gatekeeper will warn, and iOS needs your own signing profile.
+          - Android packages are signed with the release keystore, the same key as the Kotlin app v0.1.0: they
+            upgrade over it and keep its data. See [docs/SIGNING.md](docs/SIGNING.md).
+          - Windows, macOS and iOS packages are unsigned: SmartScreen and Gatekeeper will warn, and iOS needs your
+            own signing profile.
           - \`SHA256SUMS\` lists the SHA-256 of every asset.
           - Web UI preview: https://markbang.github.io/taildeck-ui/
 
           ## 中文
 
-          Flutter 客户端的首个版本，覆盖 Android、Linux、Windows、macOS 与 iOS。
+          Flutter 客户端，覆盖 Android、Linux、Windows、macOS 与 iOS。
           tsnet 节点与 libghostty-vt 终端以原生库形式打包在各平台安装包内。
+
+          **绝大多数手机：arm64-v8a。** 其余文件面向 32 位老设备、x86_64 模拟器，或想用一个包覆盖所有架构。
 
           | 文件 | 平台 | 签名 |
           | --- | --- | --- |
-          | \`taildeck-android-arm64-${VERSION}${apk_suffix}.apk\` | Android 7+（arm64） | ${apk_signing} |
-          | \`taildeck-android-x64-${VERSION}${apk_suffix}.apk\` | Android x86_64（模拟器） | ${apk_signing} |
+          | \`taildeck-android-arm64-${VERSION}.apk\` | Android 8+（arm64-v8a，绝大多数手机） | 发布密钥 |
+          | \`taildeck-android-armv7-${VERSION}.apk\` | Android 8+（armeabi-v7a，32 位） | 发布密钥 |
+          | \`taildeck-android-x64-${VERSION}.apk\` | Android x86_64（模拟器） | 发布密钥 |
+          | \`taildeck-android-universal-${VERSION}.apk\` | Android 8+，单文件包含全部架构 | 发布密钥 |
+          | \`taildeck-android-${VERSION}.aab\` | Android App Bundle（Play） | 发布密钥 |
           | \`taildeck-linux-x64-${VERSION}.tar.gz\` | Linux x64（解压后运行 \`bundle/taildeck_ui\`） | 未签名 |
           | \`taildeck-windows-x64-${VERSION}-unsigned.zip\` | Windows x64 | 未签名 |
           | \`taildeck-macos-${VERSION}-unsigned.zip\` | macOS（通用） | 未签名 |
           | \`taildeck-ios-${VERSION}-unsigned.zip\` | iOS arm64（未签名 Runner.app） | 未签名 |
 
-          - Android APK ${apk_note_zh}。
+          - Android 安装包使用发布密钥签名，与 Kotlin 版 v0.1.0 同一密钥：可直接升级并保留其数据，见
+            [docs/SIGNING.zh-CN.md](docs/SIGNING.zh-CN.md)。
           - Windows、macOS、iOS 安装包未签名：SmartScreen 与 Gatekeeper 会告警，iOS 需自备签名。
           - \`SHA256SUMS\` 包含所有文件的 SHA-256。
           - Web 界面预览：https://markbang.github.io/taildeck-ui/

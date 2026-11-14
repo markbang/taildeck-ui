@@ -39,6 +39,7 @@ fi
 abi_target() {
   case "$1" in
     arm64-v8a) echo aarch64-linux-android ;;
+    armeabi-v7a) echo arm-linux-androideabi ;;
     x86_64) echo x86_64-linux-android ;;
     linux-x86_64) echo x86_64-linux-gnu ;;
     windows-x86_64) echo x86_64-windows-gnu ;;
