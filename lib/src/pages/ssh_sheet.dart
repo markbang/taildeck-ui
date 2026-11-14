@@ -87,19 +87,9 @@ class _SshSheetState extends State<_SshSheet> {
     _validatePort();
   }
 
-  /// The first suggested login that is not the root default.
-  String _initialUser() {
-    for (final user in _suggestedUsers) {
-      if (user != 'root') return user;
-    }
-    return 'root';
-  }
-
   /// Last login for this target, the node's last one, the tailnet login, then
   /// root.
-  late final _userSuggestions = _suggestedUsers;
-
-  List<String> get _suggestedUsers => [
+  late final _userSuggestions = [
     for (final user in {
       widget.backend.sshUserFor(widget.loginKey),
       if (widget.loginKey != widget.node.name)
@@ -109,6 +99,14 @@ class _SshSheetState extends State<_SshSheet> {
     })
       if (user.isNotEmpty) user,
   ];
+
+  /// The first suggested login that is not the root default.
+  String _initialUser() {
+    for (final user in _userSuggestions) {
+      if (user != 'root') return user;
+    }
+    return 'root';
+  }
 
   void _validateUser() {
     if (!mounted) return;
