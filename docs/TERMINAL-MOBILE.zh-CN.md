@@ -36,7 +36,9 @@
 
 ## 验证
 
-`tool/termgestures_record.sh`（工作流 `termgestures-record`）在 Android 模拟器上录下手势层：两个方向的滑动方向键、按住方向键连发、选词与两端把手、复制（工具条显示已复制）、粘贴、打开选区里的链接（Chrome 切到前台）、横屏、软键盘压缩网格而光标仍在键行之上、硬件 Esc/Tab/Ctrl+C/方向键，以及在设置里加字号并重启后保持。截图在 `docs/screenshots/term-*.png`，录屏在 `docs/screenshots/term-*.mp4`。
+`tool/termgestures_record.sh`（工作流 `termgestures-record`）在 Android 模拟器上录下手势层：两个方向的滑动方向键、按住方向键连发、选词与两端把手、复制（工具条显示已复制，`term-copy.png`）、打开选区里的链接（Chrome 切到前台，`term-open-link.png`）、横屏（`term-landscape.png`，网格重排成 105×12）、软键盘压缩网格而光标仍在键行之上（`term-keyboard.png`，以及 `-keyboard-hidden.png`）、在设置里加字号并重启后保持（`term-font.png`）。
+
+`term-hardware.png`（Esc、Tab、Ctrl+C、方向键分别编码成 `^[`、`^I`、`^C`、`^[[D`、`^[[A`）和 `term-paste.png` 来自 Linux 桌面版，因为模拟器把注入的按键事件交给了 Gboard。旁边的录屏是 `docs/screenshots/term-*.mp4`。
 
 模拟器无法验证的：捏合本身。它的触摸输入是一组 `virtio_input_multi_touch_*` 设备，没有 `INPUT_PROP_DIRECT`，注入的双指触点会被当成鼠标拖动；`adb shell input` 也没有多点命令。缩放的计算（步长、上下限）由 `test/terminal_gestures_test.dart` 覆盖，设置里的 A± 走的是同一个 setter、同样会触发网格重排。另外这里连不上任何 tailnet，所以没有对真实 shell（vim、htop、tmux）验证过。
 

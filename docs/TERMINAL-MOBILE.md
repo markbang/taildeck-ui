@@ -43,12 +43,17 @@ keys inside that row.
 
 `tool/termgestures_record.sh` (workflow `termgestures-record`) records the
 gesture layer on the Android emulator: swipe arrows on both axes, a held arrow
-key, word selection with its handles, copy with the toolbar's confirmation,
-paste, opening the URL a selection holds (Chrome came to the front), landscape,
-the soft keyboard shrinking the grid with the cursor still above the key row,
-hardware Esc/Tab/Ctrl+C/arrows, and the font size stepping from Settings and
-surviving a relaunch. The stills are `docs/screenshots/term-*.png`, the clips
-`docs/screenshots/term-*.mp4`.
+key, word selection with its handles, copy with the toolbar's confirmation
+(`term-copy.png`), opening the URL a selection holds — Chrome came to the front
+(`term-open-link.png`) — landscape (`term-landscape.png`, the grid reflows to
+105×12), the soft keyboard shrinking the grid with the cursor still above the
+key row (`term-keyboard.png`, then `-keyboard-hidden.png`), and the font size
+stepping from Settings and surviving a relaunch (`term-font.png`).
+
+Two rows come from the Linux build with a real keyboard, because the emulator
+routes injected key events to Gboard: `term-hardware.png` (Esc, Tab, Ctrl+C and
+the arrows encode to `^[`, `^I`, `^C`, `^[[D`, `^[[A`) and `term-paste.png`.
+The clips next to them are `docs/screenshots/term-*.mp4`.
 
 What the emulator could not exercise: the pinch itself. Its touch input is a
 set of `virtio_input_multi_touch_*` devices without `INPUT_PROP_DIRECT`, so
