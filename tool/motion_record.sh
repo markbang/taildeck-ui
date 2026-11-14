@@ -133,8 +133,10 @@ _record_once() { # <name> <seconds> <command...>
   adb shell pkill -f screenrecord > /dev/null 2>&1 || true
   sleep 0.7
   adb shell rm -f /sdcard/rec.mp4 > /dev/null 2>&1 || true
-  adb shell screenrecord --time-limit "$((seconds + 2))" --bit-rate 8000000 \
-    /sdcard/rec.mp4 > /dev/null 2>&1 &
+  # Half the screen at a lower bitrate: the emulator's encoder drops whole
+  # clips when it cannot keep up.
+  adb shell screenrecord --time-limit "$((seconds + 2))" --size 540x1200 \
+    --bit-rate 3000000 /sdcard/rec.mp4 > /dev/null 2>&1 &
   local recorder=$!
   sleep 0.4
   "$@" || true
@@ -378,6 +380,13 @@ kotlin_tailnet() { # <key>
     point=$(ui wide "pixel-motion") || point=$(ui wide "This device") || point=
     if [ -n "$point" ]; then
       tapxy "$point"; sleep 2
+      if ! ui has "Scan ports" > /dev/null 2>&1; then
+        tapxy "$point"; sleep 2
+      fi
+      if ! ui has "Scan ports" > /dev/null 2>&1; then
+        scroll_down_screen
+        tapxy "$point"; sleep 2
+      fi
       record_tap "$clip" 10 "Scan ports"
       adb shell input keyevent 4 > /dev/null 2>&1 || true
       sleep 1.5
@@ -388,6 +397,10 @@ kotlin_tailnet() { # <key>
   done
   if point=$(ui tap Settings); then
     tapxy "$point"; sleep 2
+    adb shell input swipe 540 1800 540 900 500 > /dev/null 2>&1 || true
+    sleep 1
+    adb shell input swipe 540 1800 540 900 500 > /dev/null 2>&1 || true
+    sleep 1
     point=$(ui tap "Sign out") || point=
     if [ -n "$point" ]; then
       record kotlin-dialog 5 tap_point "$point"
@@ -420,6 +433,9 @@ flutter_tailnet() { # <key>
     point=$(ui wide "This device") || point=$(ui wide "pixel-motion") || point=
     if [ -n "$point" ]; then
       tapxy "$point"; sleep 2
+      if ! ui has "Scan common ports" > /dev/null 2>&1; then
+        tapxy "$point"; sleep 2
+      fi
       record_tap "$clip" 10 "Scan common ports"
       adb shell input keyevent 4 > /dev/null 2>&1 || true
       sleep 1.5
@@ -430,6 +446,10 @@ flutter_tailnet() { # <key>
   done
   if point=$(ui tap Settings); then
     tapxy "$point"; sleep 2
+    adb shell input swipe 540 1800 540 900 500 > /dev/null 2>&1 || true
+    sleep 1
+    adb shell input swipe 540 1800 540 900 500 > /dev/null 2>&1 || true
+    sleep 1
     point=$(ui tap "Sign out of the tailnet") || point=
     if [ -n "$point" ]; then
       record flutter-dialog 5 tap_point "$point"
