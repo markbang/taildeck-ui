@@ -89,29 +89,34 @@ Flutter 侧全部走 `context.motionDuration(spec)`（`prism_ui`），因此系�
 渲染，GPU 忙时编码器会丢掉大部分帧：
 
 - `tool/motion_record.sh`（手动工作流 `motion-record.yml`）在同一台模拟器上录
-  Kotlin v0.1.0 APK 与本版本，并左右拼接：左 Kotlin，右本版本。
-  `login-expand.mp4` 是两个版本都不需要 tailnet 就能到达的那一项。
+  Kotlin v0.1.0 APK 与本版本，并左右拼接：左 Kotlin，右本版本。工作流会在
+  runner 上启动 Tailscale 自带的 `testcontrol` 控制面（含 DERP 中继），把
+  `http://10.0.2.2:8080` 和认证密钥交给脚本，两个版本因此都能登录，登录之后
+  的界面也能录；`testcontrol` 接受任意密钥。
 - `tool/motion_web.py` 用 Playwright 以 25 fps 录本版本的 Web 预览，动画的每
   一帧都在。
 
 | 片段 | 内容 |
 | --- | --- |
 | `login-expand.mp4` | Kotlin / Flutter：高级区域展开，各一次手势 |
+| `loading.mp4` | Kotlin / Flutter：按下登录按钮，以及随后的载入圆点 |
+| `press.mp4` | Kotlin / Flutter：同一个控件上的长按，水波与按下形变 |
 | `flutter-login-expand.mp4` | 本版本：认证密钥区域展开（淡入 + 尺寸变化） |
 | `flutter-tabs.mp4` | 本版本：节点 → 服务 → Agent → 节点，滑动 1/8 并交叉淡化 |
 | `flutter-detail.mp4` | 本版本：节点页从 1/5 处滑入，返回时反向 |
 | `flutter-start.mp4` | 本版本：登录阶段切换（淡入 + 垂直滑动 1/6） |
 
-Kotlin 版在没有 tailnet 时始终停在登录页（要控制服务器接受后才会离开），
-所以需要主页、节点页、Agent、聊天或 SSH 界面的行，证据列写的是它需要什么，
-而不是片段。这些都已实现，缺的只是视觉对照。
+需要已登录界面的行在控制面起来后录了；需要 agent 会话的（聊天、弹层、
+snackbar、herdr、SSH）证据列写的是它需要什么，因为那些还需要一个 herdr 或
+sshd 对端，CI 机器给不了。
 
 ### 无法录到的部分
 
-- Kotlin 版的主页、节点页、Agent 与聊天：都在可用的控制服务器之后，发布 APK
-  也无法预置状态。
-- 所有需要真实 tailnet 的效果：ping、端口扫描、SSH、herdr、服务图标。
-- 按下反馈片段：模拟器丢输入事件太多，两次录制没有落在同一个控件上。
+- 所有需要 agent 会话的部分：herdr 面板、聊天、只有 agent 界面才会打开的
+  底部弹层、以及上报 agent 操作的 snackbar。`testcontrol` 只给控制面，不给
+  sshd 或 agent，所以这些界面在 CI 里仍到不了。
+- 网页里的 snackbar：需要一个提供下载链接的服务页。
+- 端口扫描：`testcontrol` 的节点没有服务，扫描结果为空，那一行不会出现。
 
 ## 重新录制
 

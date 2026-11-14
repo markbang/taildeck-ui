@@ -95,32 +95,38 @@ GPU is busy:
 
 - `tool/motion_record.sh` (manual workflow `motion-record.yml`) records the
   Kotlin v0.1.0 APK and this build on the same emulator and stacks them,
-  Kotlin on the left, this build on the right. `login-expand.mp4` is the one
-  effect both apps can reach without a tailnet.
+  Kotlin on the left, this build on the right. The workflow starts Tailscale's
+  own `testcontrol` control plane (with its DERP relay) on the runner and hands
+  the script `http://10.0.2.2:8080` plus an auth key, so both apps can sign in
+  and the screens behind login become recordable; `testcontrol` accepts any
+  key.
 - `tool/motion_web.py` records this build's web preview with Playwright at
   25 fps, which keeps every frame of the animation.
 
 | Clip | What it shows |
 | --- | --- |
 | `login-expand.mp4` | Kotlin / Flutter: the advanced section expanding, one gesture each |
+| `loading.mp4` | Kotlin / Flutter: Sign in pressed, and the loading dot that follows |
+| `press.mp4` | Kotlin / Flutter: a press and hold on the same control, ripple and pressed shape |
 | `flutter-login-expand.mp4` | This build: the auth-key section expanding (fade + size) |
 | `flutter-tabs.mp4` | This build: nodes → services → agents → nodes, sliding 1/8 and cross-fading |
 | `flutter-detail.mp4` | This build: node page sliding in from 1/5 and popping back |
 | `flutter-start.mp4` | This build: the login stage swap (fade + vertical slide of 1/6) |
 
-The Kotlin app cannot leave its login screen without a tailnet (it starts on
-login until a control server accepts it), so the rows that need home, node,
-agent, chat or SSH screens are marked with the evidence they need instead of a
-clip. They are implemented; only the visual comparison is missing.
+The signed-in rows were recorded when the control plane came up; the ones that
+need an agent session (chat, sheets, snackbars, herdr, SSH) are marked with the
+evidence they would need instead of a clip, because they also need a herdr or
+sshd peer, which no CI machine provides.
 
 ### What could not be recorded
 
-- Home, node page, agents and chat on the Kotlin app: behind a working control
-  server, and the release APK cannot be preseeded.
-- Everything that needs a live tailnet: ping, port scan, SSH, herdr, service
-  favicons.
-- The press clips: the emulator dropped input events often enough that the
-  captured presses did not land on the same control twice.
+- Everything that needs an agent session: herdr panels, chat, the bottom sheets
+  that only the agent screens open, and the snackbars that report agent
+  actions. `testcontrol` gives the apps a control plane, not an sshd or an
+  agent, so those screens stay unreachable from CI.
+- The web view's snackbar: it needs a service page that offers a download.
+- Port scan: `testcontrol`'s nodes have no services, so a scan finds nothing
+  and the result row never appears.
 
 ## Re-recording
 

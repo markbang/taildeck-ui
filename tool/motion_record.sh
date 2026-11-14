@@ -113,6 +113,22 @@ install_app() { # <apk>
 record() { # <name> <seconds> <command...>
   local name=$1 seconds=$2
   shift 2
+  # screenrecord sometimes leaves a file with no frames; try the gesture once
+  # more before giving up on the clip.
+  local attempt
+  for attempt in 1 2; do
+    _record_once "$name" "$seconds" "$@" || true
+    if [ -s "$out/$name.mp4" ] && [ "$(stat -c%s "$out/$name.mp4")" -gt 2000 ]; then
+      return 0
+    fi
+    note "$name: retrying (attempt $attempt produced no frames)"
+  done
+  return 0
+}
+
+_record_once() { # <name> <seconds> <command...>
+  local name=$1 seconds=$2
+  shift 2
   adb shell pkill -f screenrecord > /dev/null 2>&1 || true
   sleep 0.7
   adb shell rm -f /sdcard/rec.mp4 > /dev/null 2>&1 || true
@@ -270,8 +286,10 @@ if point=$(ui tap "Device name"); then
 fi
 record_tap kotlin-expand 3 Advanced tap "Control server"
 record_tap kotlin-press 3 "Control server" hold "Advanced"
-# Press Sign in: the ripple runs, the pill's corners squash, and the app shows
-# its loading dot while the node starts.
+# Collapse the section again so Sign in is back on screen, then press it: the
+# ripple runs, the pill's corners squash, and the app shows its loading dot
+# while the node starts.
+if point=$(ui tap Advanced); then tapxy "$point"; sleep 1; fi
 record_tap kotlin-start 8 "Sign in" tap
 adb shell input keyevent 4 > /dev/null 2>&1 || true
 
