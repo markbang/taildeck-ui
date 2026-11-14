@@ -63,6 +63,9 @@ Inventory of actions and where their feedback shows:
 | Sign out | confirm, then the shell leaves the screen | login screen |
 | Agent connect / send / restart / model | button or icon spinner, controls disabled | notice or inline notice with the error |
 | Agent notifications | switch replaced by a spinner | switch returns on the saved value |
+| Service icons toggle | — (a preference, nothing to wait for) | switch returns on the saved value, rows fetch as they appear |
+| Refresh icons | row spinner, row disabled | "Icons refreshed" notice; rows show the initial until new icons land |
+| Fetch a service icon | the row's initial stays in place | icon cross-fades in; a failure keeps the initial, no message (a missing icon is not an error the user must act on) |
 
 ## Field values, selects and segmentation
 
@@ -134,6 +137,10 @@ Pick the control from the kind of value, not from how it looks in the form:
 - Sizes: 14–16 in rows, 18 in buttons, 22–28 for a page or card badge.
 - Colour: `onSurfaceVariant` for quiet icons, the node/service tint for
   identity, `scheme.error` only for destructive actions.
+- The one image exception is a service's own favicon: `ServiceAvatar` keeps the
+  tinted initial as the placeholder and cross-fades the icon in over 180 ms
+  (instant with reduce motion), so the row never changes size and a failed
+  fetch just keeps the initial. Nothing else ships an image asset.
 - Status uses a glyph plus a word (`StatusPill`), never a glyph alone.
 
 ## Copy
