@@ -21,6 +21,7 @@ import '../widgets/controls.dart';
 import '../widgets/foundation.dart';
 import '../widgets/select_row.dart';
 import 'key_sheet.dart';
+import 'terminal_keys_sheet.dart';
 import 'logs.dart';
 import '../widgets/wavy.dart';
 
@@ -220,6 +221,8 @@ class _SettingsPageState extends State<SettingsPage> {
     final backend = BackendScope.of(context);
     final live = backend.available;
     final self = backend.self;
+    final keyPages = backend.terminalKeyPages.where((page) => page.isNotEmpty);
+    final keyCount = keyPages.fold<int>(0, (sum, page) => sum + page.length);
     return PageBody(
       title: l10n.tabSettings,
       children: [
@@ -474,6 +477,67 @@ class _SettingsPageState extends State<SettingsPage> {
                   style: context.listCaptionStyle,
                 ),
               ),
+          ],
+        ),
+        const SizedBox(height: 20),
+        SectionLabel(l10n.terminalSection),
+        GroupCard(
+          dividerInset: 16,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+              child: RowSemantics(
+                label: l10n.a11yTerminalKeyHaptics(backend.terminalKeyHaptics),
+                onTap: () => unawaited(
+                  backend.setTerminalKeyHaptics(!backend.terminalKeyHaptics),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            l10n.terminalKeyHaptics,
+                            style: context.listTitleStyle,
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            backend.terminalKeyHaptics
+                                ? l10n.terminalKeyHapticsOn
+                                : l10n.terminalKeyHapticsOff,
+                            style: context.listCaptionStyle,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Switch(
+                      value: backend.terminalKeyHaptics,
+                      onChanged: (value) =>
+                          unawaited(backend.setTerminalKeyHaptics(value)),
+                      semanticLabel: l10n.terminalKeyHaptics,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            TapFeedback(
+              onTap: () => unawaited(showTerminalKeysSheet(context, backend)),
+              child: ListRow(
+                leading: const IconBadge(Glyphs2.terminal),
+                title: Text(l10n.terminalKeyRow, style: context.listTitleStyle),
+                subtitle: Text(
+                  l10n.terminalKeyRowHint(keyCount, keyPages.length),
+                  style: context.listCaptionStyle,
+                ),
+                trailing: GlyphIcon(
+                  Glyphs.chevronForward,
+                  size: 16,
+                  color: scheme.onSurfaceVariant.opacity50,
+                ),
+              ),
+            ),
           ],
         ),
         const SizedBox(height: 20),

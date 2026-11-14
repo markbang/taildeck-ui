@@ -1,3 +1,4 @@
+import '../terminal_keys.dart';
 import 'storage_stub.dart' if (dart.library.io) 'storage_io.dart';
 
 class StoredConfig {
@@ -8,6 +9,8 @@ class StoredConfig {
     this.openInApp = false,
     this.serviceIcons = true,
     this.agentNotifications = false,
+    this.terminalKeyHaptics = true,
+    this.terminalKeyPages,
     this.herdrNode = '',
     this.herdrUser = 'root',
     this.herdrPort = 22,
@@ -24,6 +27,10 @@ class StoredConfig {
     openInApp: json['openInApp'] as bool? ?? false,
     serviceIcons: json['serviceIcons'] as bool? ?? true,
     agentNotifications: json['agentNotifications'] as bool? ?? false,
+    terminalKeyHaptics: json['terminalKeyHaptics'] as bool? ?? true,
+    terminalKeyPages: json['terminalKeyPages'] == null
+        ? null
+        : parseTerminalKeyPages(json['terminalKeyPages']),
     herdrNode: json['herdrNode'] as String? ?? '',
     herdrUser: json['herdrUser'] as String? ?? 'root',
     herdrPort: (json['herdrPort'] as num?)?.toInt() ?? 22,
@@ -62,6 +69,12 @@ class StoredConfig {
   /// Whether agents post an attention notification while the app is away.
   final bool agentNotifications;
 
+  /// Whether a press on the extra key row vibrates.
+  final bool terminalKeyHaptics;
+
+  /// Keys per page of the extra key row; null until the user edits it.
+  final List<List<String>>? terminalKeyPages;
+
   /// Node, user and auth the Agents page reconnects to herdr with. The
   /// password itself is never written.
   final String herdrNode;
@@ -82,6 +95,8 @@ class StoredConfig {
     'openInApp': openInApp,
     'serviceIcons': serviceIcons,
     'agentNotifications': agentNotifications,
+    'terminalKeyHaptics': terminalKeyHaptics,
+    if (terminalKeyPages != null) 'terminalKeyPages': terminalKeyPages,
     'herdrNode': herdrNode,
     'herdrUser': herdrUser,
     'herdrPort': herdrPort,

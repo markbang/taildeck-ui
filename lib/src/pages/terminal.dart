@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
@@ -17,8 +18,10 @@ import '../native/bridge.dart';
 import '../native/keys.dart';
 import '../native/term.dart';
 import '../native/term_demo.dart';
+import '../terminal_keys.dart';
 import '../terminal_store.dart';
 import '../widgets/controls.dart';
+import 'term_key_bar.dart';
 import 'term_view.dart';
 
 enum _Kind { command, output, muted, error, ok }
@@ -106,6 +109,7 @@ class _TerminalPageState extends State<TerminalPage> {
   bool _connected = false;
   bool _bannerFed = false;
   String _sent = '';
+  final _mods = TerminalMods();
 
   @override
   void initState() {
@@ -176,24 +180,26 @@ class _TerminalPageState extends State<TerminalPage> {
   }
 
   void _onTextChanged(String value) {
-    final terminal = widget.terminal;
-    if (!terminal.live || _session == null) return;
-    final session = _session!;
+    final session = _session;
+    if (session == null) return;
     // An IME preedit is not committed text: wait for the commit.
     if (_input.value.composing.isValid) return;
     final added = _sent.isEmpty
         ? value
         : (value.startsWith(_sent) ? value.substring(_sent.length) : value);
     _sent = value;
-    for (final rune in added.runes) {
+    final armed = _mods.mask;
+    for (final (index, rune) in added.runes.indexed) {
       final text = String.fromCharCode(rune);
+      // A sticky modifier applies to the next key only.
       final encoded = session.term.encodeKey(
         ghosttyKeyForText(text),
-        0,
+        index == 0 ? armed : 0,
         text: text,
       );
-      if (encoded != null) terminal.write(encoded);
+      if (encoded != null) _deliver(encoded);
     }
+    if (armed != 0 && added.isNotEmpty && _mods.consume()) setState(() {});
     if (value.isEmpty) return;
     // The line is a keystroke buffer, not an input box: clear it once the
     // frames are out.
@@ -217,8 +223,55 @@ class _TerminalPageState extends State<TerminalPage> {
       );
       if (encoded != null) terminal.write(encoded);
     }
-    final enter = session.term.encodeKey(58, 0); // GHOSTTY_KEY_ENTER
+    final enter = session.term.encodeKey(GhosttyKeys.enter, 0);
     if (enter != null) terminal.write(enter);
+  }
+
+  void _tapKey(TerminalKey key) {
+    final mod = key.modifier;
+    if (mod != null) {
+      setState(() => _mods.tap(mod));
+      _haptic();
+      return;
+    }
+    final session = _session;
+    final bytes = session == null
+        ? null
+        : encodeTerminalKey(session.term, key, _mods.mask);
+    _deliver(bytes);
+    if (_mods.consume()) setState(() {});
+    _haptic();
+    _focus.requestFocus();
+  }
+
+  void _haptic() {
+    if (!BackendScope.of(context).terminalKeyHaptics) return;
+    HapticFeedback.lightImpact();
+  }
+
+  /// Bytes go to the remote; the demo has none, so its emulator shows what a
+  /// remote would have echoed back.
+  void _deliver(Uint8List? bytes) {
+    if (bytes == null || bytes.isEmpty) return;
+    if (widget.live) {
+      widget.terminal.write(bytes);
+      return;
+    }
+    _session?.feed(_demoEcho(bytes));
+  }
+
+  static Uint8List _demoEcho(Uint8List bytes) {
+    final text = StringBuffer();
+    for (final byte in bytes) {
+      if (byte == 0x7f) {
+        text.write('^?');
+      } else if (byte < 0x20) {
+        text.write('^${String.fromCharCode(byte + 0x40)}');
+      } else {
+        text.write(String.fromCharCode(byte));
+      }
+    }
+    return Uint8List.fromList(utf8.encode(text.toString()));
   }
 
   /// Keeps the header's grid size in step with the emulator.
@@ -337,6 +390,7 @@ class _TerminalPageState extends State<TerminalPage> {
   @override
   Widget build(BuildContext context) {
     final wide = MediaQuery.sizeOf(context).width > 900;
+    final keyboard = _keyboardInset(context);
     final l10n = AppLocalizations.of(context);
     final session = _session;
     final mono = TextStyle(
@@ -379,54 +433,94 @@ class _TerminalPageState extends State<TerminalPage> {
             ),
           ),
           child: SafeArea(
-            child: Column(
-              children: [
-                _Header(
-                  node: widget.node,
-                  onClose: widget.onClose,
-                  mono: mono,
-                  user: widget.user,
-                  subtitle: subtitle,
-                  status: status,
-                  statusColor: statusColor,
-                  reconnect: _closedReason != null ? widget.onReconnect : null,
-                  agents: widget.onAgents,
-                ),
-                LiveRegion(message: status),
-                Expanded(
-                  child: Semantics(
-                    container: true,
-                    readOnly: true,
-                    label: l10n.terminalOutput,
-                    hint: l10n.terminalReadOnly,
-                    child: session == null
-                        ? _simulated(wide, mono)
-                        : _emulator(session, wide ? 14.0 : 13.0),
+            bottom: keyboard == 0,
+            child: Padding(
+              padding: EdgeInsets.only(bottom: keyboard),
+              child: Column(
+                children: [
+                  _Header(
+                    node: widget.node,
+                    onClose: widget.onClose,
+                    mono: mono,
+                    user: widget.user,
+                    subtitle: subtitle,
+                    status: status,
+                    statusColor: statusColor,
+                    reconnect: _closedReason != null
+                        ? widget.onReconnect
+                        : null,
+                    agents: widget.onAgents,
                   ),
-                ),
-                _QuickBar(onRun: _run),
-                _InputBar(
-                  controller: _input,
-                  mono: mono,
-                  focusNode: _focus,
-                  onChanged: widget.live ? _onTextChanged : null,
-                  onSubmitted: (value) {
-                    if (widget.live) {
-                      if (value.isNotEmpty) _sendLine(value);
+                  LiveRegion(message: status),
+                  Expanded(
+                    child: Semantics(
+                      container: true,
+                      readOnly: true,
+                      label: l10n.terminalOutput,
+                      hint: l10n.terminalReadOnly,
+                      child: session == null
+                          ? _simulated(wide, mono)
+                          : _emulator(session, wide ? 14.0 : 13.0),
+                    ),
+                  ),
+                  _QuickBar(onRun: _run),
+                  _InputBar(
+                    controller: _input,
+                    mono: mono,
+                    focusNode: _focus,
+                    onChanged: _session == null ? null : _onTextChanged,
+                    onSubmitted: (value) {
+                      if (widget.live) {
+                        if (value.isNotEmpty) _sendLine(value);
+                        _input.clear();
+                        return;
+                      }
+                      if (widget.demo) {
+                        // Typed characters were already echoed as they arrived.
+                        _session?.feed(Uint8List.fromList(utf8.encode('\r\n')));
+                        _input.clear();
+                        return;
+                      }
+                      _run(value);
                       _input.clear();
-                      return;
-                    }
-                    _run(value);
-                    _input.clear();
-                  },
-                ),
-              ],
+                    },
+                  ),
+                  if (_showKeyRow(wide))
+                    TerminalKeyBar(
+                      pages: BackendScope.of(context).terminalKeyPages,
+                      mods: _mods,
+                      onKey: _tapKey,
+                      onModifier: (mod) {
+                        setState(() => _mods.tap(mod));
+                        _haptic();
+                      },
+                    ),
+                ],
+              ),
             ),
           ),
         ),
       ),
     );
   }
+
+  /// A desktop window has a hardware keyboard, so the row would only take
+  /// room; phones and tablets keep it.
+  static bool _showKeyRow(bool wide) =>
+      !wide ||
+      switch (defaultTargetPlatform) {
+        TargetPlatform.android || TargetPlatform.iOS => true,
+        _ => false,
+      };
+
+  /// iOS and macOS report the keyboard as an inset; Android's adjustResize
+  /// already shrank the view.
+  static double _keyboardInset(BuildContext context) =>
+      switch (defaultTargetPlatform) {
+        TargetPlatform.iOS ||
+        TargetPlatform.macOS => MediaQuery.viewInsetsOf(context).bottom,
+        _ => 0,
+      };
 
   Widget _emulator(TerminalSession session, double fontSize) {
     return Listener(

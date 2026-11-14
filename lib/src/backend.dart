@@ -14,6 +14,7 @@ import 'native/storage.dart';
 import 'services.dart';
 import 'notifications.dart';
 import 'ssh_identities.dart';
+import 'terminal_keys.dart';
 
 enum BackendState { unavailable, stopped, starting, needsLogin, running, error }
 
@@ -82,6 +83,8 @@ class TaildeckBackend extends ChangeNotifier {
   bool _identitiesLoaded = false;
   bool _openInApp = false;
   bool _serviceIcons = true;
+  bool _terminalKeyHaptics = true;
+  List<List<String>>? _terminalKeyPages;
   String _platform = 'go';
   String _platformWarning = '';
   bool _herdrAutoTried = false;
@@ -129,6 +132,13 @@ class TaildeckBackend extends ChangeNotifier {
 
   /// Whether agents post an attention notification while the app is away.
   bool get agentNotifications => notifications.enabled;
+
+  /// Whether a press on the extra key row vibrates.
+  bool get terminalKeyHaptics => _terminalKeyHaptics;
+
+  /// Keys per page of the extra key row, defaults included.
+  List<List<String>> get terminalKeyPages =>
+      _terminalKeyPages ?? defaultTerminalKeyPages;
 
   /// herdr link, agent list and pane calls; null without a native backend.
   HerdrController? get herdr => _herdr;
@@ -203,6 +213,8 @@ class TaildeckBackend extends ChangeNotifier {
       _persistedSignIn = config.signedIn;
       _openInApp = config.openInApp;
       _serviceIcons = config.serviceIcons;
+      _terminalKeyHaptics = config.terminalKeyHaptics;
+      _terminalKeyPages = config.terminalKeyPages;
       notifications.setEnabled(config.agentNotifications);
       _herdrNode = config.herdrNode;
       _herdrUser = config.herdrUser;
@@ -583,6 +595,25 @@ class TaildeckBackend extends ChangeNotifier {
     await _persist();
   }
 
+  Future<void> setTerminalKeyHaptics(bool value) async {
+    if (value == _terminalKeyHaptics) return;
+    _terminalKeyHaptics = value;
+    notifyListeners();
+    await _persist();
+  }
+
+  /// Pages of the extra key row; unknown ids and duplicates are dropped.
+  Future<void> setTerminalKeyPages(List<List<String>> pages) async {
+    final next = parseTerminalKeyPages(pages);
+    if (_pagesSignature(next) == _pagesSignature(_terminalKeyPages)) return;
+    _terminalKeyPages = next;
+    notifyListeners();
+    await _persist();
+  }
+
+  static String _pagesSignature(List<List<String>>? pages) =>
+      pages == null ? '' : pages.map((page) => page.join(',')).join('|');
+
   /// The icon of [service], fetched through the node. Null while the node is
   /// not running: that is a transient state, never a site without an icon.
   Future<FaviconImage?> favicon(Service service) async {
@@ -823,6 +854,8 @@ class TaildeckBackend extends ChangeNotifier {
           signedIn: persist,
           openInApp: _openInApp,
           serviceIcons: _serviceIcons,
+          terminalKeyHaptics: _terminalKeyHaptics,
+          terminalKeyPages: _terminalKeyPages,
           agentNotifications: notifications.enabled,
           herdrNode: _herdrNode,
           herdrUser: _herdrUser,
