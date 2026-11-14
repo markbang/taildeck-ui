@@ -32,7 +32,11 @@ adb shell settings put global hide_error_dialogs 1 > /dev/null 2>&1 || true
 for scale in window_animation_scale transition_animation_scale animator_duration_scale; do
   adb shell settings put global "$scale" 1 > /dev/null 2>&1 || true
 done
+adb shell svc power stayon true > /dev/null 2>&1 || true
+adb shell settings put system screen_off_timeout 2147483647 > /dev/null 2>&1 || true
 sleep 15
+adb shell input keyevent 82 > /dev/null 2>&1 || true
+adb shell wm dismiss-keyguard > /dev/null 2>&1 || true
 adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS > /dev/null 2>&1 || true
 # testcontrol's relay listens on the runner's loopback; the emulator only sees
 # 10.0.2.2, so hand it the same port through adb.
@@ -158,10 +162,12 @@ _record_once() { # <name> <seconds> <command...>
   local name=$1 seconds=$2
   shift 2
   adb shell pkill -f screenrecord > /dev/null 2>&1 || true
+  adb shell svc power stayon true > /dev/null 2>&1 || true
+  adb shell input keyevent 224 > /dev/null 2>&1 || true
   sleep 1
   adb shell rm -f /sdcard/rec.mp4 > /dev/null 2>&1 || true
-  adb shell screenrecord --time-limit "$((seconds + 2))" --bit-rate 6000000 \
-    --size 540x1200 /sdcard/rec.mp4 > /dev/null 2>&1 &
+  adb shell screenrecord --time-limit "$((seconds + 2))" --bit-rate 3000000 \
+    --size 480x1066 /sdcard/rec.mp4 > /dev/null 2>&1 &
   local recorder=$!
   sleep 0.6
   "$@" || true
@@ -180,6 +186,14 @@ _record_once() { # <name> <seconds> <command...>
 # ---- gestures ----
 
 tap_point() { tapxy "$1"; }
+
+# Taps a label without recording: used to reach a screen, never as evidence.
+tap_label() { # <text>
+  local point
+  point=$(find_or_scroll "$1") || { note "no node for '$1'"; return 1; }
+  tapxy "$point"
+  sleep 0.8
+}
 
 # Records one gesture on an element found just before the recording starts, so
 # a layout that moved since the last dump cannot send the tap elsewhere.
@@ -246,6 +260,18 @@ scroll_down() {
   sleep 0.8
 }
 
+scroll_up() {
+  screen_size
+  adb shell input swipe "$((W / 2))" "$((SH / 2))" "$((W / 2))" "$((SH * 3 / 4))" 300 > /dev/null 2>&1 || true
+  sleep 0.8
+}
+
+scroll_top() {
+  scroll_up
+  scroll_up
+  scroll_up
+}
+
 # Finds a target that a long page keeps below the fold, scrolling as needed.
 find_or_scroll() { # <text> [tries]
   local point tries=${2:-3}
@@ -266,25 +292,20 @@ pull_down() {
   sleep 2.6
 }
 
-# ---- this build, signed out ----
+# ---- this build ----
 
 flutter_login_scene() {
-  # Ripple: a short tap on the text button, the ink spreads from the touch
-  # point and fades while the control-server field grows open.
-  record_tap flutter-ripple 3 "Control server" tap
-  fill_edit 0 "$control_url" || return 0
-  # The auth-key section expands: fade + the content growing.
-  record_tap flutter-expand 3 "Use an auth key" tap "Connect"
-  fill_edit 0 "${auth_key:-tskey-test}" || return 0
-  # Press: the filled button held, its pill squashes to CornerSmall while the
-  # ripple stays; the release signs the node in, past the end of the clip.
   local point
+  tap_label "Control server"
+  fill_edit 0 "$control_url" || return 0
+  tap_label "Use an auth key"
+  fill_edit 0 "${auth_key:-tskey-test}" || return 0
+  # Press: the filled button held, its pill squashing to CornerSmall while the
+  # ripple stays; the release signs the node in, past the end of the clip.
   point=$(find_or_scroll "Connect") || { note "flutter-press: no Connect"; return 0; }
   record flutter-press 3 hold_long "$point" 4200
   wait_for "Search nodes" 40 || note "flutter login: still on the login screen"
 }
-
-# ---- this build, signed in ----
 
 flutter_scene() {
   local point
@@ -310,16 +331,28 @@ flutter_scene() {
   # Pull to refresh: the contained dot morphs with the drag, then spins.
   record flutter-refresh 6 pull_down
   dump flutter-refresh
-  # Settings opens the key sheet: a bottom sheet rising over the scrim.
-  point=$(ui tap "Settings") || { note "flutter-sheet: no Settings tab"; return 0; }
-  tapxy "$point"; sleep 1.5
+  flutter_settings
+}
+
+# Settings carries the two modal and pressed effects: the key sheet rising
+# over the scrim, and the ink ripple on a full-width row.
+flutter_settings() {
+  local point
+  point=$(ui tap "Settings") || { note "flutter: no Settings tab"; return 0; }
+  tapxy "$point"
+  sleep 1.5
   record_tap flutter-sheet 4 "Import key" tap "Import key" scroll
   dump flutter-sheet
   adb shell input keyevent 4 > /dev/null 2>&1 || true
   sleep 1
+  # A held row keeps the ink circle on screen while the drag is drawn.
+  record_tap flutter-ripple 3 "Logs" hold "" scroll
+  dump flutter-ripple
+  adb shell input keyevent 4 > /dev/null 2>&1 || true
+  sleep 1
 }
 
-# ---- the Kotlin app, signed out ----
+# ---- the Kotlin app ----
 
 kotlin_login_scene() {
   local point
@@ -330,7 +363,7 @@ kotlin_login_scene() {
     type_text "pixel-motion"
     hide_keyboard
   fi
-  record_tap kotlin-ripple 3 "Advanced" tap "Control server"
+  tap_label "Advanced"
   fill_label "Control server" "$control_url" || return 0
   fill_label "Auth key" "${auth_key:-tskey-test}" || return 0
   dump kotlin-login
@@ -340,8 +373,6 @@ kotlin_login_scene() {
   record kotlin-press 3 hold_long "$point" 4200
   wait_for "Search" 40 || note "kotlin login: still on the login screen"
 }
-
-# ---- the Kotlin app, signed in ----
 
 kotlin_scene() {
   local point
@@ -364,10 +395,20 @@ kotlin_scene() {
   sleep 1.5
   record kotlin-refresh 6 pull_down
   dump kotlin-refresh
-  point=$(ui tap "Settings") || { note "kotlin-sheet: no Settings action"; return 0; }
-  tapxy "$point"; sleep 1.5
+  kotlin_settings
+}
+
+kotlin_settings() {
+  local point
+  point=$(ui tap "Settings") || { note "kotlin: no Settings action"; return 0; }
+  tapxy "$point"
+  sleep 1.5
   record_tap kotlin-sheet 4 "Import key" tap "Import key" scroll
   dump kotlin-sheet
+  adb shell input keyevent 4 > /dev/null 2>&1 || true
+  sleep 1
+  record_tap kotlin-ripple 3 "Logs" hold "" scroll
+  dump kotlin-ripple
   adb shell input keyevent 4 > /dev/null 2>&1 || true
   sleep 1
 }
