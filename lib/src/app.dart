@@ -4,6 +4,7 @@ import 'package:flutter/widgets.dart';
 import 'package:prism_ui/prism_ui.dart';
 
 import 'backend.dart';
+import 'favicons.dart';
 import 'l10n.dart';
 import 'preview_env.dart';
 import 'services.dart';
@@ -22,6 +23,14 @@ class _TaildeckAppState extends State<TaildeckApp> with WidgetsBindingObserver {
   final theme = TaildeckTheme();
   final backend = TaildeckBackend();
   final services = ServiceStore.open();
+
+  /// `?favicons=demo` draws bundled icons instead of asking a node, so the
+  /// preview can show the loaded state without a tailnet.
+  late final favicons = FaviconsController(
+    fetch: previewParam('favicons') == 'demo'
+        ? demoFavicon
+        : (service) => backend.favicon(service),
+  );
 
   @override
   void initState() {
@@ -53,6 +62,7 @@ class _TaildeckAppState extends State<TaildeckApp> with WidgetsBindingObserver {
     theme.removeListener(_syncNotificationLanguage);
     backend.dispose();
     services.dispose();
+    favicons.dispose();
     theme.dispose();
     super.dispose();
   }
@@ -94,7 +104,10 @@ class _TaildeckAppState extends State<TaildeckApp> with WidgetsBindingObserver {
             backend: backend,
             child: ServicesScope(
               store: services,
-              child: TaildeckShell(theme: theme),
+              child: FaviconsScope(
+                controller: favicons,
+                child: TaildeckShell(theme: theme),
+              ),
             ),
           ),
         ),

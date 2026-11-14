@@ -483,6 +483,20 @@ class AppLocalizations implements UiLocalizations {
   String get inAppDesktopOnlyNoGateway => _zh
       ? '应用内网页仅支持 Android 和 iOS；这里会用浏览器打开，但网关未运行。'
       : 'In-app pages are Android and iOS only; this would open in your browser, but the gateway is not running.';
+  String get serviceIcons => _zh ? '服务图标' : 'Service icons';
+  String get serviceIconsOn => _zh
+      ? '通过 tailnet 从各服务本身获取图标，只缓存在本机。'
+      : 'Fetched from each service over the tailnet and cached on this device.';
+  String get serviceIconsOff => _zh
+      ? '已关闭，服务行只显示首字母。'
+      : 'Off. Service rows show the first letter instead.';
+  String get refreshIcons => _zh ? '刷新图标' : 'Refresh icons';
+  String get refreshIconsHint =>
+      _zh ? '清空图标缓存并重新获取。' : 'Clear the icon cache and fetch them again.';
+  String get iconsRefreshed => _zh ? '图标已刷新' : 'Icons refreshed';
+  String a11yServiceIcons(bool on) => _zh
+      ? '服务图标，${on ? '已开启' : '已关闭'}'
+      : 'Service icons, ${on ? 'on' : 'off'}';
   String get notificationsSection => _zh ? '通知' : 'Notifications';
   String get agentNotifications => _zh ? '代理通知' : 'Agent notifications';
   String get agentNotificationsOn => _zh

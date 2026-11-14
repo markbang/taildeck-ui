@@ -61,7 +61,12 @@ String _runIsolate(String libPath, String symbol, List<String> args) {
         allocated[0],
         allocated[1],
       ),
-      _ => throw ArgumentError('$symbol takes at most two arguments'),
+      3 => lib.lookupFunction<_ThreeStrNative, _ThreeStr>(symbol)(
+        allocated[0],
+        allocated[1],
+        allocated[2],
+      ),
+      _ => throw ArgumentError('$symbol takes at most three arguments'),
     };
   } finally {
     for (final pointer in allocated) {
@@ -118,6 +123,16 @@ typedef _ResizeNative = Pointer<Int8> Function(Int32, Int32, Int32);
 typedef _Resize = Pointer<Int8> Function(int, int, int);
 typedef _TwoStrNative = Pointer<Int8> Function(Pointer<Int8>, Pointer<Int8>);
 typedef _TwoStr = Pointer<Int8> Function(Pointer<Int8>, Pointer<Int8>);
+typedef _ThreeStrNative = Pointer<Int8> Function(
+  Pointer<Int8>,
+  Pointer<Int8>,
+  Pointer<Int8>,
+);
+typedef _ThreeStr = Pointer<Int8> Function(
+  Pointer<Int8>,
+  Pointer<Int8>,
+  Pointer<Int8>,
+);
 typedef _UploadNative = Pointer<Int8> Function(
   Pointer<Int8>,
   Pointer<Uint8>,
@@ -165,6 +180,7 @@ class FfiBridge implements NativeBridge {
     'td_ping',
     'td_ping_cancel',
     'td_probe',
+    'td_favicon',
     'td_ssh_dial',
   ];
 
@@ -264,6 +280,13 @@ class FfiBridge implements NativeBridge {
         if (port is num) port.toInt(),
     ];
   }
+
+  @override
+  Future<Map<String, dynamic>> favicon({
+    required String host,
+    required int port,
+    required String scheme,
+  }) async => _decode(await _isolate('td_favicon', [host, '$port', scheme]));
 
   @override
   Future<Map<String, dynamic>> sshDial({

@@ -96,6 +96,15 @@ abstract class NativeBridge {
   /// Ports from the comma-separated [ports] that accept a TCP connection on
   /// [host], dialed through the tailnet node.
   Future<List<int>> probe(String host, String ports);
+
+  /// The site icon of [host]:[port], fetched through the node only. Returns
+  /// the Go reply: `contentType`, base64 `bytes`, `etag`, `lastModified`,
+  /// `url` and `source`.
+  Future<Map<String, dynamic>> favicon({
+    required String host,
+    required int port,
+    required String scheme,
+  });
   void dispose();
 
   /// Opens an interactive PTY shell over the tailnet and returns its id.

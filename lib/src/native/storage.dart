@@ -6,6 +6,7 @@ class StoredConfig {
     this.controlURL = '',
     this.signedIn = false,
     this.openInApp = false,
+    this.serviceIcons = true,
     this.agentNotifications = false,
     this.herdrNode = '',
     this.herdrUser = 'root',
@@ -21,6 +22,7 @@ class StoredConfig {
     controlURL: json['controlURL'] as String? ?? '',
     signedIn: json['signedIn'] as bool? ?? false,
     openInApp: json['openInApp'] as bool? ?? false,
+    serviceIcons: json['serviceIcons'] as bool? ?? true,
     agentNotifications: json['agentNotifications'] as bool? ?? false,
     herdrNode: json['herdrNode'] as String? ?? '',
     herdrUser: json['herdrUser'] as String? ?? 'root',
@@ -55,6 +57,9 @@ class StoredConfig {
   /// Whether services open in the in-app WebView (Android/iOS) or the browser.
   final bool openInApp;
 
+  /// Whether service rows show the site's favicon.
+  final bool serviceIcons;
+
   /// Whether agents post an attention notification while the app is away.
   final bool agentNotifications;
 
@@ -76,6 +81,7 @@ class StoredConfig {
     'controlURL': controlURL,
     'signedIn': signedIn,
     'openInApp': openInApp,
+    'serviceIcons': serviceIcons,
     'agentNotifications': agentNotifications,
     'herdrNode': herdrNode,
     'herdrUser': herdrUser,

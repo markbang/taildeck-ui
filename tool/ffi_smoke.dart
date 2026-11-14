@@ -22,17 +22,33 @@ typedef _ResizeFnNative = Pointer<Int8> Function(Int32, Int32, Int32);
 typedef _ResizeFn = Pointer<Int8> Function(int, int, int);
 typedef _TwoStrFnNative = Pointer<Int8> Function(Pointer<Int8>, Pointer<Int8>);
 typedef _TwoStrFn = Pointer<Int8> Function(Pointer<Int8>, Pointer<Int8>);
-typedef _UploadFnNative = Pointer<Int8> Function(Pointer<Int8>, Pointer<Uint8>, Int32);
+typedef _UploadFnNative = Pointer<Int8> Function(
+  Pointer<Int8>,
+  Pointer<Uint8>,
+  Int32,
+);
 typedef _UploadFn = Pointer<Int8> Function(Pointer<Int8>, Pointer<Uint8>, int);
+typedef _ThreeStrFnNative = Pointer<Int8> Function(
+  Pointer<Int8>,
+  Pointer<Int8>,
+  Pointer<Int8>,
+);
+typedef _ThreeStrFn = Pointer<Int8> Function(
+  Pointer<Int8>,
+  Pointer<Int8>,
+  Pointer<Int8>,
+);
 
 final _libc = DynamicLibrary.process();
 final _calloc = _libc
-    .lookupFunction<Pointer<Void> Function(IntPtr, IntPtr), Pointer<Void> Function(int, int)>(
-      'calloc',
+    .lookupFunction<
+      Pointer<Void> Function(IntPtr, IntPtr),
+      Pointer<Void> Function(int, int)
+    >('calloc');
+final _free = _libc
+    .lookupFunction<Void Function(Pointer<Void>), void Function(Pointer<Void>)>(
+      'free',
     );
-final _free = _libc.lookupFunction<Void Function(Pointer<Void>), void Function(Pointer<Void>)>(
-  'free',
-);
 
 var _failures = 0;
 
@@ -68,26 +84,51 @@ Future<void> main(List<String> args) async {
   final logs = lib.lookupFunction<_StrFn, _StrFn>('td_logs');
   final stop = lib.lookupFunction<_StrFn, _StrFn>('td_stop');
   final start = lib.lookupFunction<_StrArgFn, _StrArgFn>('td_start');
-  final free = lib.lookupFunction<_FreeFn, void Function(Pointer<Int8>)>('td_free');
-  final port = lib.lookupFunction<_IntFn, int Function()>('td_gateway_port');
-  final setCb = lib.lookupFunction<_SetCbFn, void Function(Pointer<NativeFunction<_EventFn>>, int)>(
-    'td_set_event_cb',
+  final free = lib.lookupFunction<_FreeFn, void Function(Pointer<Int8>)>(
+    'td_free',
   );
+  final port = lib.lookupFunction<_IntFn, int Function()>('td_gateway_port');
+  final setCb = lib
+      .lookupFunction<
+        _SetCbFn,
+        void Function(Pointer<NativeFunction<_EventFn>>, int)
+      >('td_set_event_cb');
   final ping = lib.lookupFunction<_StrArgFn, _StrArgFn>('td_ping');
   final probe = lib.lookupFunction<_TwoStrFnNative, _TwoStrFn>('td_probe');
   final sshDial = lib.lookupFunction<_StrArgFn, _StrArgFn>('td_ssh_dial');
   final sshWrite = lib.lookupFunction<_WriteFnNative, _WriteFn>('td_ssh_write');
-  final sshResize = lib.lookupFunction<_ResizeFnNative, _ResizeFn>('td_ssh_resize');
-  final sshClose = lib.lookupFunction<_IntArgFnNative, _IntArgFn>('td_ssh_close');
-  final keyEnsure = lib.lookupFunction<_TwoStrFnNative, _TwoStrFn>('td_key_ensure');
-  final forgetHostKeys = lib.lookupFunction<_StrArgFn, _StrArgFn>('td_forget_host_keys');
-  final herdrConnect = lib.lookupFunction<_StrArgFn, _StrArgFn>('td_herdr_connect');
-  final herdrCall = lib.lookupFunction<_TwoStrFnNative, _TwoStrFn>('td_herdr_call');
+  final sshResize = lib.lookupFunction<_ResizeFnNative, _ResizeFn>(
+    'td_ssh_resize',
+  );
+  final sshClose = lib.lookupFunction<_IntArgFnNative, _IntArgFn>(
+    'td_ssh_close',
+  );
+  final keyEnsure = lib.lookupFunction<_TwoStrFnNative, _TwoStrFn>(
+    'td_key_ensure',
+  );
+  final forgetHostKeys = lib.lookupFunction<_StrArgFn, _StrArgFn>(
+    'td_forget_host_keys',
+  );
+  final herdrConnect = lib.lookupFunction<_StrArgFn, _StrArgFn>(
+    'td_herdr_connect',
+  );
+  final herdrCall = lib.lookupFunction<_TwoStrFnNative, _TwoStrFn>(
+    'td_herdr_call',
+  );
   final herdrClose = lib.lookupFunction<_StrFn, _StrFn>('td_herdr_close');
-  final herdrCommands = lib.lookupFunction<_TwoStrFnNative, _TwoStrFn>('td_herdr_commands');
+  final herdrCommands = lib.lookupFunction<_TwoStrFnNative, _TwoStrFn>(
+    'td_herdr_commands',
+  );
   final herdrImage = lib.lookupFunction<_StrArgFn, _StrArgFn>('td_herdr_image');
-  final herdrUpload = lib.lookupFunction<_UploadFnNative, _UploadFn>('td_herdr_upload');
-  final herdrSubagent = lib.lookupFunction<_TwoStrFnNative, _TwoStrFn>('td_herdr_subagent');
+  final herdrUpload = lib.lookupFunction<_UploadFnNative, _UploadFn>(
+    'td_herdr_upload',
+  );
+  final herdrSubagent = lib.lookupFunction<_TwoStrFnNative, _TwoStrFn>(
+    'td_herdr_subagent',
+  );
+  final favicon = lib.lookupFunction<_ThreeStrFnNative, _ThreeStrFn>(
+    'td_favicon',
+  );
 
   String call(Pointer<Int8> Function() fn) {
     final p = fn();
@@ -106,7 +147,11 @@ Future<void> main(List<String> args) async {
     }
   }
 
-  String callTwo(Pointer<Int8> Function(Pointer<Int8>, Pointer<Int8>) fn, String a, String b) {
+  String callTwo(
+    Pointer<Int8> Function(Pointer<Int8>, Pointer<Int8>) fn,
+    String a,
+    String b,
+  ) {
     final pa = cstr(a);
     final pb = cstr(b);
     try {
@@ -117,12 +162,35 @@ Future<void> main(List<String> args) async {
     }
   }
 
-  Map<String, dynamic> decode(String text) => jsonDecode(text) as Map<String, dynamic>;
+  String callThree(
+    Pointer<Int8> Function(Pointer<Int8>, Pointer<Int8>, Pointer<Int8>) fn,
+    String a,
+    String b,
+    String c,
+  ) {
+    final pa = cstr(a);
+    final pb = cstr(b);
+    final pc = cstr(c);
+    try {
+      return call(() => fn(pa, pb, pc));
+    } finally {
+      _free(pa.cast());
+      _free(pb.cast());
+      _free(pc.cast());
+    }
+  }
+
+  Map<String, dynamic> decode(String text) =>
+      jsonDecode(text) as Map<String, dynamic>;
 
   // Events arrive on Go threads, so the listener posts them to this isolate;
   // the payload stays valid until we free it, which is why Go hands it over.
   final events = <Map<String, dynamic>>[];
-  final cb = NativeCallable<_EventFn>.listener((int kind, Pointer<Int8> json, int ctx) {
+  final cb = NativeCallable<_EventFn>.listener((
+    int kind,
+    Pointer<Int8> json,
+    int ctx,
+  ) {
     final text = readC(json);
     free(json);
     events.add({'kind': kind, ...jsonDecode(text) as Map<String, dynamic>});
@@ -143,6 +211,9 @@ Future<void> main(List<String> args) async {
   );
   out.add('ping without engine: ${callArg(ping, '100.64.0.1')}');
   out.add('probe without engine: ${callTwo(probe, '100.64.0.1', '80,443')}');
+  out.add(
+    'favicon without engine: ${callThree(favicon, '100.64.0.1', '80', 'http')}',
+  );
 
   // Probing before start has no node to dial through: a clean envelope.
   // herdr before the node exists: a clean envelope, never a crash or a hang.
@@ -175,7 +246,10 @@ Future<void> main(List<String> args) async {
 
   // The agent extras also answer with a clean envelope when herdr is away.
   final noCommands = decode(callTwo(herdrCommands, 'claude', '/tmp'));
-  check(noCommands['ok'] == false, 'td_herdr_commands without a connection fails');
+  check(
+    noCommands['ok'] == false,
+    'td_herdr_commands without a connection fails',
+  );
   check(
     (noCommands['error'] as String? ?? '').contains('not connected'),
     'td_herdr_commands explains the missing connection: ${noCommands['error']}',
@@ -203,27 +277,35 @@ Future<void> main(List<String> args) async {
       }
     })(),
   );
-  check(uploaded['ok'] == false, 'td_herdr_upload without a connection fails: ${uploaded['error']}');
+  check(
+    uploaded['ok'] == false,
+    'td_herdr_upload without a connection fails: ${uploaded['error']}',
+  );
   check(
     (uploaded['error'] as String? ?? '').contains('not connected'),
     'td_herdr_upload explains the missing connection',
   );
   check(
-    decode(call(() {
-      final name = cstr('empty.bin');
-      final data = _calloc(1, 1).cast<Uint8>();
-      try {
-        return herdrUpload(name, data, 0);
-      } finally {
-        _free(name.cast());
-        _free(data.cast());
-      }
-    }))['ok'] ==
+    decode(
+          call(() {
+            final name = cstr('empty.bin');
+            final data = _calloc(1, 1).cast<Uint8>();
+            try {
+              return herdrUpload(name, data, 0);
+            } finally {
+              _free(name.cast());
+              _free(data.cast());
+            }
+          }),
+        )['ok'] ==
         false,
     'td_herdr_upload rejects an empty file',
   );
   final noSubagent = decode(callTwo(herdrSubagent, 'w1:p1', 'call_1'));
-  check(noSubagent['ok'] == false, 'td_herdr_subagent without a connection fails');
+  check(
+    noSubagent['ok'] == false,
+    'td_herdr_subagent without a connection fails',
+  );
   check(
     (noSubagent['error'] as String? ?? '').contains('not connected'),
     'td_herdr_subagent explains the missing connection: ${noSubagent['error']}',
@@ -240,8 +322,18 @@ Future<void> main(List<String> args) async {
     'td_probe error names the missing node: ${beforeProbe['error']}',
   );
 
+  // Icons need the node too: one envelope, no crash, and the reason named.
+  final beforeFavicon = decode(callThree(favicon, '100.64.0.1', '80', 'http'));
+  check(beforeFavicon['ok'] == false, 'td_favicon without a node fails');
+  check(
+    (beforeFavicon['error'] as String? ?? '').contains('not started'),
+    'td_favicon error names the missing node: ${beforeFavicon['error']}',
+  );
+
   // SSH before the node exists: a clean envelope, never a crash or a hang.
-  final beforeSSH = decode(callArg(sshDial, '{"host":"100.64.0.1","user":"root"}'));
+  final beforeSSH = decode(
+    callArg(sshDial, '{"host":"100.64.0.1","user":"root"}'),
+  );
   check(beforeSSH['ok'] == false, 'ssh_dial without a node fails');
   check(
     (beforeSSH['error'] as String? ?? '').contains('not running'),
@@ -263,26 +355,41 @@ Future<void> main(List<String> args) async {
       }
     })(),
   );
-  check(unknownWrite['ok'] == false, 'ssh_write on an unknown id fails: ${unknownWrite['error']}');
+  check(
+    unknownWrite['ok'] == false,
+    'ssh_write on an unknown id fails: ${unknownWrite['error']}',
+  );
   check(
     decode(call(() => sshResize(99, 80, 24)))['ok'] == false,
     'ssh_resize on an unknown id fails',
   );
-  check(decode(call(() => sshClose(99)))['ok'] == true, 'ssh_close on an unknown id is a no-op');
+  check(
+    decode(call(() => sshClose(99)))['ok'] == true,
+    'ssh_close on an unknown id is a no-op',
+  );
 
   // Built-in key: created once, reused, and the public half is returned.
   final keyDir = Directory.systemTemp.createTempSync('td-key');
   final keyPath = '${keyDir.path}/ssh/id_ed25519';
   final key1 = decode(callTwo(keyEnsure, keyPath, 'taildeck@smoke'));
-  check(key1['ok'] == true, 'td_key_ensure creates a key: ${key1['error'] ?? ''}');
+  check(
+    key1['ok'] == true,
+    'td_key_ensure creates a key: ${key1['error'] ?? ''}',
+  );
   check(
     (key1['public'] as String? ?? '').startsWith('ssh-ed25519 '),
     'key has an ed25519 public line',
   );
   check(File(keyPath).existsSync(), 'key file exists on disk');
   final key2 = decode(callTwo(keyEnsure, keyPath, 'taildeck@smoke'));
-  check(key2['public'] == key1['public'], 'td_key_ensure reuses the existing key');
-  check(decode(callTwo(keyEnsure, '', ''))['ok'] == false, 'td_key_ensure without a path fails');
+  check(
+    key2['public'] == key1['public'],
+    'td_key_ensure reuses the existing key',
+  );
+  check(
+    decode(callTwo(keyEnsure, '', ''))['ok'] == false,
+    'td_key_ensure without a path fails',
+  );
   check(
     decode(callArg(forgetHostKeys, keyDir.path))['ok'] == true,
     'td_forget_host_keys on an empty dir is ok',
@@ -294,14 +401,20 @@ Future<void> main(List<String> args) async {
   final dir = Directory.systemTemp.createTempSync('td-smoke');
   final started = callArg(
     start,
-    jsonEncode({'dir': dir.path, 'hostname': 'td-smoke', 'controlURL': 'http://127.0.0.1:1'}),
+    jsonEncode({
+      'dir': dir.path,
+      'hostname': 'td-smoke',
+      'controlURL': 'http://127.0.0.1:1',
+    }),
   );
   out.add('start: $started');
   out.add('gateway port after start: ${port()}');
   await Future<void>.delayed(const Duration(milliseconds: 800));
   out.add('events: ${events.length}');
   out.add('first event: ${events.isEmpty ? '-' : jsonEncode(events.first)}');
-  out.add('event kinds: ${events.map((e) => e['kind']).toSet().toList()..sort()}');
+  out.add(
+    'event kinds: ${events.map((e) => e['kind']).toSet().toList()..sort()}',
+  );
   final st = jsonDecode(call(status)) as Map<String, dynamic>;
   out.add('status state: ${st['state']} (ok=${st['ok']})');
 
@@ -310,12 +423,19 @@ Future<void> main(List<String> args) async {
   final unready = decode(callArg(sshDial, '{"host":"devbox","user":"root"}'));
   final elapsed = DateTime.now().difference(before).inMilliseconds;
   final unreadyError = unready['error'] as String? ?? '';
-  check(unready['ok'] == false, 'ssh_dial with an unauthenticated node fails in ${elapsed}ms');
   check(
-    unreadyError.contains('not logged in') || unreadyError.contains('not running'),
+    unready['ok'] == false,
+    'ssh_dial with an unauthenticated node fails in ${elapsed}ms',
+  );
+  check(
+    unreadyError.contains('not logged in') ||
+        unreadyError.contains('not running'),
     'ssh_dial explains the state: $unreadyError',
   );
-  check(!events.any((e) => e['kind'] == 4 || e['kind'] == 5), 'no SSH session events were emitted');
+  check(
+    !events.any((e) => e['kind'] == 4 || e['kind'] == 5),
+    'no SSH session events were emitted',
+  );
 
   // The node is up but not signed in: herdr must say so instead of dialing.
   final herdrUnready = decode(
