@@ -426,6 +426,64 @@ class AppLocalizations implements UiLocalizations {
       ? '终端输出为只读，在下方输入命令。'
       : 'Read-only terminal output. Type a command below.';
 
+  String get terminalSection => _zh ? '终端' : 'Terminal';
+  String get terminalKeyHaptics => _zh ? '终端按键震动' : 'Terminal key haptics';
+  String get terminalKeyHapticsOn => _zh
+      ? '按下扩展键时轻震一下。'
+      : 'A light tap when a key on the extra row is pressed.';
+  String get terminalKeyHapticsOff =>
+      _zh ? '已关闭，按键不再震动。' : 'Off. Keys send without haptics.';
+  String a11yTerminalKeyHaptics(bool on) => _zh
+      ? '终端按键震动，${on ? '已开启' : '已关闭'}'
+      : 'Terminal key haptics, ${on ? 'on' : 'off'}';
+  String get terminalKeyRow => _zh ? '扩展键行' : 'Extra key row';
+  String terminalKeyRowHint(int keys, int pages) => _zh
+      ? '$pages 页，共 $keys 个键'
+      : '$keys keys on $pages ${pages == 1 ? 'page' : 'pages'}';
+  String get terminalKeysIntro => _zh
+      ? '选择每页显示哪些键，左右滑动键行可翻页。同一个键只属于一页。'
+      : 'Choose which keys each page shows. Swipe the row to change pages; a key belongs to one page.';
+  String terminalKeyPage(int page) => _zh ? '第 $page 页' : 'Page $page';
+  String get terminalKeysReset => _zh ? '恢复默认' : 'Reset';
+  String get terminalKeysEmptyPage =>
+      _zh ? '这一页没有键，键行会跳过它。' : 'No keys on this page; the row skips it.';
+  String get terminalKeysPageFull =>
+      _zh ? '一页最多 8 个键。' : 'A page holds up to 8 keys.';
+  String a11yTerminalKeyRow(int pages) => _zh
+      ? '扩展键行，$pages 页'
+      : 'Extra key row, $pages ${pages == 1 ? 'page' : 'pages'}';
+  String a11yTerminalKeyPage(int page, int total) =>
+      _zh ? '第 $page 页，共 $total 页' : 'Key row page $page of $total';
+  String get a11yTerminalKeyPageNext => _zh ? '切到下一页' : 'Show the next page';
+  String get terminalKeyArmed => _zh ? '已激活，作用于下一个键' : 'armed';
+  String get terminalKeyLocked => _zh ? '已锁定' : 'locked';
+
+  String terminalKeyName(String id) => switch (id) {
+    'esc' => _zh ? 'Esc 键' : 'Escape',
+    'tab' => 'Tab',
+    'ctrl' => _zh ? 'Ctrl 键' : 'Control',
+    'alt' => 'Alt',
+    'left' => _zh ? '左方向键' : 'Left arrow',
+    'up' => _zh ? '上方向键' : 'Up arrow',
+    'down' => _zh ? '下方向键' : 'Down arrow',
+    'right' => _zh ? '右方向键' : 'Right arrow',
+    'pgup' => _zh ? '向上翻页' : 'Page up',
+    'pgdn' => _zh ? '向下翻页' : 'Page down',
+    'pipe' => _zh ? '竖线' : 'Vertical bar',
+    'tilde' => _zh ? '波浪号' : 'Tilde',
+    'slash' => _zh ? '斜杠' : 'Slash',
+    'dash' => _zh ? '连字符' : 'Hyphen',
+    'underscore' => _zh ? '下划线' : 'Underscore',
+    'colon' => _zh ? '冒号' : 'Colon',
+    'star' => _zh ? '星号' : 'Asterisk',
+    'amp' => _zh ? '和号' : 'Ampersand',
+    'equals' => _zh ? '等号' : 'Equals sign',
+    'question' => _zh ? '问号' : 'Question mark',
+    'quote' => _zh ? '单引号' : 'Apostrophe',
+    'backslash' => _zh ? '反斜杠' : 'Backslash',
+    _ => id,
+  };
+
   String get appearance => _zh ? '外观' : 'Appearance';
   String get theme => _zh ? '主题' : 'Theme';
   String get system => _zh ? '跟随系统' : 'System';

@@ -13,6 +13,21 @@ abstract final class GhosttyMods {
   static const superKey = 1 << 3;
 }
 
+/// Key codes the on-screen key row sends directly.
+abstract final class GhosttyKeys {
+  static const enter = 58;
+  static const tab = 64;
+  static const end = 69;
+  static const home = 71;
+  static const pageDown = 73;
+  static const pageUp = 74;
+  static const arrowDown = 75;
+  static const arrowLeft = 76;
+  static const arrowRight = 77;
+  static const arrowUp = 78;
+  static const escape = 120;
+}
+
 const _keys = <int, int>{
   0x10000000d: 58, // enter
   0x20000020d: 58, // numpad enter
