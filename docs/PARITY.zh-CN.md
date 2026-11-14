@@ -27,6 +27,7 @@ Flutter 客户端对 [markbang/taildeck](https://github.com/markbang/taildeck)�
 | SSH 会话 | Tailscale SSH、密码、内置密钥、导入密钥、OpenSSH 证书 | `td_ssh_dial` + PTY，Tailscale SSH / 密码 / 密钥认证 | 未验证 | 会话链路和按键映射已落地（M2b）；没有可达主机可连 |
 | SSH 认证方式 | 含 OpenSSH 证书 | Tailscale SSH、密码、内置 ed25519 密钥，以及可带密码短语的导入 PEM 密钥 | 部分 | ABI 有 `certPath`，但表单里没有证书选择 |
 | SSH 身份 | 内置密钥、导入、删除 | 内置 `id_ed25519`，导入 PEM 密钥，密码短语随元数据保存，可删除 | 已完成 | 密钥生成和导入路径本地测过；用它们拨号属于上面未验证的 SSH 行 |
+| SSH 登录用户 | 用户名可编辑，随保存的配置记住 | 同样可编辑并校验；依次用该节点/服务上次的登录、节点的 Tailscale 用户、`root` 预填 | 已完成 | 写入 `config.json`，Linux 构建重启后能读回 |
 | 主机密钥信任 | TOFU，可清除已信任主机 | 相同，`td_forget_host_keys` | 未验证 | 这里从未信任过任何主机 |
 | 服务 | 添加、编辑、删除，按节点分组 | `services.json`，按节点、协议、端口、路径添加/编辑/删除 | 已完成 | 已截图；通过原生存储层持久化 |
 | 端口扫描 | 经节点扫描 32 个常用端口 | `td_probe`，同一份端口表 | 未验证 | 已接到节点；网页预览会提示需要原生构建 |

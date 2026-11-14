@@ -28,6 +28,7 @@ https://markbang.github.io/taildeck-ui/ runs on mock data; no row below counts t
 | SSH sessions | Tailscale SSH, password, built-in key, imported keys, OpenSSH certificates | `td_ssh_dial` + PTY, Tailscale SSH / password / key auth | Unverified | Session plumbing and key mapping landed (M2b); no reachable host to dial |
 | SSH auth modes | Includes OpenSSH certificates | Tailscale SSH, password, built-in ed25519 key and imported PEM keys with an optional passphrase | Partial | The ABI carries `certPath`, but the sheet has no certificate picker |
 | SSH identities | Built-in key, import, delete | Built-in `id_ed25519` plus imported PEM keys, passphrase stored with metadata, delete | Done | Key creation and import paths tested locally; dialing with them is part of the unverified SSH row |
+| SSH login | Editable username, kept with the saved profile | Same, validated, prefilled from the last login for that node/service, then the node's Tailscale user, then `root` | Done | Written to `config.json`; the Linux build read it back after a restart |
 | Host-key trust | TOFU, forget trusted hosts | Same, `td_forget_host_keys` | Unverified | No host was ever trusted here |
 | Services | Add, edit, delete, grouped by node | `services.json`, add/edit/delete with node, scheme, port, path | Done | Screenshotted; persisted through the native storage layer |
 | Port scan | 32 common ports through the node | `td_probe`, same port list | Unverified | Wired to the node; the Web preview says it needs a native build |

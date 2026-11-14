@@ -49,6 +49,16 @@ class NodeItem {
 
   DateTime? get expiryAt => DateTime.tryParse(expiry);
 
+  /// What Tailscale SSH would log in as: the tailnet login name for a
+  /// user-owned node, empty for tagged nodes (no SSH user there).
+  String get suggestedSshUser {
+    if (tags.isNotEmpty) return '';
+    final login = owner.split('@').first;
+    return _loginName.hasMatch(login) ? login : '';
+  }
+
+  static final _loginName = RegExp(r'^[A-Za-z0-9_][A-Za-z0-9._-]{0,31}$');
+
   Color get tint => switch (os) {
     'macOS' => const Color(0xFF7C8CFF),
     'Windows' => const Color(0xFF3FC1C9),
