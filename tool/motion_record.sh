@@ -97,11 +97,11 @@ kotlin_start() {
   tap "Sign in" || true
   sleep 4
 }
-kotlin_press() { hold "Sign in" 900 || true; sleep 1 }
+kotlin_press() { hold "Sign in" 900 || true; sleep 1; }
 
 flutter_expand() { tap "Control server" || true; sleep 1.2; tap "Use auth key" || true; sleep 1.4; }
 flutter_start() { tap "Continue in browser" || true; sleep 3; }
-flutter_press() { hold "Continue in browser" 900 || true; sleep 1 }
+flutter_press() { hold "Continue in browser" 900 || true; sleep 1; }
 flutter_tabs() {
   tap "Services" || true; sleep 1.6
   tap "Agents" || true; sleep 1.6
