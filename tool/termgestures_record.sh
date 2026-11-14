@@ -228,13 +228,6 @@ pinch_step() {
   note "pinch: grid $before -> ${after:-unknown}"
 }
 
-pinch_step() {
-  root_on
-  record pinch 12 pinch_only
-  root_off
-  sleep 1
-  note "pinch: grid $(grid_cells || echo unknown)"
-}
 
 # ---- hardware keys -------------------------------------------------------
 keyboard_device() {
@@ -389,13 +382,18 @@ open_link() {
     sleep 5
   fi
   shot open-link
-  if ui has 'tailscale' > /dev/null 2>&1; then
-    note "open-link: verified (a browser page shows the link)"
-  else
-    note "open-link: check open-link.png"
-  fi
+  local resumed
+  resumed=$(adb shell dumpsys activity activities 2> /dev/null \
+    | grep -m1 -o 'topResumedActivity=[^ ]* [^/]*/[^ ]*' || true)
+  case "$resumed" in
+    *chrome*|*Chrome*) note "open-link: verified (Chrome is in front: $resumed)" ;;
+    *) note "open-link: check open-link.png ($resumed)" ;;
+  esac
   adb shell input keyevent KEYCODE_BACK > /dev/null 2>&1 || true
-  sleep 2
+  sleep 3
+  if ! ui has 'Terminal output' > /dev/null 2>&1; then
+    launch "$demo_url" || true
+  fi
 }
 
 ime_state() {
