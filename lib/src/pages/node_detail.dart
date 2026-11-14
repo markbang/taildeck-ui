@@ -26,6 +26,7 @@ class NodeDetailPage extends StatefulWidget {
     required this.onOpenSsh,
     this.session,
     this.onDisconnectSsh,
+    this.previewPing = false,
   });
 
   final NodeItem node;
@@ -37,6 +38,10 @@ class NodeDetailPage extends StatefulWidget {
   final SshTerminal? session;
   final VoidCallback? onDisconnectSsh;
 
+  /// `?ping=1` runs the Ping button on open, so the Android smoke test can
+  /// exercise the FFI path without tapping through uiautomator.
+  final bool previewPing;
+
   @override
   State<NodeDetailPage> createState() => _NodeDetailPageState();
 }
@@ -44,18 +49,30 @@ class NodeDetailPage extends StatefulWidget {
 class _NodeDetailPageState extends State<NodeDetailPage> {
   final _focus = FocusNode(debugLabel: 'node detail');
   bool _pinging = false;
+  TaildeckBackend? _backend;
 
   @override
   void initState() {
     super.initState();
     // Takes focus on open, so Esc leaves the page before a click.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _focus.requestFocus();
+      if (mounted) {
+        _focus.requestFocus();
+        if (widget.previewPing) unawaited(_runPing(fromPreview: true));
+      }
     });
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _backend = BackendScope.of(context);
+  }
+
+  @override
   void dispose() {
+    // Leaving the page frees the node instead of waiting out the ping timeout.
+    _backend?.pingCancel(widget.node.ip);
     _focus.dispose();
     super.dispose();
   }
@@ -68,7 +85,8 @@ class _NodeDetailPageState extends State<NodeDetailPage> {
 
   Future<void> _openService(Service service) async {
     final l10n = AppLocalizations.of(context);
-    final fallback = BackendScope.of(context).openInApp && !inAppWebViewSupported;
+    final fallback =
+        BackendScope.of(context).openInApp && !inAppWebViewSupported;
     final result = await openService(context, service);
     if (!mounted) return;
     setState(() {
@@ -82,15 +100,25 @@ class _NodeDetailPageState extends State<NodeDetailPage> {
     });
   }
 
-  Future<void> _runPing() async {
+  Future<void> _runPing({bool fromPreview = false}) async {
     if (_pinging) return;
-    final backend = BackendScope.of(context);
+    final backend = _backend ?? BackendScope.of(context);
     if (!backend.available) return;
     setState(() {
       _pinging = true;
       _ping = null;
     });
-    final result = await backend.ping(widget.node.ip);
+    if (fromPreview) debugPrint('taildeck ping: start ${widget.node.ip}');
+    final result = fromPreview
+        ? await backend.previewPing(widget.node.ip)
+        : await backend.ping(widget.node.ip);
+    if (fromPreview) {
+      final answer = result.ok
+          ? 'ok ${result.latencyMs?.round()}ms '
+                '${(result.derp ?? '').isEmpty ? 'direct' : 'derp ${result.derp}'}'
+          : 'failed ${result.error}';
+      debugPrint('taildeck ping: done $answer');
+    }
     if (!mounted) return;
     setState(() {
       _pinging = false;
@@ -163,11 +191,9 @@ class _NodeDetailPageState extends State<NodeDetailPage> {
     final scheme = context.colorScheme;
     final l10n = AppLocalizations.of(context);
     final services = ServicesScope.of(context).forNode(node.name);
-    final mono = AppTextStyle.body.of(context).copyWith(
-      fontFamily: 'DejaVuSansMono',
-      fontSize: 14.5,
-      height: 1.5,
-    );
+    final mono = AppTextStyle.body
+        .of(context)
+        .copyWith(fontFamily: 'DejaVuSansMono', fontSize: 14.5, height: 1.5);
     final body = PageBody(
       title: node.name,
       subtitle: '${node.os} · ${node.online ? l10n.online : l10n.offline}',
@@ -195,7 +221,7 @@ class _NodeDetailPageState extends State<NodeDetailPage> {
             ActionPill(
               label: l10n.ping,
               glyph: Glyphs2.ping,
-              onPressed: _runPing,
+              onPressed: () => unawaited(_runPing()),
               loading: _pinging,
             ),
             ActionPill(
@@ -220,7 +246,11 @@ class _NodeDetailPageState extends State<NodeDetailPage> {
         ],
         if (_pinging || _ping != null) ...[
           const SizedBox(height: 10),
-          _PingLabel(pinging: _pinging, result: _ping),
+          _PingLabel(
+            pinging: _pinging,
+            result: _ping,
+            onRetry: () => unawaited(_runPing()),
+          ),
         ],
         if (_scanning || _ports != null || _scanError.isNotEmpty) ...[
           const SizedBox(height: 14),
@@ -270,7 +300,11 @@ class _NodeDetailPageState extends State<NodeDetailPage> {
                       color: scheme.primary.withValues(alpha: 0.16),
                       shape: AppShape.all(14),
                     ),
-                    child: GlyphIcon(Glyphs2.agents, size: 22, color: scheme.primary),
+                    child: GlyphIcon(
+                      Glyphs2.agents,
+                      size: 22,
+                      color: scheme.primary,
+                    ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -279,10 +313,16 @@ class _NodeDetailPageState extends State<NodeDetailPage> {
                       children: [
                         Text(
                           l10n.agentsTitle,
-                          style: AppTextStyle.body.of(context, emphasized: true),
+                          style: AppTextStyle.body.of(
+                            context,
+                            emphasized: true,
+                          ),
                         ),
                         const SizedBox(height: 2),
-                        Text(l10n.agentsSummary(4, 2), style: context.listCaptionStyle),
+                        Text(
+                          l10n.agentsSummary(4, 2),
+                          style: context.listCaptionStyle,
+                        ),
                       ],
                     ),
                   ),
@@ -352,7 +392,10 @@ class _NodeDetailPageState extends State<NodeDetailPage> {
                   style: context.listTitleStyle,
                 ),
               ),
-            _DetailRow(label: l10n.traffic, child: TrafficLabel(node: node)),
+            _DetailRow(
+              label: l10n.traffic,
+              child: TrafficLabel(node: node),
+            ),
           ],
         ),
       ],
@@ -507,38 +550,62 @@ class _ScanResult extends StatelessWidget {
 }
 
 class _PingLabel extends StatelessWidget {
-  const _PingLabel({required this.pinging, required this.result});
+  const _PingLabel({
+    required this.pinging,
+    required this.result,
+    required this.onRetry,
+  });
 
   final bool pinging;
   final PingResult? result;
+  final VoidCallback onRetry;
 
   @override
   Widget build(BuildContext context) {
     final scheme = context.colorScheme;
     final l10n = AppLocalizations.of(context);
     final result = this.result;
+    final failed = result != null && !pinging && !result.ok;
     final String text;
     if (pinging || result == null) {
       text = l10n.pinging;
-    } else if (!result.ok) {
+    } else if (failed) {
       text = l10n.pingFailed(result.error ?? '');
     } else {
       final latency = result.latencyMs;
-      final parts = [
+      final derp = result.derp ?? '';
+      // A disco ping reports an endpoint for direct UDP and a region code when
+      // it had to go through DERP.
+      final endpoint = result.endpoint ?? '';
+      final path = derp.isNotEmpty
+          ? l10n.pingRelay(derp)
+          : endpoint.isNotEmpty
+          ? '${l10n.pingDirect} · $endpoint'
+          : '';
+      text = [
         if (latency != null) '${latency.toStringAsFixed(1)} ms',
-        if ((result.endpoint ?? '').isNotEmpty) result.endpoint!,
-        if ((result.derp ?? '').isNotEmpty) 'DERP ${result.derp}',
-      ];
-      text = parts.join(' · ');
+        if (path.isNotEmpty) path,
+      ].join(' · ');
     }
-    final failed = result != null && !pinging && !result.ok;
     return Padding(
       padding: const EdgeInsets.only(left: 4),
-      child: Text(
-        text,
-        style: AppTextStyle.footnote.of(context).copyWith(
-          color: failed ? scheme.error : scheme.onSurfaceVariant,
-        ),
+      child: Row(
+        children: [
+          Flexible(
+            child: Text(
+              text,
+              style: AppTextStyle.footnote
+                  .of(context)
+                  .copyWith(
+                    color: failed ? scheme.error : scheme.onSurfaceVariant,
+                  ),
+            ),
+          ),
+          if (failed) ...[
+            const SizedBox(width: 8),
+            TextButton(onPressed: onRetry, child: Text(l10n.retry)),
+          ],
+        ],
       ),
     );
   }
@@ -559,9 +626,9 @@ class _DetailRow extends StatelessWidget {
         children: [
           Text(
             label,
-            style: AppTextStyle.caption1.of(context).copyWith(
-              color: context.colorScheme.onSurfaceVariant,
-            ),
+            style: AppTextStyle.caption1
+                .of(context)
+                .copyWith(color: context.colorScheme.onSurfaceVariant),
           ),
           const SizedBox(height: 5),
           child,

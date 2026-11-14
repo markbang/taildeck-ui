@@ -189,7 +189,7 @@ jobs:
           disable-animations: true
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           # One line: the runner hands each line to sh separately.
-          script: bash tool/smoke_android.sh "$APK" "$APP_ID" smoke && bash tool/back_android.sh "$APK" "$APP_ID" smoke-back
+          script: bash tool/smoke_android.sh "$APK" "$APP_ID" smoke && bash tool/back_android.sh "$APK" "$APP_ID" smoke-back && bash tool/ping_android.sh "$APK" "$APP_ID" smoke-ping
 
       - name: Job summary
         if: always()
@@ -206,6 +206,12 @@ jobs:
             echo '```'
             cat smoke-back/summary.txt 2>/dev/null || echo 'no summary'
             echo '```'
+            echo
+            echo "### Android ping"
+            echo
+            echo '```'
+            cat smoke-ping/summary.txt 2>/dev/null || echo 'no summary'
+            echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         if: always()
@@ -214,6 +220,7 @@ jobs:
           path: |
             smoke/
             smoke-back/
+            smoke-ping/
           if-no-files-found: warn
       - uses: actions/upload-artifact@v4
         if: always()

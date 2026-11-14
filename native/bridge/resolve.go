@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net"
 	"net/netip"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -134,43 +135,88 @@ func (e *engine) resolveHostPort(hostport string) string {
 	return net.JoinHostPort(e.resolveHost(host), port)
 }
 
-// Probe tries TCP connects to the comma-separated ports on host and returns
-// a JSON array of the open ones.
+// Probe bounds: a refused or filtered port answers fast, an offline peer does
+// not, so every dial gets its own deadline and the whole scan has a cap.
+const (
+	probeDialTimeout = time.Second
+	probeTimeout     = 8 * time.Second
+	probeParallel    = 16
+)
+
+// Probe tries TCP connects to the comma-separated ports on host and returns a
+// JSON array of the open ones.
 func Probe(host, ports string) (string, error) {
 	e, err := current()
 	if err != nil {
 		return "", err
 	}
 	ip := e.resolveHost(host)
-	var (
-		mu   sync.Mutex
-		open = []int{}
-		wg   sync.WaitGroup
-		sem  = make(chan struct{}, 16)
-	)
+	list := parsePorts(ports)
+	open := probePorts(context.Background(), probeTimeout, probeDialTimeout, list,
+		func(ctx context.Context, port int) (net.Conn, error) {
+			return e.srv.Dial(ctx, "tcp", net.JoinHostPort(ip, strconv.Itoa(port)))
+		})
+	b, err := json.Marshal(open)
+	return string(b), err
+}
+
+func parsePorts(ports string) []int {
+	var out []int
 	for _, s := range strings.Split(ports, ",") {
 		port, err := strconv.Atoi(strings.TrimSpace(s))
 		if err != nil || port <= 0 || port > 65535 {
 			continue
 		}
+		out = append(out, port)
+	}
+	return out
+}
+
+// probePorts dials ports in parallel and returns the open ones, sorted. It
+// returns by overall even when a dial ignores its deadline.
+func probePorts(ctx context.Context, overall, perPort time.Duration, ports []int, dial func(context.Context, int) (net.Conn, error)) []int {
+	ctx, cancel := context.WithTimeout(ctx, overall)
+	defer cancel()
+	results := make(chan int, len(ports))
+	sem := make(chan struct{}, probeParallel)
+	var wg sync.WaitGroup
+	for _, port := range ports {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			sem <- struct{}{}
+			select {
+			case sem <- struct{}{}:
+			case <-ctx.Done():
+				return
+			}
 			defer func() { <-sem }()
-			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-			defer cancel()
-			c, err := e.srv.Dial(ctx, "tcp", net.JoinHostPort(ip, strconv.Itoa(port)))
+			dctx, dcancel := context.WithTimeout(ctx, perPort)
+			defer dcancel()
+			conn, err := dial(dctx, port)
 			if err != nil {
 				return
 			}
-			c.Close()
-			mu.Lock()
-			open = append(open, port)
-			mu.Unlock()
+			conn.Close()
+			select {
+			case results <- port:
+			case <-ctx.Done():
+			}
 		}()
 	}
-	wg.Wait()
-	b, err := json.Marshal(open)
-	return string(b), err
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+	open := []int{}
+	select {
+	case <-done:
+		close(results)
+		for port := range results {
+			open = append(open, port)
+		}
+	case <-ctx.Done():
+	}
+	sort.Ints(open)
+	return open
 }

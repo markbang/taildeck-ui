@@ -69,7 +69,9 @@ abstract class NativeBridge {
   /// State / login / log events, delivered on the root isolate.
   Stream<BridgeEvent> get events;
 
-  Map<String, dynamic> start({
+  /// Calls that reach the network run on a worker isolate: a blocking FFI call
+  /// on the UI isolate freezes the app and gets it ANR-killed.
+  Future<Map<String, dynamic>> start({
     required String dir,
     String hostname = 'taildeck',
     String controlURL = '',
@@ -78,23 +80,28 @@ abstract class NativeBridge {
     String platform = 'go',
   });
 
-  void stop();
-  void logout();
+  Future<void> stop();
+  Future<void> logout();
   void networkChanged();
-  Map<String, dynamic> status();
+  Future<Map<String, dynamic>> status();
   String logs();
   int gatewayPort();
-  Map<String, dynamic> ping(String ip);
+
+  /// Disco ping to [ip], bounded by a 5 s timeout in Go.
+  Future<Map<String, dynamic>> ping(String ip);
+
+  /// Stops the ping in flight to [ip]; cheap enough for the UI isolate.
+  void pingCancel(String ip);
 
   /// Ports from the comma-separated [ports] that accept a TCP connection on
   /// [host], dialed through the tailnet node.
-  List<int> probe(String host, String ports);
+  Future<List<int>> probe(String host, String ports);
   void dispose();
 
   /// Opens an interactive PTY shell over the tailnet and returns its id.
   /// Dialing continues in the background: output and close come as
   /// [sshOutput] frames.
-  Map<String, dynamic> sshDial({
+  Future<Map<String, dynamic>> sshDial({
     required String host,
     int port = 22,
     String user = 'root',

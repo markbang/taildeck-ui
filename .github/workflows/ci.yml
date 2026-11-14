@@ -186,6 +186,9 @@ jobs:
         with:
           path: native/term/build/ghostty
           key: ghostty-vt-${{ steps.ghostty.outputs.rev }}-zig0.17.1-${{ runner.os }}-${{ runner.arch }}
+      - name: Test the Go bridge
+        working-directory: native/bridge
+        run: go test ./...
       - name: Build the Go tsnet bridge
         run: |
           set -o pipefail

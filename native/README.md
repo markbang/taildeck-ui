@@ -78,7 +78,9 @@ callback. All of them are JSON: `{"ok":true,...}` or `{"ok":false,"error":"..."}
 | `td_status()` | `state`, `self`, `peers`, … (the `tsbridge.Status` object, merged) |
 | `td_logs()` | `logs` (last 500 lines, `\n`-separated) |
 | `td_gateway_port()` | `int`, 0 when stopped |
-| `td_ping(ip)` | `latencyMs`, `endpoint`, `derp`, `error` |
+| `td_ping(ip)` | `latencyMs`, `endpoint`, `derp`, `peerRelay`, `error`; 5 s timeout |
+| `td_ping_cancel(ip)` | `cancelled` — stops the ping in flight to `ip` |
+| `td_probe(host, portsCSV)` | `ports` (open TCP ports); 1 s per port, 8 s overall |
 
 `td_start` config: `dir`, `hostname`, `controlURL`, `authKey`, `gatewayPort`,
 `platform` (`"go"` = Go stdlib interfaces + DNS; `"host"` = the callbacks from
@@ -89,6 +91,11 @@ callback. All of them are JSON: `{"ok":true,...}` or `{"ok":false,"error":"..."}
 Events: `td_set_event_cb(cb, ctx)` with `void cb(int kind, char* json, void* ctx)`,
 kind `1` state `{"state","authUrl"}`, `2` login URL `{"url"}`, `3` log line
 `{"line"}`.
+
+Every export recovers a panic into the JSON error above: a Go panic that
+unwinds into C aborts the process, which is fatal on Android. Calls that touch
+the network block, so the Dart side runs them on a worker isolate; see
+`docs/ARCHITECTURE.md`.
 
 Callback strings are `malloc`'d and owned by the host: keep them as long as
 needed and release each one with `td_free` (they are not freed by Go, so

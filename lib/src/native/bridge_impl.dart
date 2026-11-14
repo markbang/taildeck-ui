@@ -40,10 +40,11 @@ NativeBridge? openBridgePlatform() {
   return null;
 }
 
-/// Runs one herdr call in a short-lived isolate: herdr calls reach the network
-/// and may block for seconds, which must not freeze the UI isolate. The Go
-/// library keeps the connection in process state, so any handle reaches it.
-String _runHerdrIsolate(String libPath, String symbol, List<String> args) {
+/// Runs one bridge call in a short-lived isolate: status, ping, probe and dial
+/// reach the network and may block for seconds, which froze the UI isolate and
+/// got the app ANR-killed. The Go library keeps its state in the process, so any
+/// isolate reaches it. Events stay on the root isolate (NativeCallable).
+String _runIsolate(String libPath, String symbol, List<String> args) {
   final lib = libPath.isEmpty
       ? DynamicLibrary.process()
       : DynamicLibrary.open(libPath);
@@ -60,14 +61,14 @@ String _runHerdrIsolate(String libPath, String symbol, List<String> args) {
         allocated[0],
         allocated[1],
       ),
-      _ => throw ArgumentError('herdr call takes at most two arguments'),
+      _ => throw ArgumentError('$symbol takes at most two arguments'),
     };
   } finally {
     for (final pointer in allocated) {
       calloc.free(pointer);
     }
   }
-  if (result.address == 0) throw 'bridge returned null';
+  if (result.address == 0) throw const BridgeException('bridge returned null');
   final text = result.cast<Utf8>().toDartString();
   free(result);
   return text;
@@ -86,7 +87,9 @@ String _runHerdrUploadIsolate(String libPath, String name, Uint8List data) {
   try {
     buffer.asTypedList(data.length).setAll(0, data);
     final result = upload(cname, buffer, data.length);
-    if (result.address == 0) throw 'bridge returned null';
+    if (result.address == 0) {
+      throw const BridgeException('bridge returned null');
+    }
     final text = result.cast<Utf8>().toDartString();
     free(result);
     return text;
@@ -115,27 +118,26 @@ typedef _ResizeNative = Pointer<Int8> Function(Int32, Int32, Int32);
 typedef _Resize = Pointer<Int8> Function(int, int, int);
 typedef _TwoStrNative = Pointer<Int8> Function(Pointer<Int8>, Pointer<Int8>);
 typedef _TwoStr = Pointer<Int8> Function(Pointer<Int8>, Pointer<Int8>);
-typedef _UploadNative = Pointer<Int8> Function(Pointer<Int8>, Pointer<Uint8>, Int32);
+typedef _UploadNative = Pointer<Int8> Function(
+  Pointer<Int8>,
+  Pointer<Uint8>,
+  Int32,
+);
 typedef _Upload = Pointer<Int8> Function(Pointer<Int8>, Pointer<Uint8>, int);
 
 class FfiBridge implements NativeBridge {
   FfiBridge(DynamicLibrary lib, this._path)
-    : _start = lib.lookupFunction<_StrArgNative, _StrArg>('td_start'),
-      _stop = lib.lookupFunction<_StrFnNative, _StrFn>('td_stop'),
-      _logout = lib.lookupFunction<_StrFnNative, _StrFn>('td_logout'),
-      _networkChanged = lib
-          .lookupFunction<_StrFnNative, _StrFn>('td_network_changed'),
-      _status = lib.lookupFunction<_StrFnNative, _StrFn>('td_status'),
+    : _networkChanged = lib.lookupFunction<_StrFnNative, _StrFn>(
+        'td_network_changed',
+      ),
       _logs = lib.lookupFunction<_StrFnNative, _StrFn>('td_logs'),
-      _ping = lib.lookupFunction<_StrArgNative, _StrArg>('td_ping'),
-      _probe = lib.lookupFunction<_TwoStrNative, _TwoStr>('td_probe'),
       _gatewayPort = lib.lookupFunction<_IntFnNative, _IntFn>(
         'td_gateway_port',
       ),
-      _setEventCb = lib.lookupFunction<_SetCbNative, _SetCb>(
-        'td_set_event_cb',
+      _setEventCb = lib.lookupFunction<_SetCbNative, _SetCb>('td_set_event_cb'),
+      _pingCancel = lib.lookupFunction<_StrArgNative, _StrArg>(
+        'td_ping_cancel',
       ),
-      _sshDial = lib.lookupFunction<_StrArgNative, _StrArg>('td_ssh_dial'),
       _sshWrite = lib.lookupFunction<_WriteNative, _Write>('td_ssh_write'),
       _sshResize = lib.lookupFunction<_ResizeNative, _Resize>('td_ssh_resize'),
       _sshClose = lib.lookupFunction<_IntArgNative, _IntArg>('td_ssh_close'),
@@ -144,21 +146,33 @@ class FfiBridge implements NativeBridge {
         'td_forget_host_keys',
       ),
       _free = lib.lookupFunction<_FreeNative, _Free>('td_free') {
+    for (final name in _domainSymbols) {
+      if (!lib.providesSymbol(name)) {
+        throw ArgumentError('bridge library is missing $name');
+      }
+    }
     _callback = NativeCallable<_EventFn>.listener(_onEvent);
     _setEventCb(_callback.nativeFunction, 0);
   }
 
-  final _StrArg _start;
-  final _StrFn _stop;
-  final _StrFn _logout;
+  /// Symbols the worker isolates look up by name; checked once here so a stale
+  /// library fails at startup instead of on the first tap.
+  static const _domainSymbols = [
+    'td_start',
+    'td_stop',
+    'td_logout',
+    'td_status',
+    'td_ping',
+    'td_ping_cancel',
+    'td_probe',
+    'td_ssh_dial',
+  ];
+
   final _StrFn _networkChanged;
-  final _StrFn _status;
   final _StrFn _logs;
-  final _StrArg _ping;
-  final _TwoStr _probe;
   final _IntFn _gatewayPort;
   final _SetCb _setEventCb;
-  final _StrArg _sshDial;
+  final _StrArg _pingCancel;
   final _Write _sshWrite;
   final _Resize _sshResize;
   final _IntArg _sshClose;
@@ -171,42 +185,56 @@ class FfiBridge implements NativeBridge {
       StreamController<BridgeEvent>.broadcast();
   final Map<int, StreamController<SshOutput>> _ssh = {};
 
+  /// Frames that arrived while [sshDial] was still in flight: the Go side emits
+  /// a "connecting" notice before it returns the session id.
+  final Map<int, List<SshOutput>> _pendingSsh = {};
+
   @override
   Stream<BridgeEvent> get events => _events.stream;
 
   @override
-  Map<String, dynamic> start({
+  Future<Map<String, dynamic>> start({
     required String dir,
     String hostname = 'taildeck',
     String controlURL = '',
     String authKey = '',
     int gatewayPort = 0,
     String platform = 'go',
-  }) {
-    return _callArg(
-      _start,
-      jsonEncode({
-        'dir': dir,
-        'hostname': hostname,
-        'controlURL': controlURL,
-        'authKey': authKey,
-        'gatewayPort': gatewayPort,
-        'platform': platform,
-      }),
+  }) async {
+    return _decode(
+      await _isolate('td_start', [
+        jsonEncode({
+          'dir': dir,
+          'hostname': hostname,
+          'controlURL': controlURL,
+          'authKey': authKey,
+          'gatewayPort': gatewayPort,
+          'platform': platform,
+        }),
+      ]),
     );
   }
 
   @override
-  void stop() => _call(_stop);
+  Future<void> stop() async {
+    try {
+      _decode(await _isolate('td_stop'));
+    } on BridgeException {
+      // Stopping a node that is already gone is not an error here.
+    }
+  }
 
   @override
-  void logout() => _call(_logout);
+  Future<void> logout() async {
+    _decode(await _isolate('td_logout'));
+  }
 
   @override
   void networkChanged() => _call(_networkChanged);
 
   @override
-  Map<String, dynamic> status() => _call(_status);
+  Future<Map<String, dynamic>> status() async =>
+      _decode(await _isolate('td_status'));
 
   @override
   String logs() => _call(_logs)['logs'] as String? ?? '';
@@ -215,11 +243,22 @@ class FfiBridge implements NativeBridge {
   int gatewayPort() => _gatewayPort();
 
   @override
-  Map<String, dynamic> ping(String ip) => _callArg(_ping, ip);
+  Future<Map<String, dynamic>> ping(String ip) async =>
+      _decode(await _isolate('td_ping', [ip]));
 
   @override
-  List<int> probe(String host, String ports) {
-    final reply = _callTwo(_probe, host, ports);
+  void pingCancel(String ip) {
+    // Cancelling only closes a channel in Go: it never blocks the UI isolate.
+    try {
+      _callArg(_pingCancel, ip);
+    } on BridgeException {
+      // A ping that already returned has nothing to cancel.
+    }
+  }
+
+  @override
+  Future<List<int>> probe(String host, String ports) async {
+    final reply = _decode(await _isolate('td_probe', [host, ports]));
     return [
       for (final port in reply['ports'] as List? ?? const [])
         if (port is num) port.toInt(),
@@ -227,7 +266,7 @@ class FfiBridge implements NativeBridge {
   }
 
   @override
-  Map<String, dynamic> sshDial({
+  Future<Map<String, dynamic>> sshDial({
     required String host,
     int port = 22,
     String user = 'root',
@@ -237,26 +276,27 @@ class FfiBridge implements NativeBridge {
     String certPath = '',
     int cols = 80,
     int rows = 24,
-  }) {
-    final reply = _callArg(
-      _sshDial,
-      jsonEncode({
-        'host': host,
-        'port': port,
-        'user': user,
-        'password': password,
-        'keyPath': keyPath,
-        'passphrase': passphrase,
-        'certPath': certPath,
-        'cols': cols,
-        'rows': rows,
-      }),
+  }) async {
+    final reply = _decode(
+      await _isolate('td_ssh_dial', [
+        jsonEncode({
+          'host': host,
+          'port': port,
+          'user': user,
+          'password': password,
+          'keyPath': keyPath,
+          'passphrase': passphrase,
+          'certPath': certPath,
+          'cols': cols,
+          'rows': rows,
+        }),
+      ]),
     );
     final id = (reply['id'] as num?)?.toInt();
     if (id == null) throw const BridgeException('ssh_dial returned no id');
-    // Created before returning: the callback cannot run during this call, so
-    // no output frame of this session can arrive before the controller exists.
-    _ssh[id] = StreamController<SshOutput>();
+    final controller = StreamController<SshOutput>();
+    _ssh[id] = controller;
+    _flushPending(id, controller);
     return reply;
   }
 
@@ -323,9 +363,7 @@ class FfiBridge implements NativeBridge {
 
   @override
   Future<String> herdrCall(String method, [String paramsJSON = '{}']) async {
-    final reply = _decode(
-      await _herdr('td_herdr_call', [method, paramsJSON]),
-    );
+    final reply = _decode(await _herdr('td_herdr_call', [method, paramsJSON]));
     return reply['result'] as String? ?? '';
   }
 
@@ -343,9 +381,7 @@ class FfiBridge implements NativeBridge {
 
   @override
   Future<String> herdrRestart(String pane, {String thenPrompt = ''}) async {
-    final reply = _decode(
-      await _herdr('td_herdr_restart', [pane, thenPrompt]),
-    );
+    final reply = _decode(await _herdr('td_herdr_restart', [pane, thenPrompt]));
     return reply['name'] as String? ?? '';
   }
 
@@ -390,9 +426,12 @@ class FfiBridge implements NativeBridge {
     }
   }
 
-  Future<String> _herdr(String symbol, List<String> args) {
+  Future<String> _herdr(String symbol, List<String> args) =>
+      _isolate(symbol, args);
+
+  Future<String> _isolate(String symbol, [List<String> args = const []]) {
     final path = _path;
-    return Isolate.run(() => _runHerdrIsolate(path, symbol, args));
+    return Isolate.run(() => _runIsolate(path, symbol, args));
   }
 
   Future<String> _herdrUpload(String path, String name, Uint8List data) {
@@ -406,9 +445,30 @@ class FfiBridge implements NativeBridge {
       if (!controller.isClosed) controller.close();
     }
     _ssh.clear();
+    _pendingSsh.clear();
     _setEventCb(nullptr, 0);
     _callback.close();
     _events.close();
+  }
+
+  static const _pendingSshFrames = 512;
+
+  void _bufferSsh(int id, SshOutput frame) {
+    final frames = _pendingSsh.putIfAbsent(id, () => []);
+    if (frames.length < _pendingSshFrames) frames.add(frame);
+  }
+
+  void _flushPending(int id, StreamController<SshOutput> controller) {
+    final frames = _pendingSsh.remove(id);
+    if (frames == null) return;
+    for (final frame in frames) {
+      controller.add(frame);
+    }
+    if (frames.isNotEmpty && frames.last.closed) {
+      // The dial failed while we were still waiting for its id; the page must
+      // still see the close frame, so the controller stays behind for it.
+      controller.close();
+    }
   }
 
   void _closeOutput(int id, String? reason) {
@@ -453,7 +513,19 @@ class FfiBridge implements NativeBridge {
   /// would otherwise wake every listener of [events].
   void _onSshEvent(BridgeEvent event) {
     final controller = _ssh[event.id];
-    if (controller == null || controller.isClosed) return;
+    if (controller == null || controller.isClosed) {
+      // The dial is still in flight; keep the frame for its stream.
+      _bufferSsh(
+        event.id,
+        event.kind == BridgeEventKind.sshClosed
+            ? SshOutput.closed(event.reason)
+            : SshOutput.data(
+                base64Decode(event.output),
+                notice: event.data['notice'] == true,
+              ),
+      );
+      return;
+    }
     if (event.kind == BridgeEventKind.sshClosed) {
       controller.add(SshOutput.closed(event.reason));
       _closeOutput(event.id, null);
@@ -474,7 +546,9 @@ class FfiBridge implements NativeBridge {
 
   Map<String, dynamic> _call(_StrFn fn) {
     final pointer = fn();
-    if (pointer.address == 0) throw const BridgeException('bridge returned null');
+    if (pointer.address == 0) {
+      throw const BridgeException('bridge returned null');
+    }
     final text = pointer.cast<Utf8>().toDartString();
     _free(pointer);
     return _decode(text);

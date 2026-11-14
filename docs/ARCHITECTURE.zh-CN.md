@@ -43,6 +43,18 @@ C ABI 是稳定的契约：启动、停止、状态、日志、ping、端口探�
 - CI 每个 PR 构建 Android debug APK、Linux 产物（在 Xvfb 里运行并截图）和网页预览；Windows、macOS 和 iOS
   在打 tag 或手动触发时构建未签名包。
 
+### 线程与失败处理
+
+Go 库的状态属于整个进程，任何 isolate 都能调用，但只有微秒级调用可以留在 UI isolate 上（`td_free`、`td_logs`、
+`td_gateway_port`、SSH 写入/调整/关闭、`td_ping_cancel`）。所有走网络的调用（`td_start`、`td_stop`、`td_logout`、
+`td_status`、`td_ping`、`td_probe`、`td_ssh_dial`、herdr）都通过 `Isolate.run` 在临时 worker isolate 里执行并返回
+future：在 UI isolate 上阻塞的 FFI 调用会冻住渲染，Android 会以无响应为由杀掉应用。事件回调仍通过
+`NativeCallable.listener` 留在主 isolate。每个导出函数都套了 panic 保护（`tsbridge.Recover`），panic 会变成常规的
+`{"ok":false,"error":...}` 返回，因为 Go 的 panic 一旦展开到 C 就会直接终止进程。
+
+超时都在 Go 侧有界：ping 5 秒（可用 `td_ping_cancel` 取消）、状态 8 秒、端口探测每端口 1 秒且整体 8 秒、
+SSH 连接 20 秒。Dart 侧再给 ping 加 6 秒兜底，即使库不返回也能给出答案。
+
 ### Android 平台钩子
 
 Android 11+ 屏蔽 Go 的 `net.Interfaces` 所用的 netlink，应用也没有 `resolv.conf`，因此 Android 上节点以

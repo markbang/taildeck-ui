@@ -533,6 +533,7 @@ class _TaildeckShellState extends State<TaildeckShell>
         final session = _terminals.forNode(node.name);
         return NodeDetailPage(
           node: node,
+          previewPing: previewParam('ping') == '1',
           session: session == null || session.closed ? null : session,
           onBack: () => setState(() => _node = null),
           onOpenAgents: () => _toPage(2),
