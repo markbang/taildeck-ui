@@ -307,9 +307,10 @@ keyrow_step() { # page 2 holds the row's own insert-only key
   focus_input
   local point x y
   # The page dots are a11y buttons, so the page turns without a swipe.
-  point=$(point_in 'Key row page 2' "$app") || point=""
+  # The dots are one button whose label carries the page it shows.
+  point=$(point_in 'Key row page' "$app") || point=""
   if [ -z "$point" ]; then
-    note "keyrow: no page 2 dot"
+    note "keyrow: no page dots"
     return 0
   fi
   read -r x y <<< "$point"

@@ -59,7 +59,8 @@ jobs:
           tool/build_term.sh android-x86_64 | tee /tmp/build_term.log
       - name: Build a profile APK (x86_64)
         run: |
-          flutter build apk --profile --target-platform android-x64
+          flutter build apk --profile --target-platform android-x64 \
+            --dart-define=TAILDECK_DEMO=true
           cp build/app/outputs/flutter-apk/app-profile.apk build/termsend.apk
       - name: Install the recording tools
         run: |
