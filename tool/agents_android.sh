@@ -9,6 +9,9 @@ set -euo pipefail
 apk=${1:?usage: tool/agents_android.sh <apk> [application-id] [out-dir]}
 app=${2:-top.bangwu.taildeck}
 out=${3:-smoke-agents}
+here=$(cd "$(dirname "$0")" && pwd)
+# shellcheck source=tool/android_gate.sh
+. "$here/android_gate.sh"
 mkdir -p "$out"
 
 fail() {
@@ -104,6 +107,8 @@ if ! launch; then
   sleep 5
   launch || fail "the Agents tab never opened; see launch.txt and logcat-fail.txt"
 fi
+wait_home "$app" "$out" "$here" Services 45 \
+  || fail "the shell did not settle after launch; see logcat-fail.txt"
 
 phase=$(adb logcat -d 2>/dev/null | grep -oE 'taildeck agents: [a-z]+' | tail -1 | awk '{print $3}')
 note "first phase in logcat: ${phase:-none}"
