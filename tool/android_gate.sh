@@ -32,6 +32,11 @@ gate_stop() { # <app>
   return 1
 }
 
+# Clears a system "app isn't responding" dialog between attempts.
+gate_dismiss() {
+  adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS > /dev/null 2>&1 || true
+}
+
 # One dump, parsed with tool/ui.py: `gate_ui <out> <tools> has Services`.
 gate_ui() { # <out-dir> <tool-dir> <ui.py args...>
   local out=$1 tools=$2

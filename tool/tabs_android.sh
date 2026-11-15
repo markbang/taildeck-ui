@@ -77,7 +77,7 @@ geometry() {
 }
 dock() {
   local point
-  point=$(ui tap Services) || fail "no 'Services' in the dock; the shell did not start"
+  point=$(ui tap Services) || return 1
   DOCK_Y=${point#* }
   TAP=(
     "$((W / 8)) $DOCK_Y"
@@ -158,12 +158,20 @@ launch() {
     note "launch attempt $attempt: no tab bar yet"
     sleep 5
   done
-  fail "the shell never showed a tab bar"
+  return 1
 }
 
 geometry
-launch
-dock
+ready=0
+for attempt in 1 2 3; do
+  # A loaded emulator can ANR a debug cold start right after the first frame;
+  # the app is then gone before the first tap.
+  if launch && dock && gate_in_front "$app"; then ready=1; break; fi
+  note "attempt $attempt: the app did not stay in front"
+  gate_dismiss
+  sleep 5
+done
+[ "$ready" -eq 1 ] || fail "the shell never showed a tab bar"
 note "screen ${W}x${SH}, dock y=$DOCK_Y"
 shot rest-00
 ui tap Nodes > /dev/null 2>&1 || true
