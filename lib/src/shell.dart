@@ -93,9 +93,11 @@ class _TaildeckShellState extends State<TaildeckShell>
     final name = previewParam('node');
     if (name == null || _node != null || _previewNodeDone || !mounted) return;
     final backend = BackendScope.of(context);
-    final nodes = backend.available
+    // A running node lists its own peers; before sign-in (or without a
+    // backend) the demo list stands in, but only in a build that has it.
+    final nodes = backend.nodes.isNotEmpty || !demoData
         ? backend.nodes
-        : (demoData ? [demoSelfNode, ...demoPeers] : const <NodeItem>[]);
+        : [demoSelfNode, ...demoPeers];
     if (nodes.isEmpty) return;
     _previewNodeDone = true;
     for (final node in nodes) {
