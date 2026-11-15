@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter/widgets.dart';
 
 import 'data.dart';
+import 'demo/demo.dart';
 import 'favicons.dart';
 import 'herdr.dart';
 import 'native/bridge.dart';
@@ -566,13 +567,16 @@ class TaildeckBackend extends ChangeNotifier {
     bridge.forgetHostKeys(await storage.stateDir());
   }
 
-  /// `td_logs()` on native; the event buffer when there is no bridge.
+  /// The bridge's ring on native; the preview's sample lines and the event
+  /// buffer when there is no bridge.
   String logsText() {
     final bridge = _bridge;
     final head = _platformWarning.isEmpty
         ? ''
         : 'platform: $_platformWarning\n';
-    if (bridge == null) return head + _logs.join('\n');
+    if (bridge == null) {
+      return head + (demoData ? [...demoLogs(), ..._logs] : _logs).join('\n');
+    }
     try {
       return head + bridge.logs();
     } on BridgeException {

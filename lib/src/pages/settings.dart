@@ -6,12 +6,14 @@ import 'package:prism_ui/icons/icons.dart';
 import 'package:prism_ui/prism_ui.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../app_info.dart';
 import '../back.dart';
 import '../backend.dart';
 import '../data.dart';
 import '../favicons.dart';
 import '../glyphs.dart';
 import '../l10n.dart';
+import '../log_summary.dart';
 import '../motion.dart';
 import '../native/bridge.dart';
 import '../services.dart';
@@ -68,6 +70,7 @@ class _SettingsPageState extends State<SettingsPage> {
   List<SshIdentity> _keys = const [];
   bool _keysLoaded = false;
   bool _active = true;
+  LogSummary? _logSummary;
 
   @override
   void initState() {
@@ -86,11 +89,17 @@ class _SettingsPageState extends State<SettingsPage> {
     super.didChangeDependencies();
     _active = TickerMode.valuesOf(context).enabled;
     // The tab keeps its page alive; it opens on the list again.
-    if (!_active) _section = null;
+    if (!_active) {
+      _section = null;
+      _logSummary = null;
+    }
+    _logSummary ??= _readLogs();
     if (_keysLoaded) return;
     _keysLoaded = true;
     unawaited(_loadKeys());
   }
+
+  LogSummary _readLogs() => summarizeLogs(BackendScope.of(context).logsText());
 
   Future<void> _loadKeys() async {
     final backend = BackendScope.of(context);
@@ -106,13 +115,19 @@ class _SettingsPageState extends State<SettingsPage> {
   /// Back closes the open section; false when the list itself is showing.
   bool _closeSection() {
     if (_section == null || !_active || !mounted) return false;
-    setState(() => _section = null);
+    setState(() {
+      _section = null;
+      _logSummary = _readLogs();
+    });
     return true;
   }
 
   void _open(_Section section) => setState(() => _section = section);
 
-  void _back() => setState(() => _section = null);
+  void _back() => setState(() {
+    _section = null;
+    _logSummary = _readLogs();
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -208,13 +223,13 @@ class _SettingsPageState extends State<SettingsPage> {
             _EntryRow(
               glyph: Glyphs2.doc,
               title: l10n.logs,
-              subtitle: live ? 'td_logs()' : l10n.unavailable,
+              subtitle: _logsSubtitle(l10n, live),
               onTap: () => _open(_Section.logs),
             ),
             _EntryRow(
               glyph: Glyphs2.agents,
               title: l10n.about,
-              subtitle: l10n.version(appVersion),
+              subtitle: l10n.version(AppInfo.version),
               onTap: () => _open(_Section.about),
             ),
           ],
@@ -227,6 +242,14 @@ class _SettingsPageState extends State<SettingsPage> {
         ),
       ],
     );
+  }
+
+  String _logsSubtitle(AppLocalizations l10n, bool live) {
+    final summary = _logSummary;
+    if (summary != null && summary.lines > 0) {
+      return l10n.logsSummary(summary.lines, summary.lastTime);
+    }
+    return live ? l10n.logsNoEntries : l10n.unavailable;
   }
 
   Future<void> _signOut(BuildContext context) async {
@@ -1032,7 +1055,7 @@ class _AboutSection extends StatelessWidget {
               leading: const IconBadge(Glyphs2.nodes),
               title: Text('Taildeck', style: context.listTitleStyle),
               trailing: Text(
-                l10n.version(appVersion),
+                l10n.version(AppInfo.version),
                 style: context.listCaptionStyle,
               ),
             ),

@@ -208,3 +208,23 @@ const demoServices = <Service>[
     url: 'http://pi-k3s:8123/',
   ),
 ];
+
+/// Lines the preview's Logs page shows instead of the bridge's ring, stamped
+/// the way the bridge stamps them so the row summary reads true.
+List<String> demoLogs() {
+  final start = DateTime.now().subtract(const Duration(minutes: 5));
+  String at(int seconds) {
+    final t = start.add(Duration(seconds: seconds));
+    String two(int v) => v.toString().padLeft(2, '0');
+    return '${two(t.hour)}:${two(t.minute)}:${two(t.second)}';
+  }
+
+  return [
+    '${at(0)} magicsock: home is now derp-12 (fra)',
+    '${at(8)} control: netmap updated',
+    '${at(74)} tailscale: state=running, backend=Running',
+    '${at(141)} gateway: devbox:3000 → :4444',
+    '${at(208)} herdr: 4 agents on devbox',
+    '${at(285)} netcheck: udp=true portmap=UPnP',
+  ];
+}
