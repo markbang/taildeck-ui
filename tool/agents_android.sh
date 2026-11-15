@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Agents cold-start gate: launch straight into the Agents tab before the
 # tailnet is Running, then fail when an error or the connection form shows up
-# while the node is still coming up. Uses the debug build, which can show the
-# shell without a signed-in node (`?preview=1`).
+# while the node is still coming up. `?preview=1` shows the shell without a
+# signed-in node; the release APK is enough, since nothing here needs demo data.
 # Usage: tool/agents_android.sh <apk> [application-id] [out-dir]
 set -euo pipefail
 
@@ -15,6 +15,7 @@ fail() {
   echo "FAIL: $*" | tee -a "$out/summary.txt"
   adb logcat -d > "$out/logcat-fail.txt" 2>&1 || true
   adb pull /sdcard/ui.xml "$out/ui-fail.xml" > /dev/null 2>&1 || true
+  adb uninstall "$app" > /dev/null 2>&1 || true
   exit 1
 }
 pass() { echo "ok: $*" | tee -a "$out/summary.txt"; }
@@ -30,6 +31,20 @@ adb uninstall "$app" > /dev/null 2>&1 || true
 adb install -g "$apk" > "$out/install.txt" 2>&1 || fail "adb install failed, see install.txt"
 
 shot() { adb exec-out screencap -p > "$out/$1.png" || true; }
+
+# The page under test must be our process, in front: a dismissed app would
+# make every "no error on screen" check true for the wrong reason.
+alive() { # $1: step
+  local pid focus
+  pid=$(adb shell pidof "$app" 2>/dev/null | tr -d '\r' || true)
+  [ -n "$pid" ] || fail "$1: $app is not running (crashed or was killed)"
+  focus=$(adb shell dumpsys window 2>/dev/null | grep -m1 mCurrentFocus | tr -d '\r' || true)
+  case "$focus" in
+    *"$app/"*) ;;
+    *) fail "$1: $app is not in front ($focus)" ;;
+  esac
+  echo "$focus" >> "$out/focus.txt"
+}
 
 ui() {
   local attempt
@@ -63,7 +78,8 @@ launch() {
   sleep 3
   adb logcat -c > /dev/null 2>&1 || true
   # Straight into the Agents tab, with the shell shown but no node behind it.
-  adb shell "am start -W -a android.intent.action.VIEW -d 'taildeck://preview/?preview=1&tab=2&lang=en' -n $activity" \
+  # `splash=0` drops the launch animation so the screenshot is the page itself.
+  adb shell "am start -W -a android.intent.action.VIEW -d 'taildeck://preview/?preview=1&tab=2&lang=en&splash=0' -n $activity" \
     > "$out/launch.txt" 2>&1 || return 1
   grep -q "Activity: $app/" "$out/launch.txt" || return 1
   local _i
@@ -74,19 +90,27 @@ launch() {
   return 1
 }
 
-launch || fail "the Agents tab never opened; see launch.txt and logcat-fail.txt"
+# A cold start on a loaded emulator can ANR the debug build; one retry.
+if ! launch; then
+  sleep 5
+  launch || fail "the Agents tab never opened; see launch.txt and logcat-fail.txt"
+fi
 
 phase=$(adb logcat -d 2>/dev/null | grep -oE 'taildeck agents: [a-z]+' | tail -1 | awk '{print $3}')
 note "first phase in logcat: ${phase:-none}"
 [ "$phase" = "tailnet" ] || fail "the page did not start on the tailnet loading state (got '${phase:-none}')"
 
+alive "after launch"
 sleep 2
-shot agents-start
 ui has "Connecting to the tailnet" || fail "the loading state is not on screen"
+alive "first check"
+shot agents-start
 forbidden
 
 # Still no node after the retry budget in the logs: no error may have appeared.
 sleep 8
+alive "second check"
+ui has "Connecting to the tailnet" || fail "the loading state left the screen without a node"
 shot agents-late
 forbidden
 phases=$(adb logcat -d 2>/dev/null | grep -oE 'taildeck agents: [a-z]+' | awk '{print $3}' | sort -u | tr '\n' ' ')
@@ -104,3 +128,6 @@ if [ -n "$exceptions" ]; then
 fi
 
 pass "Agents cold start waits on the tailnet with no error and no form (screenshots agents-start.png, agents-late.png)"
+# Leave the device clean: the gates after this one install their own APK, and
+# the release build here would block that install with its signature.
+adb uninstall "$app" > /dev/null 2>&1 || true
