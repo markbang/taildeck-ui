@@ -8,7 +8,7 @@ import 'dart:collection';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
-import 'favicon_demo.dart';
+import 'demo/demo_favicon.dart';
 import 'favicons_store.dart';
 import 'services.dart';
 

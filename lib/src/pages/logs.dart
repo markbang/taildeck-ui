@@ -4,6 +4,7 @@ import 'package:prism_ui/icons/icons.dart';
 import 'package:prism_ui/prism_ui.dart';
 
 import '../backend.dart';
+import '../diagnostics.dart';
 import '../glyphs.dart';
 import '../l10n.dart';
 import '../widgets/foundation.dart';
@@ -28,11 +29,34 @@ class _LogsPageState extends State<LogsPage> {
     super.didChangeDependencies();
     if (_loaded) return;
     _loaded = true;
-    _logs = BackendScope.of(context).logsText();
+    appErrors.addListener(_onErrors);
+    _logs = _collect();
+  }
+
+  @override
+  void dispose() {
+    appErrors.removeListener(_onErrors);
+    super.dispose();
+  }
+
+  /// The node's log, then whatever the error handlers caught.
+  String _collect() {
+    final logs = BackendScope.of(context).logsText();
+    final errors = appErrors.text;
+    if (errors.isEmpty) return logs;
+    return [
+      logs,
+      '--- app errors ---',
+      errors,
+    ].where((l) => l.isNotEmpty).join('\n');
+  }
+
+  void _onErrors() {
+    if (mounted) setState(() => _logs = _collect());
   }
 
   void _refresh() {
-    setState(() => _logs = BackendScope.of(context).logsText());
+    setState(() => _logs = _collect());
   }
 
   Future<void> _copy() async {

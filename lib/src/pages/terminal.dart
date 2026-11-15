@@ -19,7 +19,8 @@ import '../native/bridge.dart';
 import '../native/hardware_keyboard.dart';
 import '../native/keys.dart';
 import '../native/term.dart';
-import '../native/term_demo.dart';
+import '../demo/demo.dart';
+import '../demo/demo_term.dart';
 import '../preview_env.dart';
 import '../terminal_gestures.dart';
 import '../terminal_keys.dart';
@@ -94,19 +95,30 @@ class _TerminalPageState extends State<TerminalPage>
 
   final _input = TextEditingController();
   final _scroll = ScrollController();
-  late final List<_Line> _lines = [
-    _Line('Linux devbox 6.8.0-45-generic x86_64', _Kind.output),
-    _Line('Last login: Thu Nov 13 16:02:11 from 100.101.4.2', _Kind.muted),
-    const _Line('uptime', _Kind.command),
-    const _Line('16:47 up 12 days, 2 users, load 0.14 0.09 0.06', _Kind.output),
-    const _Line('tailscale status', _Kind.command),
-    const _Line('devbox    100.71.200.9   online', _Kind.output),
-    const _Line('pixel-9   100.101.4.2    offline', _Kind.output),
-    const _Line('nas       100.88.12.7    online', _Kind.output),
-    const _Line('docker ps', _Kind.command),
-    const _Line('grafana:11.3.0        Up 12 days', _Kind.output),
-    const _Line('code-server:latest    Up 12 days', _Kind.output),
-  ];
+
+  /// The demo session's transcript; a release build starts empty and only
+  /// ever shows what a real remote wrote.
+  late final List<_Line> _lines = !demoData
+      ? []
+      : [
+          _Line('Linux devbox 6.8.0-45-generic x86_64', _Kind.output),
+          _Line(
+            'Last login: Thu Nov 13 16:02:11 from 100.101.4.2',
+            _Kind.muted,
+          ),
+          const _Line('uptime', _Kind.command),
+          const _Line(
+            '16:47 up 12 days, 2 users, load 0.14 0.09 0.06',
+            _Kind.output,
+          ),
+          const _Line('tailscale status', _Kind.command),
+          const _Line('devbox    100.71.200.9   online', _Kind.output),
+          const _Line('pixel-9   100.101.4.2    offline', _Kind.output),
+          const _Line('nas       100.88.12.7    online', _Kind.output),
+          const _Line('docker ps', _Kind.command),
+          const _Line('grafana:11.3.0        Up 12 days', _Kind.output),
+          const _Line('code-server:latest    Up 12 days', _Kind.output),
+        ];
 
   /// The libghostty-vt emulator; null on Web or when the library is missing.
   TerminalSession? _session;
@@ -147,11 +159,11 @@ class _TerminalPageState extends State<TerminalPage>
           // rows, whatever the device and keyboard do to the grid.
           if (widget.demo && rows != _demoRows) {
             _demoRows = rows;
-            _session?.feed(demoSessionBytes(rows: rows));
+            if (demoData) _session?.feed(demoSessionBytes(rows: rows));
           }
         };
       if (widget.demo) {
-        _session!.feed(demoSessionBytes());
+        if (demoData) _session!.feed(demoSessionBytes());
       } else {
         // Output that arrived while no page was attached.
         final buffered = terminal.takeBuffered();
@@ -448,7 +460,7 @@ class _TerminalPageState extends State<TerminalPage>
       widget.terminal.write(bytes);
       return;
     }
-    _session?.feed(_demoEcho(bytes));
+    if (demoData) _session?.feed(_demoEcho(bytes));
   }
 
   static Uint8List _demoEcho(Uint8List bytes) {
@@ -511,11 +523,13 @@ class _TerminalPageState extends State<TerminalPage>
     final session = _session;
     if (session != null) {
       // Demo echoes locally; there is no remote behind it.
-      if (widget.demo) {
+      if (widget.demo && demoData) {
         session.feed(Uint8List.fromList(utf8.encode('$command\r\n')));
       }
       return;
     }
+    // No emulator, no remote: the canned replies belong to the demo only.
+    if (!demoData) return;
     if (command == 'clear') {
       setState(_lines.clear);
       return;

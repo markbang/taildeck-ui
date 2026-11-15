@@ -6,6 +6,7 @@ import 'package:prism_ui/prism_ui.dart';
 
 import '../backend.dart';
 import '../data.dart';
+import '../demo/demo.dart';
 import '../l10n.dart';
 import '../glyphs.dart';
 import '../service_open.dart';
@@ -108,7 +109,9 @@ class _ServicesPageState extends State<ServicesPage> {
     final l10n = AppLocalizations.of(context);
     final store = ServicesScope.of(context);
     final backend = BackendScope.of(context);
-    final nodes = backend.available ? backend.nodes : [selfNode, ...peers];
+    final nodes = backend.available
+        ? backend.nodes
+        : (demoData ? [demoSelfNode, ...demoPeers] : const <NodeItem>[]);
     final byName = {for (final node in nodes) node.name: node};
     return PageBody(
       title: l10n.tabServices,

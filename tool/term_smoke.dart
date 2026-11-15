@@ -5,7 +5,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:taildeck_ui/src/native/term.dart';
-import 'package:taildeck_ui/src/native/term_demo.dart';
+import 'package:taildeck_ui/src/demo/demo_term.dart';
 
 var _failures = 0;
 

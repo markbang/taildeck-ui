@@ -4,6 +4,7 @@ import 'package:flutter/widgets.dart';
 import 'package:prism_ui/prism_ui.dart';
 
 import 'backend.dart';
+import 'demo/demo.dart';
 import 'favicons.dart';
 import 'l10n.dart';
 import 'preview_env.dart';
@@ -27,7 +28,7 @@ class _TaildeckAppState extends State<TaildeckApp> with WidgetsBindingObserver {
   /// `?favicons=demo` draws bundled icons instead of asking a node, so the
   /// preview can show the loaded state without a tailnet.
   late final favicons = FaviconsController(
-    fetch: previewParam('favicons') == 'demo'
+    fetch: demoData && previewParam('favicons') == 'demo'
         ? demoFavicon
         : (service) => backend.favicon(service),
   );

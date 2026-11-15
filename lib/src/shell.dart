@@ -9,6 +9,7 @@ import 'a11y.dart';
 import 'back.dart';
 import 'backend.dart';
 import 'data.dart';
+import 'demo/demo.dart';
 import 'herdr.dart';
 import 'preview_env.dart';
 import 'glyphs.dart';
@@ -46,7 +47,7 @@ class _TaildeckShellState extends State<TaildeckShell>
   static const _tabs = 4;
 
   int _tab = (int.tryParse(previewParam('tab') ?? '') ?? 0).clamp(0, _tabs - 1);
-  NodeItem? _node = _queryNode();
+  NodeItem? _node;
   bool _floating = previewParam('nav') != 'docked';
   TabAnimation _animation = previewParam('anim') == 'fade'
       ? TabAnimation.fade
@@ -70,27 +71,40 @@ class _TaildeckShellState extends State<TaildeckShell>
   int _sceneDepth = 0;
   String _sceneKey = 'login';
   bool _previewSheetOpened = false;
+  bool _previewNodeDone = false;
   AgentNotifications? _alerts;
 
   late final PageController _pageController = PageController(initialPage: _tab);
 
   static NodeItem? _querySsh() {
     final name = previewParam('ssh');
-    if (name == null) return null;
+    if (name == null || !demoData) return null;
     if (name == 'demo') return demoNode;
-    for (final node in [selfNode, ...peers]) {
+    for (final node in [demoSelfNode, ...demoPeers]) {
       if (node.name == name) return node;
     }
     return null;
   }
 
-  static NodeItem? _queryNode() {
+  /// `?node=<name>` opens that node's page on launch and `?node=*` the first
+  /// one the tailnet lists, so a smoke test can reach the page without taps.
+  /// The list arrives after the first frame, so this runs again on each change.
+  void _openPreviewNode() {
     final name = previewParam('node');
-    if (name == null) return null;
-    for (final node in [selfNode, ...peers]) {
-      if (node.name == name) return node;
+    if (name == null || _node != null || _previewNodeDone || !mounted) return;
+    final backend = BackendScope.of(context);
+    final nodes = backend.available
+        ? backend.nodes
+        : (demoData ? [demoSelfNode, ...demoPeers] : const <NodeItem>[]);
+    if (nodes.isEmpty) return;
+    _previewNodeDone = true;
+    for (final node in nodes) {
+      if (name == '*' || node.name == name) {
+        debugPrint('taildeck preview: node=${node.name}');
+        setState(() => _node = node);
+        return;
+      }
     }
-    return null;
   }
 
   @override
@@ -117,6 +131,7 @@ class _TaildeckShellState extends State<TaildeckShell>
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _openTappedPane();
+      _openPreviewNode();
       unawaited(_openPreviewSheet());
     });
   }
@@ -276,7 +291,10 @@ class _TaildeckShellState extends State<TaildeckShell>
     final backend = BackendScope.of(context);
     if (!_previewShell && backend.available && !backend.signedIn) return;
     _previewSheetOpened = true;
-    final node = _node ?? selfNode;
+    // The preview sheets need a node: the open page, the tailnet's own, or the
+    // demo one in a build that still carries it.
+    final node = _node ?? backend.self ?? (demoData ? demoSelfNode : null);
+    if (node == null) return;
     final l10n = AppLocalizations.of(context);
     debugPrint('taildeck preview: sheet=$which');
     switch (which) {
@@ -607,6 +625,21 @@ class _TaildeckShellState extends State<TaildeckShell>
   }
 }
 
+/// How far [position] sits from the visible page, clamped to one page.
+///
+/// `ScrollController.position` throws when the controller owns no position or
+/// two at once, which happens while the shell is reparented during the login
+/// cross-fade. A build must never throw over a missing metric.
+double tabOffset(PageController controller, int position) {
+  if (!controller.hasClients || controller.positions.isEmpty) return 0;
+  final metrics = controller.positions.first;
+  if (!metrics.hasContentDimensions || metrics.viewportDimension == 0) {
+    return 0;
+  }
+  final page = metrics.pixels / metrics.viewportDimension;
+  return (position - page).clamp(-1.0, 1.0);
+}
+
 /// Keeps the page at rest while the controller slides, so a tab switch
 /// cross-fades in place — FlClash's fade mode, minus the snapshotting.
 class _TabPage extends StatelessWidget {
@@ -624,15 +657,7 @@ class _TabPage extends StatelessWidget {
   final bool fadeOnly;
   final Widget child;
 
-  double get _offset {
-    if (!controller.hasClients) return 0;
-    final metrics = controller.position;
-    if (!metrics.hasContentDimensions || metrics.viewportDimension == 0) {
-      return 0;
-    }
-    final page = metrics.pixels / metrics.viewportDimension;
-    return (position - page).clamp(-1.0, 1.0);
-  }
+  double get _offset => tabOffset(controller, position);
 
   @override
   Widget build(BuildContext context) {
