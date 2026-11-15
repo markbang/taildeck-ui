@@ -39,21 +39,10 @@ adb shell svc power stayon true > /dev/null 2>&1 || true
 adb shell settings put system screen_off_timeout 2147483647 > /dev/null 2>&1 || true
 adb shell wm dismiss-keyguard > /dev/null 2>&1 || true
 
-# The launcher activity is resolved after the install commits; a package
-# manager that has not caught up yet answers "No activity found".
-resolve_activity() {
-  local found
-  for _ in 1 2 3 4 5; do
-    found=$(adb shell cmd package resolve-activity --brief "$app" 2>/dev/null | tail -n 1 | tr -d '\r')
-    case "$found" in
-      */*) echo "$found"; return 0 ;;
-    esac
-    sleep 2
-  done
-  echo "$app/.MainActivity"
-}
-activity=$(resolve_activity)
-note "activity: $activity"
+# Launch by package, never by the `pkg/.MainActivity` form: the activity lives
+# in the Flutter namespace (top.bangwu.taildeck_ui), and am resolves that short
+# form against the applicationId, which is a different package.
+note "package: $app"
 
 ui() {
   for _ in 1 2 3; do
@@ -105,7 +94,7 @@ fill_field() { # <index> <value>
 launch_url() { # <url>
   adb shell am force-stop "$app" > /dev/null 2>&1 || true
   sleep 1
-  adb shell "am start -W -a android.intent.action.VIEW -d '$1' -n $activity" > "$out/launch.txt" 2>&1 || true
+  adb shell "am start -W -a android.intent.action.VIEW -d '$1' -p $app" > "$out/launch.txt" 2>&1 || true
   sleep 3
 }
 
@@ -153,7 +142,8 @@ cold_start() { # <tag>
   adb shell screenrecord --time-limit 6 --bit-rate 8000000 /sdcard/cold.mp4 > /dev/null 2>&1 &
   local recorder=$!
   sleep 1.2
-  adb shell am start -W -n "$activity" > "$out/$tag-launch.txt" 2>&1 || true
+  adb shell "am start -W -a android.intent.action.MAIN \
+    -c android.intent.category.LAUNCHER -p $app" > "$out/$tag-launch.txt" 2>&1 || true
   sleep 5
   wait "$recorder" 2> /dev/null || true
   adb pull /sdcard/cold.mp4 "$out/$tag.mp4" > /dev/null 2>&1 || true
