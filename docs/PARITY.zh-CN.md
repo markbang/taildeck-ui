@@ -48,7 +48,7 @@ Flutter 客户端对 [markbang/taildeck](https://github.com/markbang/taildeck)�
 | 子代理会话 | 打开子代理的调用记录 | `td_herdr_subagent` 读取 pane 会话里的子代理文件，带类型、描述和完成状态 | 部分 | 只支持 Claude，且只验证了错误路径；没有跑过真实子代理 |
 | 图片 | 显示会话里的图片和代理点名的文件 | `td_herdr_image` 取 `img:` 引用，会话里显示缩略图，全屏可缩放，`td_herdr_upload` 上传选中的文件 | 部分 | 渲染和全屏已实现；输入框还没有附件按钮，节点上的文件路径目前显示占位 |
 | 斜杠命令 | `/` 命令补全 | 每个 harness 的内置命令，加上从节点读到的 `/` 命令和技能，↑↓/Esc 选择并插入 | 部分 | 内置列表验证过；没有节点，节点命令未验证 |
-| 设置与日志 | Tailnet、设备、服务、SSH 密钥、日志 | Tailnet/设备信息、服务打开方式、导航、切页动画、语言、日志页 | 已完成 | 已截图（M3b、无障碍一轮） |
+| 设置与日志 | Tailnet、设备、服务、SSH 密钥、日志 | 分组入口列表（Tailnet 与设备、SSH 身份、服务、通知、终端、外观与语言、日志、关于），每行进入分组页；Kotlin 页里的每一项都还在 | 已完成 | 已在模拟器截图（`tool/screenshots_android.sh`） |
 | 退出登录 | 停止并登出节点 | `td_logout`，带确认 | 未验证 | 需要已登录的节点 |
 | Android 前台服务 | 退到后台时保持节点存活 | `dataSync` 前台服务加一条低优先级通知，节点进入 `Running` 时启动，停止或退出登录时结束 | 未验证 | 已进合并后的 manifest 和 debug APK；没有真机确认进程退到后台后仍存活 |
 | Android 网络钩子 | 基于 ConnectivityManager 的网卡和 DNS | `PlatformBridge.kt` + JNI（`platform_jni.c`），`"platform": "host"` | 已完成 | #16 合入；CI 能构建，尚未在真机运行 |

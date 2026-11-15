@@ -524,6 +524,18 @@ class AppLocalizations implements UiLocalizations {
     _ => id,
   };
 
+  String get tailnetAndDevice => _zh ? 'Tailnet 与设备' : 'Tailnet & device';
+  String get appearanceAndLanguage =>
+      _zh ? '外观与语言' : 'Appearance & language';
+  String get opensSection => _zh ? '打开设置页' : 'Opens its settings';
+  String get on => _zh ? '开' : 'On';
+  String get unavailable => _zh ? '不可用' : 'Unavailable';
+  String get off => _zh ? '关' : 'Off';
+  String keyCount(int count) =>
+      _zh ? '$count 个密钥' : '$count ${count == 1 ? 'key' : 'keys'}';
+  String terminalFontSizeValue(double size) =>
+      '${size.toStringAsFixed(0)} pt';
+
   String get appearance => _zh ? '外观' : 'Appearance';
   String get theme => _zh ? '主题' : 'Theme';
   String get system => _zh ? '跟随系统' : 'System';
@@ -583,6 +595,9 @@ class AppLocalizations implements UiLocalizations {
   String get publicKeyUnavailable => _zh
       ? '无法读取公钥，连接时由服务器验证'
       : 'Public key unreadable; the server checks it on connect';
+  String get sshKeysHint => _zh
+      ? '密钥存放在应用的本机目录，只用于 SSH 身份验证。'
+      : 'Keys live in the app directory on this device and are used for SSH only.';
   String get forgetHostKeys => _zh ? '忘记已知主机' : 'Forget known hosts';
   String get forgetHostKeysHint =>
       _zh ? '下次连接会重新信任主机密钥。' : 'The next connection trusts host keys again.';

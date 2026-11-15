@@ -92,10 +92,31 @@ Pick the control from the kind of value, not from how it looks in the form:
 - `SelectRow` (`lib/src/widgets/select_row.dart`) opens prism_ui's
   `PopupAnchor` + `PopupMenu` (the iOS-style menu) with a check on the current
   value, and reads as one item: "label, value" plus a select hint. Disable it
-  with `enabled: false` while its form is submitting.
+  with `enabled: false` while its form is submitting. As FlClash's option rows
+  do, the value sits at the row's end behind a picker glyph, and the whole row
+  opens the menu.
+- A value is one line: `RowValue` ends at a 160 dp cap with an ellipsis, so a
+  long control server never wraps into two centred lines. Titles yield room
+  first (they ellipsize), then the value does.
+- The value's own words stay in the semantics label ("Control server,
+  controlplane.tailscale.com"), so a screen reader hears what the ellipsis
+  hides.
 - `SegmentedControl` is only for switching a view or filter (segments of the
   same screen), never for a form value: a segmented row says "show me this",
   a select says "save this".
+
+## Settings sections
+
+- The settings tab is a list of sections, not one long page: each row carries
+  a badge, the section's name and what it holds now ("Terminal, 13 pt"), and
+  opens a section page over the tab (`BackStack`, so back returns to the list).
+  This is FlClash's grouped settings, and it keeps every row the Kotlin page
+  had.
+- A section page keeps the floating dock; its last row clears the dock plus
+  the gesture area (`pageBottomPadding`). The same padding ends every page
+  that scrolls, so nothing sits under the dock.
+- Content scrolls under the status bar over an opaque-to-transparent scrim
+  (`PageBody`), so a scrolled title never collides with the system icons.
 
 ## Motion
 

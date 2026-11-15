@@ -63,6 +63,7 @@ class _TaildeckShellState extends State<TaildeckShell>
   final bool _previewShell = previewParam('preview') == '1';
   final _terminals = TerminalStore();
   final _exit = ExitGuard();
+  final _backStack = BackStack();
   // The terminal page currently open; its session lives on in [_terminals].
   SshTerminal? _attached;
   final bool _sshDemo = previewParam('ssh') == 'demo';
@@ -197,6 +198,7 @@ class _TaildeckShellState extends State<TaildeckShell>
   /// Esc leaves the terminal and node detail, the two pages the shell opens
   /// over itself; sheets and dialogs answer Esc on their own routes.
   void _handleEscape() {
+    if (_backStack.closeTop()) return;
     if (_attached != null) {
       _leaveTerminal();
       return;
@@ -210,6 +212,10 @@ class _TaildeckShellState extends State<TaildeckShell>
   void _handleBack() {
     if (hideKeyboard(context)) {
       logBack(BackStep.keyboard);
+      return;
+    }
+    if (_backStack.closeTop()) {
+      logBack(BackStep.page);
       return;
     }
     if (_attached != null) {
@@ -592,6 +598,7 @@ class _TaildeckShellState extends State<TaildeckShell>
         return const AgentsPage();
       case 3:
         return SettingsPage(
+          backStack: _backStack,
           theme: widget.theme,
           floatingNavigation: _floating,
           onFloatingNavigationChanged: (value) =>
@@ -599,7 +606,6 @@ class _TaildeckShellState extends State<TaildeckShell>
           tabAnimation: _animation,
           onTabAnimationChanged: (value) => setState(() => _animation = value),
           onSignOut: _signOut,
-          onToggleTheme: widget.theme.toggle,
         );
       default:
         final node = _node;

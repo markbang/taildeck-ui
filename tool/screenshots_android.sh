@@ -1,0 +1,163 @@
+#!/usr/bin/env bash
+# Stills of the settings redesign on a running emulator: the grouped list, a
+# section page, an open picker, a long value at the row's end, the foot of the
+# logs above the floating dock, and content scrolled under the status bar.
+# A missing shot is reported, never failed.
+# Usage: tool/screenshots_android.sh <flutter-apk> [app-id] [out-dir]
+set -euo pipefail
+
+apk=${1:?usage: tool/screenshots_android.sh <flutter-apk> [app-id] [out-dir]}
+app=${2:-top.bangwu.taildeck}
+out=${3:-shots}
+mkdir -p "$out"
+summary="$out/summary.txt"
+: > "$summary"
+note() { echo "$*" | tee -a "$summary"; }
+
+adb wait-for-device
+adb shell settings put global hide_error_dialogs 1 > /dev/null 2>&1 || true
+for scale in window_animation_scale transition_animation_scale animator_duration_scale; do
+  adb shell settings put global "$scale" 1 > /dev/null 2>&1 || true
+done
+sleep 20
+adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS > /dev/null 2>&1 || true
+
+ui() {
+  local attempt
+  for attempt in 1 2 3; do
+    adb shell uiautomator dump /sdcard/ui.xml > /dev/null 2>&1 || true
+    adb pull /sdcard/ui.xml "$out/ui.xml" > /dev/null 2>&1 || true
+    if python3 tool/ui.py "$out/ui.xml" "$@" 2> /dev/null; then return 0; fi
+    sleep 0.5
+  done
+  return 1
+}
+
+shot() { # <name>
+  adb exec-out screencap -p > "$out/$1.png" 2> /dev/null || rm -f "$out/$1.png"
+  if [ -s "$out/$1.png" ]; then
+    note "$1: $(stat -c%s "$out/$1.png") bytes"
+  else
+    note "$1: no screenshot"
+  fi
+}
+
+tap() { # <needle>
+  local point
+  if point=$(ui tap "$1"); then
+    adb shell input tap $point > /dev/null 2>&1 || true
+    sleep 2
+    return 0
+  fi
+  note "tap: no row matching '$1'"
+  return 1
+}
+
+swipe_up() { adb shell input swipe 540 1800 540 900 280 > /dev/null 2>&1 || true; sleep 1; }
+swipe_down() { adb shell input swipe 540 900 540 1800 280 > /dev/null 2>&1 || true; sleep 1; }
+
+record() { # <name> <seconds> <shell function>
+  local name=$1 seconds=$2 action=$3
+  adb shell pkill -f screenrecord > /dev/null 2>&1 || true
+  sleep 0.7
+  adb shell rm -f /sdcard/rec.mp4 > /dev/null 2>&1 || true
+  adb shell screenrecord --time-limit "$((seconds + 2))" --bit-rate 6000000 \
+    /sdcard/rec.mp4 > /dev/null 2>&1 &
+  local recorder=$!
+  sleep 0.4
+  "$action" || true
+  wait "$recorder" 2> /dev/null || true
+  sleep 0.5
+  adb pull /sdcard/rec.mp4 "$out/$name-raw.mp4" > /dev/null 2>&1 || true
+  if [ -s "$out/$name-raw.mp4" ]; then
+    ffmpeg -loglevel error -y -ss 0.2 -i "$out/$name-raw.mp4" -t "$seconds" \
+      -an -vf 'scale=360:-2' "$out/$name.mp4" || true
+    [ -s "$out/$name.mp4" ] && note "$name: $(stat -c%s "$out/$name.mp4") bytes"
+  else
+    note "$name: no recording"
+  fi
+}
+
+launch() { # [url]
+  local url=${1:-} attempt resumed
+  for attempt in 1 2 3; do
+    adb shell am force-stop "$app" > /dev/null 2>&1 || true
+    sleep 1
+    if [ -n "$url" ]; then
+      adb shell "am start -W -a android.intent.action.VIEW -d '$url' '$app'" > /dev/null 2>&1 || true
+    else
+      adb shell monkey -p "$app" -c android.intent.category.LAUNCHER 1 > /dev/null 2>&1 || true
+    fi
+    sleep 6
+    resumed=$(adb shell dumpsys activity activities 2> /dev/null \
+      | grep -m1 -E 'mResumedActivity|topResumedActivity' || true)
+    case "$resumed" in
+      *"$app"*) return 0 ;;
+    esac
+    note "launch attempt $attempt: ${resumed:-no resumed activity}"
+    sleep 3
+  done
+  note "launch failed"
+  return 1
+}
+
+flow() { # the settings flow, for the recording and the stills
+  tap 'Tailnet & device' || true
+  sleep 1.5
+  adb shell input keyevent KEYCODE_BACK > /dev/null 2>&1 || true
+  sleep 1.5
+  tap 'Appearance & language' || true
+  sleep 1.5
+  tap 'Theme' || true
+  sleep 2.5
+  adb shell input keyevent KEYCODE_BACK > /dev/null 2>&1 || true
+  sleep 1
+}
+
+adb uninstall "$app" > /dev/null 2>&1 || true
+adb install -g "$apk" > "$out/install.txt" 2>&1 || { note "install failed, see install.txt"; exit 0; }
+
+launch "taildeck://preview/?preview=1&tab=3&lang=en"
+
+if ui has 'Tailnet & device' > /dev/null 2>&1; then
+  note "settings list: opened"
+else
+  note "settings list: the grouped list did not show"
+fi
+shot settings-grouped
+record settings-flow 14 flow
+
+# ---- a section page, and the long control server at the row's end ---------
+if tap 'Tailnet & device'; then
+  sleep 1
+  if ui has 'controlplane' > /dev/null 2>&1; then
+    note "control server: on one line, $(ui text 'controlplane' | tr -d '\n')"
+  fi
+  shot settings-tailnet
+  adb shell input keyevent KEYCODE_BACK > /dev/null 2>&1 || true
+  sleep 2
+fi
+
+# ---- an open picker ------------------------------------------------------
+if tap 'Appearance & language'; then
+  shot settings-appearance
+  if tap 'Theme'; then
+    sleep 1
+    shot settings-picker
+    adb shell input keyevent KEYCODE_BACK > /dev/null 2>&1 || true
+    sleep 1.5
+  fi
+  adb shell input keyevent KEYCODE_BACK > /dev/null 2>&1 || true
+  sleep 2
+fi
+
+# ---- the foot of the logs, above the floating dock ----------------------
+if tap 'Logs'; then
+  sleep 2
+  swipe_up
+  shot settings-logs-statusbar
+  for _ in 1 2 3 4 5 6 7 8; do swipe_up; done
+  shot settings-logs-bottom
+fi
+
+note "done"
