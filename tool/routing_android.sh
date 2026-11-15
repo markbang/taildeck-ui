@@ -148,16 +148,16 @@ cold_start() { # <tag>
   sleep 2
   adb logcat -c > /dev/null 2>&1 || true
   adb shell rm -f /sdcard/cold.mp4 > /dev/null 2>&1 || true
-  # A debug cold start can take 7 s on a loaded emulator, so the clip is long
-  # enough to hold the first seconds after the app paints.
-  adb shell screenrecord --time-limit 9 --bit-rate 8000000 /sdcard/cold.mp4 > /dev/null 2>&1 &
+  # A debug cold start can take 10 s on a loaded emulator: the clip must still
+  # be running after the app paints, or the frames are only the launch screen.
+  adb shell screenrecord --time-limit 14 --bit-rate 8000000 /sdcard/cold.mp4 > /dev/null 2>&1 &
   local recorder=$!
   sleep 1.2
   # monkey starts a launcher activity of a stopped package; an implicit
   # MAIN/LAUNCHER intent does not resolve after force-stop.
   adb shell monkey -p "$app" -c android.intent.category.LAUNCHER 1 \
     > "$out/$tag-launch.txt" 2>&1 || true
-  sleep 7.5
+  sleep 12.5
   wait "$recorder" 2> /dev/null || true
   adb pull /sdcard/cold.mp4 "$out/$tag.mp4" > /dev/null 2>&1 || true
   [ -s "$out/$tag.mp4" ] || return 1
@@ -166,11 +166,11 @@ cold_start() { # <tag>
   painted=$(adb logcat -d 2>/dev/null | grep -m1 "Displayed $app/" \
     | sed -n 's/.*+\([0-9]\+\)s[0-9]*ms.*/\1/p')
   start_at=$(awk -v d="${painted:-2}" 'BEGIN{print (1.2 + d - 0.5)}')
-  ffmpeg -loglevel error -y -ss "$start_at" -t 3.0 -i "$out/$tag.mp4" \
+  ffmpeg -loglevel error -y -ss "$start_at" -i "$out/$tag.mp4" -t 3.0 \
     -an -vf 'scale=360:-2' -c:v libx264 -pix_fmt yuv420p -crf 28 "$out/$tag-3s.mp4" || true
-  ffmpeg -loglevel error -y -ss 1.0 -t 6.5 -i "$out/$tag.mp4" \
+  ffmpeg -loglevel error -y -ss 1.0 -i "$out/$tag.mp4" -t 12.0 \
     -vf 'fps=8,scale=48:48,format=gray' -f rawvideo "$out/$tag.raw" || return 1
-  ffmpeg -loglevel error -y -ss "$(awk -v s="$start_at" 'BEGIN{print s + 0.6}')" \
+  ffmpeg -loglevel error -y -ss "$(awk -v s="$start_at" 'BEGIN{print s + 2.2}')" \
     -i "$out/$tag.mp4" -frames:v 1 "$out/$tag-thumb.png" || true
 }
 
