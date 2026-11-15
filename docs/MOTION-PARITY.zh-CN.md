@@ -42,7 +42,7 @@ Flutter 侧全部走 `context.motionDuration(spec)`（`prism_ui`），因此系�
 | 4 | `MainActivity.kt:95` | 返回：页面滑到 1/5 并淡出 | 慢空间、快速淡出 | same | 已对齐 | `flutter-detail.mp4` |
 | 5 | `MainActivity.kt:99` | 登录路由淡入淡出 | 慢空间 / 快速淡出 | same, scene `login` | 已对齐 | 未录制（需要未登录启动） |
 | 6 | `MainActivity.kt:107` | 登录完成：外壳淡入并从 0.96 放大 | 慢空间 | `MotionSwitcher(fadeThrough: true)` (`shell.dart:539`) | 已对齐 | 未录制（需要一次登录） |
-| 7 | `HomeScreen.kt:152` | 切换标签：滑动 1/8 页宽并交叉淡化 | 入慢空间、出快空间 | `shell.dart:172` + `_TabPage` (`shell.dart:646`) | 已对齐 | `flutter-tabs.mp4` |
+| 7 | `HomeScreen.kt:152` | 切换标签：整页滑过相邻页，两页都不透明。Kotlin 版是滑动 1/8 页宽并交叉淡化，移植后变成两个半透明页面互相叠加；标签页不允许半透明。选择「淡入」时，旧页先淡出，新页再淡入。 | 慢空间；选「淡入」时 `fadeTabDuration` | `motion.dart` `TabSwitcher`（`shell.dart:624`） | 有意偏离 | `tab-overlap-before.mp4` / `tab-overlap-after.mp4` |
 | 8 | `LoginScreen.kt:162` | 登录阶段切换：淡入 + 垂直滑动 1/6 + 尺寸过渡 | 慢空间 | `login.dart:526` `_StageSwap` | 已对齐 | `flutter-start.mp4` |
 | 9 | `LoginScreen.kt:129` | “高级”区域展开与收起 | 默认规格 | `login.dart:445` `ExpandVisibility` | 已对齐 | `login-expand.mp4`（Kotlin | Flutter） |
 | 10 | `NodeScreen.kt:183` | Ping 结果行展开并淡入 | 慢空间 + 淡入 | `node_detail.dart:265` `ExpandVisibility` | 已对齐 | `content-size.mp4`（Kotlin | Flutter） |
@@ -114,6 +114,8 @@ Flutter 侧全部走 `context.motionDuration(spec)`（`prism_ui`），因此系�
 | `loading.mp4` | Kotlin / Flutter：按下登录按钮，以及随后的载入圆点 |
 | `flutter-login-expand.mp4` | 本版本：认证密钥区域展开（淡入 + 尺寸变化） |
 | `flutter-tabs.mp4` | 本版本：节点 → 服务 → Agent → 节点，滑动 1/8 并交叉淡化 |
+| `tab-overlap-before.mp4` | v0.2.15：标签页半透明叠加，两个页头和两份内容同时可见 |
+| `tab-overlap-after.mp4` | 本版本：同样的切换，一次只有一个不透明的页面 |
 | `flutter-detail.mp4` | 本版本：节点页从 1/5 处滑入，返回时反向 |
 | `flutter-start.mp4` | 本版本：登录阶段切换（淡入 + 垂直滑动 1/6） |
 
@@ -141,3 +143,5 @@ python3 tool/motion_web.py                         # Web 片段，需要本地�
 保持为 1。它会在每个片段开始前用 `uiautomator dump` 重新定位控件，因此设备需为
 英文界面且没有系统弹窗。空片或短于要求的片段最多重试三次；`summary.txt` 写明
 哪些校验通过、哪个片段没能拍到什么。
+
+标签切换门禁（`tool/tabs_android.sh`，随 `android-smoke` 运行）在模拟器上连续切换十次，每次保留动画中间和静止后的截图；应用报告同屏绘制两页、无障碍树中出现两个页头，或日志里有 Flutter 异常，都会失败。

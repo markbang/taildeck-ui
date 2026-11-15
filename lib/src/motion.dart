@@ -762,6 +762,12 @@ class _TabSwitcherState extends State<TabSwitcher>
     _to = widget.index.toDouble();
     if (!widget.animate || context.disableAnimations || widget.count < 2) {
       _position.value = _to;
+      if (_probe) {
+        debugPrint(
+          'taildeck tabprobe: jump animate=${widget.animate} '
+          'still=${context.disableAnimations}',
+        );
+      }
       return;
     }
     _position.animateTo(
