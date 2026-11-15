@@ -6,7 +6,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 abstract final class AppInfo {
   static String _version = '';
 
-  /// '0.2.14' on a real build; '—' when the platform could not answer.
+  /// '0.2.15' on a real build; '—' when the platform could not answer.
   static String get version => _version.isEmpty ? '—' : _version;
 
   static Future<void> load() async {
