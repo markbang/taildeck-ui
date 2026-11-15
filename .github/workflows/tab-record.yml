@@ -142,8 +142,9 @@ jobs:
               'fps=12,scale=360:-1:flags=lanczos,split[a][b];[a]palettegen[p];[b][p]paletteuse' \
               "tabs-$name/tabs.gif" || true
           done
-          ffmpeg -loglevel error -y -i tabs-before/tabs.mp4 -i tabs-after/tabs.mp4 \
-            -filter_complex '[0:v]scale=360:-2,pad=360:ih:0:0:color=0x101214[l];[1:v]scale=360:-2,pad=360:ih:0:0:color=0x101214[r];[l][r]hstack=inputs=2' \
+          # The same first eight seconds of each clip, side by side.
+          ffmpeg -loglevel error -y -ss 2 -t 8 -i tabs-before/tabs.mp4 -ss 2 -t 8 -i tabs-after/tabs.mp4 \
+            -filter_complex '[0:v]scale=360:-2,pad=360:ih:0:0:color=0x101214[l];[1:v]scale=360:-2,pad=360:ih:0:0:color=0x101214[r];[l][r]hstack=inputs=2,drawtext=text=before:x=12:y=12:fontsize=20:fontcolor=white:box=1:boxcolor=black@0.5,drawtext=text=after:x=372:y=12:fontsize=20:fontcolor=white:box=1:boxcolor=black@0.5' \
             -an tabs-side-by-side.mp4 || true
           ls -l tabs-side-by-side.mp4 2>/dev/null || true
       - name: Job summary
