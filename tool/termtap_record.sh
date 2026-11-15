@@ -21,6 +21,7 @@ mkdir -p "$out"
 summary="$out/summary.txt"
 : > "$summary"
 failures=0
+gate_ran=0
 note() { echo "$*" | tee -a "$summary"; }
 fail() { note "GATE FAIL: $*"; failures=$((failures + 1)); }
 
@@ -240,17 +241,22 @@ send_command() { # <text> [settle seconds]
 # 3. the key row's keyboard button hides it; a tap brings it back.
 # 4. typing after the tap reaches the shell.
 gate() {
+  gate_ran=1
   hide_ime
   [ "$(ime_state)" = "mInputShown=true" ] && { fail "IME did not close"; return 0; }
   tap_grid 0.3 0.35 || fail "no grid point to tap"
   sleep 4
   [ "$(ime_state)" = "mInputShown=true" ] || fail "tap did not show the IME"
   shot tap-keyboard
-  local focus
-  focus=$(focused_window)
-  case "$focus" in
-    *"$app"*) note "gate: focused window $focus" ;;
-    *) fail "terminal window is not focused: ${focus:-none}" ;;
+  adb shell dumpsys input_method > "$out/input-method-tap.txt" 2> /dev/null || true
+  # With the IME up, dumpsys window's mCurrentFocus is the IME window, so the
+  # focused app comes from the activity instead.
+  local resumed
+  resumed=$(adb shell dumpsys activity activities 2> /dev/null \
+    | grep -m1 'topResumedActivity' | tr -d '\r' || true)
+  case "$resumed" in
+    *"$app"*) note "gate: focused app $resumed" ;;
+    *) fail "terminal is not the resumed activity: ${resumed:-none}" ;;
   esac
 
   tap_grid 0.3 0.35
@@ -273,7 +279,17 @@ gate() {
     fail "typing after the tap did not reach the shell"
   fi
 
-  tap_label 'Hide keyboard' || fail "no Hide keyboard button on the key row"
+  # Enter's IME action may have put the keyboard away, so the row (and its
+  # keyboard button) need the tap again before the button is exercised.
+  tap_grid 0.3 0.35
+  sleep 3
+  [ "$(ime_state)" = "mInputShown=true" ] || fail "the IME was not up for the keyboard button"
+  if ui has 'Hide keyboard' > /dev/null 2>&1; then
+    tap_label 'Hide keyboard' || fail "the keyboard button did not take a tap"
+  else
+    cp "$out/ui.xml" "$out/ui-no-keyboard-button.xml" 2> /dev/null || true
+    fail "no Hide keyboard button on the key row"
+  fi
   sleep 2.5
   [ "$(ime_state)" = "mInputShown=true" ] && fail "the keyboard button did not hide the IME"
   tap_grid 0.3 0.35
@@ -336,19 +352,26 @@ check_cell() { # <log>
 
 # ---- vim and htop --------------------------------------------------------
 vim_step() {
-  send_command "vim -u NONE -c 'set mouse=a' -c 'set laststatus=2'" 4
+  # A script on the runner keeps the quotes out of `adb shell input text`,
+  # which would otherwise hand vim `-c set` and a file called `mouse=a`.
+  cat > /tmp/tapvim.sh <<'VIM'
+#!/bin/sh
+printf 'one\ntwo\nthree\nfour\nfive\nsix\nseven\neight\nnine\nten\neleven\ntwelve\n' > /tmp/tapvim.txt
+exec vim -u NONE -c 'set mouse=a' -c 'set laststatus=2' -c 'set ruler' /tmp/tapvim.txt
+VIM
+  send_command "sh /tmp/tapvim.sh" 5
   hide_ime
   tap_grid 0.45 0.4
   sleep 2
   shot tap-vim-before
-  tap_grid 0.15 0.4
+  tap_grid 0.15 0.6
   sleep 2
   shot tap-vim-after
-  note "vim: tapped one cell, then another with the keyboard up; stills tap-vim-*.png"
-  adb shell input text ":q!" > /dev/null 2>&1 || true
-  adb shell input keyevent 66 > /dev/null 2>&1 || true
-  sleep 1
+  note "vim: tapped one line, then another with the keyboard up; stills tap-vim-*.png"
+  send_command ':q!' 1
 }
+
+quit_htop() { send_command q 1; }
 
 htop_step() {
   send_command "htop" 4
@@ -360,8 +383,7 @@ htop_step() {
   sleep 2
   shot tap-htop-after
   note "htop: tapped one process row, then another; stills tap-htop-*.png"
-  adb shell input text "q" > /dev/null 2>&1 || true
-  sleep 1
+  quit_htop
 }
 
 # ---- setup ---------------------------------------------------------------
@@ -375,6 +397,8 @@ if ! ui has 'Terminal output' > /dev/null 2>&1; then
   echo "termtap: failed (no terminal)" | tee -a "$summary"
   exit 1
 fi
+
+record tap-focus 30 gate
 
 # The probe runs on the runner, where the peer's bash runs too.
 cat > /tmp/mouseprobe.py <<'PY'
@@ -413,6 +437,9 @@ check_cell /tmp/tap-mouse.log
 
 record tap-vim 18 vim_step
 record tap-htop 16 htop_step
+
+# A gate that never ran is not a gate: the call above must reach it.
+[ "$gate_ran" -eq 1 ] || fail "the tap gate did not run"
 
 if [ "$failures" -gt 0 ]; then
   note "termtap: $failures gate failure(s)"
