@@ -39,10 +39,19 @@ adb shell svc power stayon true > /dev/null 2>&1 || true
 adb shell settings put system screen_off_timeout 2147483647 > /dev/null 2>&1 || true
 adb shell wm dismiss-keyguard > /dev/null 2>&1 || true
 
-# Launch by package, never by the `pkg/.MainActivity` form: the activity lives
-# in the Flutter namespace (top.bangwu.taildeck_ui), and am resolves that short
-# form against the applicationId, which is a different package.
-note "package: $app"
+# The activity lives in the Flutter namespace, not the applicationId, and
+# resolve-activity's short `pkg/.MainActivity` form points at a class that is
+# not in the APK. Read the full name from the APK instead.
+launch_activity=${LAUNCH_ACTIVITY:-}
+if [ -z "$launch_activity" ]; then
+  aapt2=$(ls -d "${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/opt/android-sdk}}"/build-tools/*/aapt2 2>/dev/null | sort -V | tail -1)
+  if [ -n "$aapt2" ]; then
+    launch_activity=$("$aapt2" dump badging "$apk" 2>/dev/null \
+      | sed -n "s/^launchable-activity: name='\([^']*\)'.*/\1/p")
+  fi
+fi
+component="$app/${launch_activity:-top.bangwu.taildeck_ui.MainActivity}"
+note "activity: $component"
 
 ui() {
   for _ in 1 2 3; do
@@ -94,7 +103,7 @@ fill_field() { # <index> <value>
 launch_url() { # <url>
   adb shell am force-stop "$app" > /dev/null 2>&1 || true
   sleep 1
-  adb shell "am start -W -a android.intent.action.VIEW -d '$1' -p $app" > "$out/launch.txt" 2>&1 || true
+  adb shell "am start -W -a android.intent.action.VIEW -d '$1' -n $component" > "$out/launch.txt" 2>&1 || true
   sleep 3
 }
 
@@ -139,26 +148,41 @@ cold_start() { # <tag>
   sleep 2
   adb logcat -c > /dev/null 2>&1 || true
   adb shell rm -f /sdcard/cold.mp4 > /dev/null 2>&1 || true
-  adb shell screenrecord --time-limit 6 --bit-rate 8000000 /sdcard/cold.mp4 > /dev/null 2>&1 &
+  # A debug cold start can take 7 s on a loaded emulator, so the clip is long
+  # enough to hold the first seconds after the app paints.
+  adb shell screenrecord --time-limit 9 --bit-rate 8000000 /sdcard/cold.mp4 > /dev/null 2>&1 &
   local recorder=$!
   sleep 1.2
-  adb shell "am start -W -a android.intent.action.MAIN \
-    -c android.intent.category.LAUNCHER -p $app" > "$out/$tag-launch.txt" 2>&1 || true
-  sleep 5
+  # monkey starts a launcher activity of a stopped package; an implicit
+  # MAIN/LAUNCHER intent does not resolve after force-stop.
+  adb shell monkey -p "$app" -c android.intent.category.LAUNCHER 1 \
+    > "$out/$tag-launch.txt" 2>&1 || true
+  sleep 7.5
   wait "$recorder" 2> /dev/null || true
   adb pull /sdcard/cold.mp4 "$out/$tag.mp4" > /dev/null 2>&1 || true
   [ -s "$out/$tag.mp4" ] || return 1
-  # The recording starts 1.2 s before the launch; keep the app's first 4 s.
-  ffmpeg -loglevel error -y -ss 1.0 -t 3.0 -i "$out/$tag.mp4" \
+  # The clip of the first 3 s starts where the system says the app painted.
+  local painted start_at
+  painted=$(adb logcat -d 2>/dev/null | grep -m1 "Displayed $app/" \
+    | sed -n 's/.*+\([0-9]\+\)s[0-9]*ms.*/\1/p')
+  start_at=$(awk -v d="${painted:-2}" 'BEGIN{print (1.2 + d - 0.5)}')
+  ffmpeg -loglevel error -y -ss "$start_at" -t 3.0 -i "$out/$tag.mp4" \
     -an -vf 'scale=360:-2' -c:v libx264 -pix_fmt yuv420p -crf 28 "$out/$tag-3s.mp4" || true
-  ffmpeg -loglevel error -y -ss 1.0 -t 4.0 -i "$out/$tag.mp4" \
+  ffmpeg -loglevel error -y -ss 1.0 -t 6.5 -i "$out/$tag.mp4" \
     -vf 'fps=8,scale=48:48,format=gray' -f rawvideo "$out/$tag.raw" || return 1
+  ffmpeg -loglevel error -y -ss "$(awk -v s="$start_at" 'BEGIN{print s + 0.6}')" \
+    -i "$out/$tag.mp4" -frames:v 1 "$out/$tag-thumb.png" || true
 }
 
 for n in $(seq 1 "$runs"); do
   tag=$(printf 'run-%02d' "$n")
   cold_start "$tag" || fail "run $n: the cold start was not recorded"
-  pid=$(adb shell pidof "$app" 2>/dev/null | tr -d '\r' || true)
+  pid=
+  for _ in 1 2 3 4 5 6; do
+    pid=$(adb shell pidof "$app" 2>/dev/null | tr -d '\r' || true)
+    [ -n "$pid" ] && break
+    sleep 2
+  done
   [ -n "$pid" ] || fail "run $n: $app is not running"
 
   python3 tool/frame_check.py --login "$out/login.raw" --home "$out/home.raw" \
@@ -178,7 +202,6 @@ for n in $(seq 1 "$runs"); do
     *) fail "run $n: the home shell never opened ($routes)" ;;
   esac
   note "$tag: $(cat "$out/$tag-check.txt") routes=${routes:-none}"
-  ffmpeg -loglevel error -y -ss 2.2 -i "$out/$tag.mp4" -frames:v 1 "$out/$tag-thumb.png" || true
 done
 
 # Evidence: one clip of a cold start and a contact sheet of every run.
