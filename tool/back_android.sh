@@ -8,6 +8,9 @@ set -euo pipefail
 apk=${1:?usage: tool/back_android.sh <apk> [application-id] [out-dir]}
 app=${2:-top.bangwu.taildeck}
 out=${3:-smoke-back}
+here=$(cd "$(dirname "$0")" && pwd)
+# shellcheck source=tool/android_gate.sh
+. "$here/android_gate.sh"
 mkdir -p "$out"
 
 # A frozen app is the interesting failure: keep the ANR trace with the log.
@@ -60,6 +63,8 @@ start() { # $1: preview query
     > "$out/launch.txt" 2>&1 || return 1
   grep -q "Activity: $app/" "$out/launch.txt" || return 1
   wait_first_frame
+  wait_home "$app" "$out" "$here" Services 30 \
+    || fail "the shell did not settle for $1; see launch.txt"
 }
 
 launch() { # $1: preview query; one retry, an emulator can stall a cold start

@@ -9,6 +9,9 @@ set -euo pipefail
 apk=${1:?usage: tool/agents_android.sh <apk> [application-id] [out-dir]}
 app=${2:-top.bangwu.taildeck}
 out=${3:-smoke-agents}
+here=$(cd "$(dirname "$0")" && pwd)
+# shellcheck source=tool/android_gate.sh
+. "$here/android_gate.sh"
 mkdir -p "$out"
 
 fail() {
@@ -31,6 +34,17 @@ adb uninstall "$app" > /dev/null 2>&1 || true
 adb install -g "$apk" > "$out/install.txt" 2>&1 || fail "adb install failed, see install.txt"
 
 shot() { adb exec-out screencap -p > "$out/$1.png" || true; }
+
+in_front() {
+  local pid focus
+  pid=$(adb shell pidof "$app" 2>/dev/null | tr -d '\r' || true)
+  [ -n "$pid" ] || return 1
+  focus=$(adb shell dumpsys window 2>/dev/null | grep -m1 mCurrentFocus | tr -d '\r' || true)
+  case "$focus" in
+    *"$app/"*) return 0 ;;
+  esac
+  return 1
+}
 
 # The page under test must be our process, in front: a dismissed app would
 # make every "no error on screen" check true for the wrong reason.
@@ -100,18 +114,22 @@ launch() {
 }
 
 # A cold start on a loaded emulator can ANR the debug build; one retry.
-if ! launch; then
+settled=0
+for attempt in 1 2; do
+  if launch && wait_home "$app" "$out" "$here" Services 45 && in_front; then
+    sleep 2
+    if ui has "Connecting to the tailnet"; then settled=1; break; fi
+  fi
+  note "Agents cold start attempt $attempt did not settle"
   sleep 5
-  launch || fail "the Agents tab never opened; see launch.txt and logcat-fail.txt"
-fi
+done
+[ "$settled" -eq 1 ] || fail "the loading state is not on screen"
 
 phase=$(adb logcat -d 2>/dev/null | grep -oE 'taildeck agents: [a-z]+' | tail -1 | awk '{print $3}')
 note "first phase in logcat: ${phase:-none}"
 [ "$phase" = "tailnet" ] || fail "the page did not start on the tailnet loading state (got '${phase:-none}')"
 
 alive "after launch"
-sleep 2
-ui has "Connecting to the tailnet" || fail "the loading state is not on screen"
 alive "first check"
 shot agents-start
 forbidden

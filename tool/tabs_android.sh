@@ -18,6 +18,8 @@ apk=${1:?usage: tool/tabs_android.sh <apk> [application-id] [out-dir]}
 app=${2:-top.bangwu.taildeck}
 out=${3:-smoke-tabs}
 here=$(cd "$(dirname "$0")" && pwd)
+# shellcheck source=tool/android_gate.sh
+. "$here/android_gate.sh"
 slow=${TABS_SLOW:-6}
 require_probe=${TABS_REQUIRE_PROBE:-1}
 mkdir -p "$out"
@@ -150,10 +152,8 @@ launch() {
     adb shell "am start -W -a android.intent.action.VIEW -d 'taildeck://preview/?preview=1&tab=0&tabprobe=1&splash=0&slow=$slow' -n $activity" \
       > "$out/launch.txt" 2>&1 || true
     if grep -q "Activity: $app/" "$out/launch.txt"; then
-      for _ in $(seq 1 90); do
-        if ui has Services > /dev/null 2>&1; then sleep 2; return 0; fi
-        sleep 1
-      done
+      # The shell must be in front with its launch screen gone before a tap.
+      wait_home "$app" "$out" "$here" Services 45 && return 0
     fi
     note "launch attempt $attempt: no tab bar yet"
     sleep 5
