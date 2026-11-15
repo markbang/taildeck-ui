@@ -81,7 +81,7 @@ class _StateOverlay implements WidgetStateProperty<Color?> {
 }
 
 class _PressRegionState extends State<PressRegion>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   static const _overlayFade = Duration(milliseconds: 50);
 
   late final _actions = <Type, Action<Intent>>{
