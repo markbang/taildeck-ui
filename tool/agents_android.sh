@@ -115,13 +115,14 @@ launch() {
 
 # A cold start on a loaded emulator can ANR the debug build; one retry.
 settled=0
-for attempt in 1 2; do
+for attempt in 1 2 3; do
   if launch && wait_home "$app" "$out" "$here" Services 45 && in_front; then
     sleep 2
     if ui has "Connecting to the tailnet"; then settled=1; break; fi
   fi
   note "Agents cold start attempt $attempt did not settle"
-  sleep 5
+  gate_dismiss
+  sleep 3
 done
 [ "$settled" -eq 1 ] || fail "the loading state is not on screen"
 

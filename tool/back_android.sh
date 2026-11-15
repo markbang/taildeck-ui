@@ -68,11 +68,15 @@ start() { # $1: preview query
     || fail "the shell did not settle for $1; see launch.txt"
 }
 
-launch() { # $1: preview query; one retry, an emulator can stall a cold start
-  if ! start "$1"; then
-    echo "retrying $1" | tee -a "$out/summary.txt"
-    start "$1" || fail "am start or first frame failed for $1, see launch.txt"
-  fi
+launch() { # $1: preview query; a loaded emulator can ANR a cold start
+  local attempt
+  for attempt in 1 2 3; do
+    start "$1" && return 0
+    echo "launch attempt $attempt for '$1' did not settle" | tee -a "$out/summary.txt"
+    gate_dismiss
+    sleep 3
+  done
+  fail "am start or the shell failed for $1, see launch.txt"
 }
 
 back() { # $1: seconds to settle (default 1.2)

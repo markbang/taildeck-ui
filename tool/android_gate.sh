@@ -53,6 +53,9 @@ wait_home() { # <app> <out-dir> <tool-dir> [marker] [seconds]
   local app=$1 out=$2 tools=$3 marker=${4:-Services} limit=${5:-45} waited=0
   local attempt
   while [ "$waited" -lt "$limit" ]; do
+    # A startup ANR kills the process; retrying the launch is the caller's job,
+    # not something another 30 s of waiting can fix.
+    [ -n "$(adb shell pidof "$app" 2>/dev/null | tr -d '\r' || true)" ] || return 1
     if gate_in_front "$app" &&
       adb logcat -d 2>/dev/null | grep -q 'taildeck route: shell'; then
       # The launch screen fades over 340 ms after the route is decided.
