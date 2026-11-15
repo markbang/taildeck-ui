@@ -1,7 +1,7 @@
 name: taildeck_ui
 description: "Taildeck redesign, built with prism_ui."
 publish_to: 'none'
-version: 0.2.17+37
+version: 0.2.18+38
 
 environment:
   sdk: ">=3.13.0 <4.0.0"
