@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # Tab switch gate: ten switches on a running emulator, each captured mid-flight
 # and at rest. A switch may never blend two pages: the app logs what it really
-# paints (?tabprobe=1), and at rest the accessibility tree must hold exactly
-# one page header. Any Flutter exception fails the run.
+# paints (?tabprobe=1). Mid-animation the accessibility tree holds zero or one
+# page header (a fade-through is legitimately between pages); at rest it must
+# settle to exactly the target header, never two. Any Flutter exception fails
+# the run, and so does a dismissed app: pid and focus are checked every step.
 #
 # The build must be a debug one: it carries the demo data the preview shell
 # needs, the probe and ?slow=, which stretches the transition so a still can
@@ -25,6 +27,7 @@ note() { echo "$*" | tee -a "$summary"; }
 fail() {
   echo "FAIL: $*" | tee -a "$summary"
   adb logcat -d > "$out/logcat-fail.txt" 2>&1 || true
+  adb pull /sdcard/ui.xml "$out/ui-fail.xml" > /dev/null 2>&1 || true
   exit 1
 }
 
@@ -82,6 +85,26 @@ dock() {
   )
 }
 
+# The page must be ours, in front. Without this an empty accessibility tree
+# (app gone, screen off) would read as "zero headers", which is legal only
+# while a switch is in flight.
+alive() { # <step>
+  local pid focus
+  pid=$(adb shell pidof "$app" 2>/dev/null | tr -d '\r' || true)
+  [ -n "$pid" ] || fail "$1: $app is not running (crashed or was killed)"
+  focus=$(adb shell dumpsys window 2>/dev/null | grep -m1 mCurrentFocus | tr -d '\r' || true)
+  case "$focus" in
+    *"$app/"*) ;;
+    *) fail "$1: $app is not in front ($focus)" ;;
+  esac
+}
+
+header_count() { # <space-separated headers>
+  local n
+  n=$(wc -w <<< "$1")
+  echo "${n:-0}"
+}
+
 # The tab's own header, or the demo tailnet name on the node list.
 expect_header() { # <seen> <tab index> <what>
   if [ "$1" = "${titles[$2]}" ] ||
@@ -98,6 +121,22 @@ headers() { # <texts-file>
     BEGIN { n = split(titles, t, " ") }
     { for (i = 1; i <= n; i++) if (index($0, t[i]) > 0) { print t[i]; break } }
   ' "$1" | sort -u | tr '\n' ' ' | sed 's/ *$//'
+}
+
+# At rest the page settles to exactly one header. A slow emulator can still be
+# mid-fade when the still was taken, so poll instead of trusting one dump; two
+# headers are a failure either way.
+settle_headers() { # <index> <tag>
+  local attempt found=""
+  for attempt in 1 2 3 4 5 6; do
+    if ui texts "$ymax" > "$out/headers-$2.txt" 2> /dev/null; then
+      found=$(headers "$out/headers-$2.txt")
+      [ "$(header_count "$found")" -eq 1 ] && { echo "$found"; return 0; }
+    fi
+    sleep 1
+  done
+  echo "$found"
+  return 1
 }
 
 launch() {
@@ -137,11 +176,19 @@ for i in $(seq 1 10); do
   adb shell input tap ${TAP[$target]} > /dev/null 2>&1 || true
   sleep 0.9
   shot "mid-$(printf %02d "$i")"
+  # Mid-flight: zero or one header. Two means two pages are on screen at once.
+  ui texts "$ymax" > "$out/mid-headers-$(printf %02d "$i").txt" 2> /dev/null || true
+  mid_found=$(headers "$out/mid-headers-$(printf %02d "$i").txt")
+  alive "switch $i mid-flight"
+  [ "$(header_count "$mid_found")" -le 1 ] ||
+    fail "switch $i painted two headers mid-animation [$mid_found]"
+  note "switch $i mid-flight: headers [$mid_found]"
   sleep $((slow + 2))
   shot "rest-$(printf %02d "$i")"
-  ui texts "$ymax" > "$out/headers-$(printf %02d "$i").txt" 2> /dev/null || true
-  found=$(headers "$out/headers-$(printf %02d "$i").txt")
-  note "switch $i -> ${names[$target]}: headers [$found]"
+  alive "switch $i at rest"
+  found=$(settle_headers "$i" "$(printf %02d "$i")") ||
+    fail "switch $i never settled to one header at rest [${found:-none}]"
+  note "switch $i -> ${names[$target]}: headers [$found] at rest"
   expect_header "$found" "$target" "switch $i"
   last=$target
 done
@@ -163,8 +210,9 @@ adb pull /sdcard/tabs.mp4 "$out/tabs.mp4" > /dev/null 2>&1 || true
 [ -s "$out/tabs.mp4" ] && note "clip: $(stat -c%s "$out/tabs.mp4") bytes" || note "no clip"
 
 shot rest-final
-ui texts "$ymax" > "$out/headers-final.txt" 2> /dev/null || true
-found=$(headers "$out/headers-final.txt")
+alive "after rapid taps"
+found=$(settle_headers final final) ||
+  fail "rapid taps never settled to one header at rest [${found:-none}]"
 note "after rapid taps: headers [$found], last tap ${names[$last]}"
 expect_header "$found" "$last" "rapid taps"
 
@@ -194,4 +242,4 @@ ffmpeg -loglevel error -y -i "$out/tabs.mp4" -vf "fps=8,scale=270:-2" \
   "$out/frames-%03d.png" 2> /dev/null || true
 [ -s "$out/mid-02.png" ] && convert "$out/mid-02.png" -resize 360x "$out/frame-mid.png" 2> /dev/null || true
 
-note "ok: 10 switches, one header at rest, no blended frame, no Flutter exception"
+note "ok: 10 switches, at most one header mid-flight, exactly one at rest, no blended frame, no Flutter exception"
