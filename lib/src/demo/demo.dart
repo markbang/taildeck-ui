@@ -1,17 +1,17 @@
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
 
 import '../data.dart';
 import '../services.dart';
 
 /// Whether the demo dataset is compiled in: the web preview and debug builds
-/// have it, a release build on a phone or desktop does not.
+/// have it, a profile or release build on a phone or desktop does not.
 ///
 /// `--dart-define=TAILDECK_DEMO=true` brings it back for debugging on a device.
 /// The flag is `const`, so the compiler drops every demo reference and its
 /// strings from a release snapshot (see `tool/check_demo_free.sh`).
 const bool demoData = bool.fromEnvironment(
   'TAILDECK_DEMO',
-  defaultValue: kIsWeb,
+  defaultValue: kIsWeb || kDebugMode,
 );
 
 /// The preview tailnet and its nodes, so a build without a backend still has
