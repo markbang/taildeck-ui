@@ -77,6 +77,28 @@ class _Storage implements BackendStorage {
 
 void main() {
   group('savedLoginInState', () {
+    test('the current profile with a node id is a login record', () {
+      expect(
+        savedLoginInState(
+          _state({
+            '_current-profile': 'profile-abc',
+            '_profiles':
+                '{"abc":{"ID":"abc","Key":"profile-abc","NodeID":"n123"}}',
+          }),
+        ),
+        isTrue,
+      );
+      expect(
+        savedLoginInState(
+          _state({
+            '_current-profile': 'profile-abc',
+            '_profiles': '{"abc":{"Key":"profile-abc","NodeID":""}}',
+          }),
+        ),
+        isFalse,
+      );
+    });
+
     test('an accepted node key is a login record', () {
       expect(
         savedLoginInState(

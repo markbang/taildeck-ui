@@ -183,6 +183,10 @@ bool savedLoginInState(String raw) {
   try {
     final state = jsonDecode(raw);
     if (state is! Map) return false;
+    for (final key in _stateTexts(state['_current-profile'])) {
+      if (_profileHasNode(state, key)) return true;
+    }
+    // Older stores kept the node id in the profile's prefs instead.
     for (final value in state.values) {
       for (final text in _stateTexts(value)) {
         if (_signedInPrefs(text)) return true;
@@ -190,6 +194,27 @@ bool savedLoginInState(String raw) {
     }
   } on Object {
     return false;
+  }
+  return false;
+}
+
+/// The current profile's index entry: `_profiles` maps ids to records and a
+/// logged-in record carries a `NodeID`. Logout deletes the record, so this is
+/// false again at the login page.
+bool _profileHasNode(Map state, String key) {
+  for (final text in _stateTexts(state['_profiles'])) {
+    Object? profiles;
+    try {
+      profiles = jsonDecode(text);
+    } on FormatException {
+      continue;
+    }
+    if (profiles is! Map) continue;
+    for (final profile in profiles.values) {
+      if (profile is! Map || profile['Key'] != key) continue;
+      final node = profile['NodeID'];
+      if (node is String && node.isNotEmpty) return true;
+    }
   }
   return false;
 }
