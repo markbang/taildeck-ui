@@ -1,0 +1,170 @@
+# Records the bottom-tab transition on the emulator, before and after, and
+# gates the change: ten switches per build, a still mid-flight and at rest
+# after each, a clip, and a failure on any frame that paints two pages at
+# once ("before" is v0.2.15, the last release with the overlap).
+name: tab-record
+
+on:
+  workflow_dispatch:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - lib/src/motion.dart
+      - lib/src/shell.dart
+      - tool/tabs_android.sh
+      - tool/ui.py
+      - .github/workflows/tab-record.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tab-record-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GOPROXY: https://proxy.golang.org,direct
+  GOTOOLCHAIN: auto
+  BEFORE_REF: v0.2.15
+  SLOW: '6'
+
+jobs:
+  record:
+    name: tabs before and after on the emulator
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Keep the harness scripts
+        run: cp -r tool /tmp/harness-tool
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+      - uses: actions/setup-go@v6
+        with:
+          go-version: 1.27.x
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.1
+      - name: Pin the Android NDK
+        run: |
+          sdk="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+          ndk="$sdk/ndk/28.2.13676358"
+          if [ ! -d "$ndk" ]; then
+            sdkmanager_bin="$(ls "$sdk"/cmdline-tools/*/bin/sdkmanager | sort -V | tail -1)"
+            yes | "$sdkmanager_bin" --licenses > /dev/null 2>&1 || true
+            "$sdkmanager_bin" --install "ndk;28.2.13676358"
+          fi
+          test -d "$ndk"
+          echo "ANDROID_NDK_HOME=$ndk" >> "$GITHUB_ENV"
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.9
+          channel: stable
+          cache: true
+      - name: Build the "before" APK
+        # The release that still cross-faded the tabs in place. ?slow= is added
+        # to that build so a still can land inside its transition; the pages
+        # themselves are untouched.
+        run: |
+          set -o pipefail
+          git fetch --depth=1 origin "+refs/tags/$BEFORE_REF:refs/tags/$BEFORE_REF"
+          git worktree add --detach /tmp/before "$BEFORE_REF"
+          cd /tmp/before
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('lib/main.dart')
+          code = path.read_text()
+          if "previewParam('slow')" not in code:
+              code = code.replace(
+                  "import 'package:flutter/widgets.dart';",
+                  "import 'package:flutter/scheduler.dart';\nimport 'package:flutter/widgets.dart';",
+                  1,
+              )
+              code = code.replace(
+                  "  await AppInfo.load();",
+                  "  final slow = double.tryParse(previewParam('slow') ?? '');\n"
+                  "  if (slow != null && slow > 0) timeDilation = slow;\n"
+                  "  await AppInfo.load();",
+                  1,
+              )
+              path.write_text(code)
+          PY
+          flutter pub get
+          tool/build_native.sh android-x86_64 | tee /tmp/before-native.log
+          tool/build_term.sh android-x86_64 | tee /tmp/before-term.log
+          flutter build apk --debug --target-platform android-x64
+          cp build/app/outputs/flutter-apk/app-debug.apk /tmp/before.apk
+          ls -l /tmp/before.apk
+      - name: Build the "after" APK
+        run: |
+          set -o pipefail
+          flutter pub get
+          tool/build_native.sh android-x86_64 | tee /tmp/build_native.log
+          tool/build_term.sh android-x86_64 | tee /tmp/build_term.log
+          flutter build apk --debug --target-platform android-x64
+          cp build/app/outputs/flutter-apk/app-debug.apk build/tabs.apk
+          ls -l build/tabs.apk
+      - name: Install the recording tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg imagemagick fonts-dejavu-core
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          ls -l /dev/kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: false
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: >-
+            TABS_SLOW="$SLOW" TABS_REQUIRE_PROBE=0
+            bash /tmp/harness-tool/tabs_android.sh /tmp/before.apk top.bangwu.taildeck tabs-before || true;
+            adb uninstall top.bangwu.taildeck > /dev/null 2>&1 || true;
+            TABS_SLOW="$SLOW" TABS_REQUIRE_PROBE=1
+            bash /tmp/harness-tool/tabs_android.sh build/tabs.apk top.bangwu.taildeck tabs-after
+      - name: Compare the two clips
+        if: always()
+        run: |
+          for name in before after; do
+            [ -s "tabs-$name/tabs.mp4" ] || continue
+            ffmpeg -loglevel error -y -i "tabs-$name/tabs.mp4" -vf "fps=8,scale=270:-2" \
+              "tabs-$name/frames-%03d.png" || true
+            ffmpeg -loglevel error -y -i "tabs-$name/tabs.mp4" -vf \
+              'fps=12,scale=360:-1:flags=lanczos,split[a][b];[a]palettegen[p];[b][p]paletteuse' \
+              "tabs-$name/tabs.gif" || true
+          done
+          ffmpeg -loglevel error -y -i tabs-before/tabs.mp4 -i tabs-after/tabs.mp4 \
+            -filter_complex '[0:v]scale=360:-2,pad=360:ih:0:0:color=0x101214[l];[1:v]scale=360:-2,pad=360:ih:0:0:color=0x101214[r];[l][r]hstack=inputs=2' \
+            -an tabs-side-by-side.mp4 || true
+          ls -l tabs-side-by-side.mp4 2>/dev/null || true
+      - name: Job summary
+        if: always()
+        run: |
+          {
+            for name in before after; do
+              echo "### Tabs ($name)"
+              echo
+              echo '```'
+              cat "tabs-$name/summary.txt" 2>/dev/null || echo 'no summary'
+              echo '```'
+              echo
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: tabs
+          path: |
+            tabs-before/
+            tabs-after/
+            tabs-side-by-side.mp4
+          if-no-files-found: warn

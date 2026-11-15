@@ -1,8 +1,12 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 import 'package:prism_ui/icons/icons.dart';
 import 'package:prism_ui/prism_ui.dart';
+
+import 'preview_env.dart';
 
 /// One Material 3 expressive motion token: the spring Compose plays and the
 /// time it takes to settle, so a Flutter tween ends where the spring stops.
@@ -678,5 +682,209 @@ class _InkDotsState extends State<InkDots> with SingleTickerProviderStateMixin {
     final phase = (t % 1 + 1) % 1;
     final wave = phase < 0.5 ? phase * 2 : (1 - phase) * 2;
     return 0.25 + 0.75 * wave;
+  }
+}
+
+/// The shell's tab pages, swapped as whole surfaces: [fade] drops the old page
+/// to zero before the new one appears, otherwise the two pages slide past each
+/// other, each one opaque. No frame blends two pages, a rapid switch only
+/// retargets the travel, and pages that are not on screen stay in the tree
+/// unpainted, so their state and scroll offset survive.
+class TabSwitcher extends StatefulWidget {
+  const TabSwitcher({
+    super.key,
+    required this.index,
+    required this.count,
+    required this.pageBuilder,
+    required this.background,
+    this.fade = false,
+    this.animate = true,
+  });
+
+  final int index;
+  final int count;
+  final IndexedWidgetBuilder pageBuilder;
+
+  /// Painted behind every page, so a page's own transparent root cannot let
+  /// the page underneath show through.
+  final Color background;
+
+  final bool fade;
+
+  /// False where a switch should not travel, as on a wide layout.
+  final bool animate;
+
+  @override
+  State<TabSwitcher> createState() => _TabSwitcherState();
+}
+
+class _TabSwitcherState extends State<TabSwitcher>
+    with SingleTickerProviderStateMixin {
+  /// The visible page as a continuous value: 1.5 means halfway between pages
+  /// 1 and 2, so a switch is a retarget and an interrupted switch resumes.
+  late final _position = AnimationController.unbounded(
+    vsync: this,
+    value: widget.index.toDouble(),
+  );
+  final _built = <int>{};
+  final _pageKeys = <int, GlobalKey>{};
+  double _from = 0;
+  double _to = 0;
+
+  /// `?tabprobe=1` on a debug build logs the painted pages at each step of a
+  /// switch, so the emulator gate can check the real paint state.
+  final _probe = kDebugMode && previewParam('tabprobe') == '1';
+  final _probedSteps = <int>{};
+
+  /// How far a page travels while it is visible, in pages. A fade-through
+  /// fades a page out by 40% of the travel and the next one in over the last
+  /// 40%, so the two are never on screen together.
+  static const _fadeSpan = 0.4;
+
+  @override
+  void initState() {
+    super.initState();
+    _built.add(widget.index);
+    _from = _to = widget.index.toDouble();
+    if (_probe) {
+      _position.addListener(_probeStep);
+      _position.addStatusListener(_probeSettled);
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant TabSwitcher oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.index == oldWidget.index) return;
+    _built.add(widget.index);
+    _probedSteps.clear();
+    _from = _position.value;
+    _to = widget.index.toDouble();
+    if (!widget.animate || context.disableAnimations || widget.count < 2) {
+      _position.value = _to;
+      return;
+    }
+    _position.animateTo(
+      _to,
+      duration: widget.fade ? fadeTabDuration : slowSpatial.duration,
+      curve: widget.fade ? fadeTabCurve : slowSpatial.curve,
+    );
+  }
+
+  @override
+  void dispose() {
+    if (_probe) {
+      _position.removeListener(_probeStep);
+      _position.removeStatusListener(_probeSettled);
+    }
+    _position.dispose();
+    super.dispose();
+  }
+
+  void _probeStep() {
+    final span = _to - _from;
+    if (span == 0) return;
+    final progress = ((_position.value - _from) / span).clamp(0.0, 1.0);
+    final step = (progress * 10).floor();
+    if (step == 0 || step >= 10 || !_probedSteps.add(step)) return;
+    // Read the paint state once this build has been laid out and painted.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _report(progress);
+    });
+  }
+
+  void _probeSettled(AnimationStatus status) {
+    if (status != AnimationStatus.completed) return;
+    // The pages are rebuilt with their final Offstage after this notification.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _report(1);
+    });
+  }
+
+  /// Counts what is actually painted: each page's rect after its transforms,
+  /// the opacity accumulated above it and whether an Offstage parent hides it.
+  void _report(double progress) {
+    final painted = <({int index, Rect rect, double opacity})>[];
+    for (final index in _built) {
+      final box = _pageKeys[index]?.currentContext?.findRenderObject();
+      if (box is! RenderBox || !box.hasSize) continue;
+      var hidden = false;
+      var opacity = 1.0;
+      Rect rect = box.localToGlobal(Offset.zero) & box.size;
+      for (RenderObject? node = box; node != null; node = node.parent) {
+        if (node is RenderOffstage) hidden = hidden || node.offstage;
+        if (node is RenderOpacity) opacity *= node.opacity;
+      }
+      if (hidden || opacity == 0 || rect.isEmpty) continue;
+      painted.add((index: index, rect: rect, opacity: opacity));
+    }
+    var blended = 0.0;
+    for (var a = 0; a < painted.length; a++) {
+      for (var b = a + 1; b < painted.length; b++) {
+        final overlap = painted[a].rect.intersect(painted[b].rect);
+        if (overlap.isEmpty) continue;
+        final area = overlap.width * overlap.height;
+        if (painted[a].opacity < 1 || painted[b].opacity < 1) blended += area;
+      }
+    }
+    debugPrint(
+      'taildeck tabprobe: from=${_from.toInt()} to=${_to.toInt()} '
+      'p=${progress.toStringAsFixed(2)} painted=${painted.length} '
+      'blend=${blended.round()} tabs=${painted.map((page) => page.index).join(",")}',
+    );
+  }
+
+  /// The travel, held between its ends so a spring's overshoot cannot pull a
+  /// page off its edge and leave a strip of background beside it.
+  double get _travel => _position.value.clamp(
+    _from < _to ? _from : _to,
+    _from < _to ? _to : _from,
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRect(
+      child: AnimatedBuilder(
+        animation: _position,
+        builder: (context, _) {
+          final position = _travel;
+          return Stack(
+            fit: StackFit.expand,
+            children: [
+              for (var index = 0; index < widget.count; index++)
+                if (_built.contains(index))
+                  _page(context, index, position)
+                else
+                  const SizedBox.shrink(),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _page(BuildContext context, int index, double position) {
+    final delta = index - position;
+    final alpha = widget.fade
+        ? ((_fadeSpan - delta.abs()) / _fadeSpan).clamp(0.0, 1.0)
+        : (delta.abs() < 1 ? 1.0 : 0.0);
+    final current = index == widget.index;
+    Widget page = ColoredBox(
+      key: _pageKeys.putIfAbsent(index, GlobalKey.new),
+      color: widget.background,
+      child: widget.pageBuilder(context, index),
+    );
+    if (widget.fade) {
+      page = delta.abs() < 1 ? Opacity(opacity: alpha, child: page) : page;
+    } else if (delta.abs() < 1) {
+      page = FractionalTranslation(translation: Offset(delta, 0), child: page);
+    }
+    return Offstage(
+      offstage: alpha == 0,
+      child: TickerMode(
+        enabled: current,
+        child: ExcludeFocus(excluding: !current, child: page),
+      ),
+    );
   }
 }
