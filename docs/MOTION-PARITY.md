@@ -124,6 +124,7 @@ them.
 | `flutter-tabs.mp4` | This build: nodes → services → agents → nodes, sliding 1/8 and cross-fading |
 | `tab-overlap-before.mp4` | v0.2.15: tab pages at half opacity, both headers and both bodies on screen at once |
 | `tab-overlap-after.mp4` | This build: the same switches, one opaque page at a time |
+| `tab-overlap-pair.mp4` / `.gif` | The same six seconds of both clips side by side; stills in `docs/motion/tab-overlap-frames/` |
 | `flutter-detail.mp4` | This build: node page sliding in from 1/5 and popping back |
 | `flutter-start.mp4` | This build: the login stage swap (fade + vertical slide of 1/6) |
 
