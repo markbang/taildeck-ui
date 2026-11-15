@@ -93,7 +93,9 @@ class _TaildeckShellState extends State<TaildeckShell>
     final name = previewParam('node');
     if (name == null || _node != null || _previewNodeDone || !mounted) return;
     final backend = BackendScope.of(context);
-    final nodes = backend.available
+    // A backend that started but has no tailnet yet lists nothing; the preview
+    // then falls back to the demo nodes, which is what the smoke gates expect.
+    final nodes = backend.available && backend.nodes.isNotEmpty
         ? backend.nodes
         : (demoData ? [demoSelfNode, ...demoPeers] : const <NodeItem>[]);
     if (nodes.isEmpty) return;
@@ -125,7 +127,8 @@ class _TaildeckShellState extends State<TaildeckShell>
   /// sessions end with it, as the setting says they will.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed || state == AppLifecycleState.inactive) {
+    if (state == AppLifecycleState.resumed ||
+        state == AppLifecycleState.inactive) {
       return;
     }
     if (BackendScope.of(context).terminalKeepAlive) return;
@@ -272,10 +275,7 @@ class _TaildeckShellState extends State<TaildeckShell>
   }
 
   /// Opens a session for [node] with [credentials]; null when the dial failed.
-  Future<SshTerminal?> _dial(
-    NodeItem node,
-    SshCredentials credentials,
-  ) async {
+  Future<SshTerminal?> _dial(NodeItem node, SshCredentials credentials) async {
     final backend = BackendScope.of(context);
     final palette = terminalPaletteOf(
       backend.terminalTheme,
