@@ -27,6 +27,7 @@ import 'pages/services.dart';
 import 'pages/ssh_sheet.dart';
 import 'pages/login.dart';
 import 'pages/settings.dart';
+import 'splash.dart';
 import 'pages/terminal.dart';
 import 'terminal_appearance.dart';
 import 'terminal_store.dart';
@@ -71,7 +72,7 @@ class _TaildeckShellState extends State<TaildeckShell>
 
   /// Depth of the scene on screen, so the next swap knows its direction.
   int _sceneDepth = 0;
-  String _sceneKey = 'login';
+  String _sceneKey = 'boot';
   bool _previewSheetOpened = false;
   bool _previewNodeDone = false;
   AgentNotifications? _alerts;
@@ -423,9 +424,18 @@ class _TaildeckShellState extends State<TaildeckShell>
     final scheme = context.colorScheme;
     final mobile = ViewScope.isMobileOf(context);
     final backend = BackendScope.of(context);
+    // The saved login is still being read: stay on the launch screen's colour
+    // rather than guess, so the login page cannot flash before the answer.
+    if (backend.available && !_previewShell && !backend.sessionKnown) {
+      return (
+        key: 'boot',
+        depth: 0,
+        child: const ColoredBox(color: splashBackground),
+      );
+    }
     final signedIn = _previewShell
         ? _previewSignedIn
-        : (backend.available ? backend.signedIn : _previewSignedIn);
+        : (backend.available ? backend.showShell : _previewSignedIn);
     if (!signedIn) {
       return (
         key: 'login',
@@ -608,15 +618,20 @@ class _TaildeckShellState extends State<TaildeckShell>
   /// left. The depth is read during build only to decide the direction.
   Widget _content(BuildContext context) {
     final scene = _scene(context);
+    // The first route appears under the launch screen, so it must not slide
+    // or scale in: the splash hands straight over to it.
+    final fromBoot = _sceneKey == 'boot';
     final forward = scene.depth >= _sceneDepth;
     // Signing in scales the shell up instead of sliding it in.
     final fadeThrough = scene.key == 'shell' && _sceneKey == 'login';
     _sceneDepth = scene.depth;
     _sceneKey = scene.key;
+    final child = KeyedSubtree(key: ValueKey(scene.key), child: scene.child);
+    if (fromBoot) return child;
     return MotionSwitcher(
       forward: forward,
       fadeThrough: fadeThrough,
-      child: KeyedSubtree(key: ValueKey(scene.key), child: scene.child),
+      child: child,
     );
   }
 

@@ -64,19 +64,26 @@ class _SplashMarkPainter extends CustomPainter {
       oldDelegate.dotsSpan != dotsSpan;
 }
 
-/// Holds the launch screen over the app until the first frame is painted, then
+/// Holds the launch screen over the app until the first route is decided, then
 /// fades it out. The composition matches the platform splash (Android window
 /// background, iOS LaunchScreen), so the hand-off has no blank frame.
 class SplashGate extends StatefulWidget {
   const SplashGate({
     super.key,
     required this.child,
+    this.until,
+    this.maxWait = const Duration(milliseconds: 1500),
     this.dotsSpan = 118,
     this.dwell = const Duration(milliseconds: 80),
     this.fade = const Duration(milliseconds: 260),
   });
 
   final Widget child;
+
+  /// The route decision, normally the backend's saved login. A slow node never
+  /// reaches this: [maxWait] hands the splash over anyway.
+  final Future<void>? until;
+  final Duration maxWait;
   final double dotsSpan;
   final Duration dwell;
   final Duration fade;
@@ -97,13 +104,21 @@ class _SplashGateState extends State<SplashGate> {
     super.initState();
     if (!_showing) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(_hold());
+    });
+  }
+
+  Future<void> _hold() async {
+    // `?splash=hold` keeps the launch screen up for a reference still.
+    if (previewParam('splash') == 'hold') return;
+    await (widget.until?.timeout(widget.maxWait, onTimeout: () {}) ??
+        Future<void>.value());
+    if (!mounted) return;
+    _dwell = Timer(widget.dwell, () {
       if (!mounted) return;
-      _dwell = Timer(widget.dwell, () {
-        if (!mounted) return;
-        setState(() => _fading = true);
-        _fade = Timer(widget.fade, () {
-          if (mounted) setState(() => _showing = false);
-        });
+      setState(() => _fading = true);
+      _fade = Timer(widget.fade, () {
+        if (mounted) setState(() => _showing = false);
       });
     });
   }

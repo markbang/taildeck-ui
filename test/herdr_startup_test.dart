@@ -136,6 +136,8 @@ class _MemoryStorage implements BackendStorage {
   @override
   Future<String> sshDir() async => '/tmp/ssh';
   @override
+  Future<bool> hasSavedLogin() async => false;
+  @override
   Future<StoredConfig> readConfig() async => config;
   @override
   Future<void> writeConfig(StoredConfig value) async => config = value;

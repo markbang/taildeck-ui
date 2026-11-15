@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import '../terminal_appearance.dart';
 import '../terminal_gestures.dart';
 import '../terminal_keys.dart';
@@ -173,6 +175,71 @@ class StoredConfig {
 String sshLoginKey(String node, {String service = ''}) =>
     service.isEmpty ? node : '$node/$service';
 
+/// Whether tsnet's `tailscaled.state` holds an authenticated profile: the
+/// current profile in `_profiles` carries a `NodeID` once the control server
+/// accepted this node. A key alone is not enough (logout deletes the profile),
+/// and reading one small file must not wait for the node to start.
+bool savedLoginInState(String raw) {
+  try {
+    final state = jsonDecode(raw);
+    if (state is! Map) return false;
+    for (final key in _stateTexts(state['_current-profile'])) {
+      if (_profileHasNode(state, key)) return true;
+    }
+    // A prefs record keeps the same answer before the profiles index exists.
+    for (final value in state.values) {
+      for (final text in _stateTexts(value)) {
+        if (_signedInPrefs(text)) return true;
+      }
+    }
+  } on Object {
+    return false;
+  }
+  return false;
+}
+
+/// A state value both as the FileStore writes it (base64) and as plain text,
+/// since an older file may hold either.
+List<String> _stateTexts(Object? value) {
+  if (value is! String || value.isEmpty) return const [];
+  try {
+    return [utf8.decode(base64Decode(value)), value];
+  } on FormatException {
+    return [value];
+  }
+}
+
+bool _profileHasNode(Map state, String key) {
+  for (final text in _stateTexts(state['_profiles'])) {
+    Object? profiles;
+    try {
+      profiles = jsonDecode(text);
+    } on FormatException {
+      continue;
+    }
+    if (profiles is! Map) continue;
+    for (final profile in profiles.values) {
+      if (profile is! Map || profile['Key'] != key) continue;
+      final node = profile['NodeID'];
+      if (node is String && node.isNotEmpty) return true;
+    }
+  }
+  return false;
+}
+
+bool _signedInPrefs(String text) {
+  try {
+    final prefs = jsonDecode(text);
+    if (prefs is! Map) return false;
+    final persist = prefs['Persist'];
+    if (persist is! Map) return false;
+    final node = persist['NodeID'];
+    return node is String && node.isNotEmpty;
+  } on FormatException {
+    return false;
+  }
+}
+
 abstract class BackendStorage {
   /// tsnet state dir; created on demand.
   Future<String> stateDir();
@@ -181,6 +248,10 @@ abstract class BackendStorage {
   Future<String> sshDir();
   Future<StoredConfig> readConfig();
   Future<void> writeConfig(StoredConfig config);
+
+  /// Whether a signed-in tsnet profile is already on disk; one small read, so
+  /// the first route does not wait for the node.
+  Future<bool> hasSavedLogin();
 
   /// Raw `services.json`, or null when the file does not exist.
   Future<String?> readServicesJson();
