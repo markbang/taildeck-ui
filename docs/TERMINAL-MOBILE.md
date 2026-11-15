@@ -95,8 +95,10 @@ then `<0;Cx;Cym` on the same cell, and a Ctrl-armed tap as `<16;`.
 The clips are `tap-focus.mp4` (IME put away, tap, keyboard up, second tap),
 `tap-mouse.mp4` and `tap-mouse-ctrl.mp4` (the probe's reports on the grid),
 `tap-vim.mp4` with `tap-vim-before.png` / `tap-vim-after.png` (vim started with
-`set mouse=a`; a tap with the keyboard already up moves the cursor to another
-cell) and `tap-htop.mp4` with `tap-htop-before.png` / `tap-htop-after.png` (a
+`set mouse=a` on a twelve-line file; a warm-up tap brings the keyboard back,
+then a tap moves the cursor to another line, which vim writes to
+`/tmp/tapvim-cursor` on every move so the gate fails when the line does not
+change) and `tap-htop.mp4` with `tap-htop-before.png` / `tap-htop-after.png` (a
 tap on one process row, then on another). Stills: `tap-keyboard.png`.
 
 `tool/termgestures_record.sh` (workflow `termgestures-record`) records the

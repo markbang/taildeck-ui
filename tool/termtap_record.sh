@@ -354,21 +354,40 @@ check_cell() { # <log>
 vim_step() {
   # A script on the runner keeps the quotes out of `adb shell input text`,
   # which would otherwise hand vim `-c set` and a file called `mouse=a`.
+  # Vim writes the cursor line on every move, so the tap can be asserted.
   cat > /tmp/tapvim.sh <<'VIM'
 #!/bin/sh
 printf 'one\ntwo\nthree\nfour\nfive\nsix\nseven\neight\nnine\nten\neleven\ntwelve\n' > /tmp/tapvim.txt
-exec vim -u NONE -c 'set mouse=a' -c 'set laststatus=2' -c 'set ruler' /tmp/tapvim.txt
+rm -f /tmp/tapvim-cursor
+exec vim -u NONE -c 'set mouse=a' -c 'set laststatus=2' -c 'set ruler' \
+  -c 'autocmd CursorMoved * call writefile([line(".")], "/tmp/tapvim-cursor")' \
+  /tmp/tapvim.txt
 VIM
   send_command "sh /tmp/tapvim.sh" 5
   hide_ime
+  # The first tap also brings the keyboard back, which reflows the grid, so
+  # the measured tap follows a warm-up one.
   tap_grid 0.45 0.4
-  sleep 2
+  sleep 3
   shot tap-vim-before
-  tap_grid 0.15 0.6
-  sleep 2
+  local before after
+  before=$(cat /tmp/tapvim-cursor 2> /dev/null || echo '')
+  tap_grid 0.2 0.25
+  sleep 3
   shot tap-vim-after
-  note "vim: tapped one line, then another with the keyboard up; stills tap-vim-*.png"
-  send_command ':q!' 1
+  after=$(cat /tmp/tapvim-cursor 2> /dev/null || echo '')
+  note "vim: cursor line $before -> $after after the tap; stills tap-vim-*.png"
+  if [ -n "$before" ] && [ -n "$after" ] && [ "$before" != "$after" ]; then
+    note "vim: the tap moved the cursor"
+  else
+    fail "vim: the tap did not move the cursor (line ${before:-none} -> ${after:-none})"
+  fi
+  adb shell input keyevent KEYCODE_ESCAPE > /dev/null 2>&1 || true
+  send_command ':q!' 2
+  adb shell input keyevent KEYCODE_ESCAPE > /dev/null 2>&1 || true
+  rm -f /tmp/tap-vim-quit
+  send_command "touch /tmp/tap-vim-quit" 2
+  [ -f /tmp/tap-vim-quit ] || fail "vim did not quit before htop"
 }
 
 quit_htop() { send_command q 1; }
@@ -384,6 +403,9 @@ htop_step() {
   shot tap-htop-after
   note "htop: tapped one process row, then another; stills tap-htop-*.png"
   quit_htop
+  rm -f /tmp/tap-htop-quit
+  send_command "touch /tmp/tap-htop-quit" 2
+  [ -f /tmp/tap-htop-quit ] || fail "htop did not quit"
 }
 
 # ---- setup ---------------------------------------------------------------
