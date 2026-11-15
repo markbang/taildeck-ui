@@ -46,7 +46,7 @@ named; **Missing** = not implemented. The evidence column says which clip in
 | 4 | `MainActivity.kt:95` | Back: the page slides out to 1/5 and fades | slow spatial, fast effects | same | 已对齐 | `flutter-detail.mp4` |
 | 5 | `MainActivity.kt:99` | The login route fades in and out | slow spatial / fast effects | same, scene `login` | 已对齐 | not recorded (needs a signed-out start) |
 | 6 | `MainActivity.kt:107` | Signed in: the shell fades in over login and scales up from 0.96 | slow spatial | `MotionSwitcher(fadeThrough: true)` (`shell.dart:539`) | 已对齐 | not recorded (needs a sign-in) |
-| 7 | `HomeScreen.kt:152` | Tab switch: slide 1/8 of the width and cross-fade | slow spatial in, fast spatial out | `shell.dart:172` + `_TabPage` (`shell.dart:646`) | 已对齐 | `flutter-tabs.mp4` |
+| 7 | `HomeScreen.kt:152` | Tab switch: the whole page slides past its neighbour, both fully opaque. The Kotlin app cross-faded 1/8 of the width, and that cross-fade became two translucent pages painting over each other; a tab page may not be translucent. The fade setting drops the old page before the new one appears. | slow spatial; `fadeTabDuration` when the user picks Fade | `motion.dart` `TabSwitcher` (`shell.dart:624`) | 有意偏离 | `tab-overlap-before.mp4` / `tab-overlap-after.mp4` |
 | 8 | `LoginScreen.kt:162` | Login stage swap: fade + vertical slide of 1/6 + size transform | slow spatial | `login.dart:526` `_StageSwap` | 已对齐 | `flutter-start.mp4` |
 | 9 | `LoginScreen.kt:129` | The advanced section expands and shrinks | default specs | `login.dart:445` `ExpandVisibility` | 已对齐 | `login-expand.mp4` (Kotlin | Flutter) |
 | 10 | `NodeScreen.kt:183` | The ping result row expands and fades in | slow spatial + fade | `node_detail.dart:265` `ExpandVisibility` | 已对齐 | `content-size.mp4` (Kotlin | Flutter) |
@@ -122,6 +122,8 @@ them.
 | `loading.mp4` | Kotlin / Flutter: Sign in pressed, and the loading dot that follows |
 | `flutter-login-expand.mp4` | This build: the auth-key section expanding (fade + size) |
 | `flutter-tabs.mp4` | This build: nodes → services → agents → nodes, sliding 1/8 and cross-fading |
+| `tab-overlap-before.mp4` | v0.2.15: tab pages at half opacity, both headers and both bodies on screen at once |
+| `tab-overlap-after.mp4` | This build: the same switches, one opaque page at a time |
 | `flutter-detail.mp4` | This build: node page sliding in from 1/5 and popping back |
 | `flutter-start.mp4` | This build: the login stage swap (fade + vertical slide of 1/6) |
 
@@ -155,3 +157,5 @@ target through `uiautomator dump` right before its clip, so the device must use
 the English locale and be free of system dialogs. A clip that comes back empty
 or shorter than asked is retried up to three times; `summary.txt` lists what
 was verified and what a clip could not show.
+
+The tab gate (`tool/tabs_android.sh`, part of `android-smoke`) switches tabs ten times on the emulator, keeps a still mid-animation and at rest after each, and fails when the app reports two painted pages at once, the accessibility tree holds two page headers, or a Flutter exception is logged.

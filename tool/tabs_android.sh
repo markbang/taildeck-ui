@@ -42,9 +42,11 @@ for scale in window_animation_scale transition_animation_scale animator_duration
 done
 adb shell svc power stayon true > /dev/null 2>&1 || true
 
-if ! adb shell pm path "$app" > /dev/null 2>&1; then
-  adb install -g "$apk" > "$out/install.txt" 2>&1 || fail "adb install failed, see install.txt"
-fi
+# Always this APK: a gate that reused whatever was installed (the release
+# build, with no probe and no demo data) would pass while checking nothing.
+adb uninstall "$app" > /dev/null 2>&1 || true
+adb install -g "$apk" > "$out/install.txt" 2>&1 || fail "adb install failed, see install.txt"
+sleep 2
 
 activity=$(adb shell cmd package resolve-activity --brief "$app" 2>/dev/null | tail -n 1 | tr -d '\r')
 [ -n "$activity" ] || fail "no launcher activity for $app"
@@ -99,15 +101,21 @@ headers() { # <texts-file>
 }
 
 launch() {
-  adb shell am force-stop "$app" > /dev/null 2>&1 || true
-  sleep 2
-  adb logcat -c > /dev/null 2>&1 || true
-  adb shell "am start -W -a android.intent.action.VIEW -d 'taildeck://preview/?preview=1&tab=0&tabprobe=1&slow=$slow' -n $activity" \
-    > "$out/launch.txt" 2>&1 || fail "am start failed, see launch.txt"
-  grep -q "Activity: $app/" "$out/launch.txt" || fail "the preview route did not start, see launch.txt"
-  for _ in $(seq 1 60); do
-    if ui has Services > /dev/null 2>&1; then sleep 2; return 0; fi
-    sleep 1
+  local attempt
+  for attempt in 1 2 3; do
+    adb shell am force-stop "$app" > /dev/null 2>&1 || true
+    sleep 2
+    adb logcat -c > /dev/null 2>&1 || true
+    adb shell "am start -W -a android.intent.action.VIEW -d 'taildeck://preview/?preview=1&tab=0&tabprobe=1&splash=0&slow=$slow' -n $activity" \
+      > "$out/launch.txt" 2>&1 || true
+    if grep -q "Activity: $app/" "$out/launch.txt"; then
+      for _ in $(seq 1 90); do
+        if ui has Services > /dev/null 2>&1; then sleep 2; return 0; fi
+        sleep 1
+      done
+    fi
+    note "launch attempt $attempt: no tab bar yet"
+    sleep 5
   done
   fail "the shell never showed a tab bar"
 }
@@ -169,7 +177,8 @@ grep "taildeck tabprobe:" "$out/logcat.txt" 2> /dev/null | tail -40 >> "$summary
 if [ "$require_probe" = 1 ]; then
   [ "${probes:-0}" -ge 4 ] || fail "no tab probe samples: the build does not log its painted pages"
   [ "${blended:-0}" -eq 0 ] || fail "$blended probe samples painted two pages at once"
-  [ "${mid:-0}" -ge 1 ] || fail "no sample caught a switch between two painted pages"
+  [ "${mid:-0}" -ge 1 ] ||
+    fail "no switch was sampled mid-flight: the app ran with reduced motion"
 else
   note "probe not required: recording only"
 fi

@@ -762,6 +762,12 @@ class _TabSwitcherState extends State<TabSwitcher>
     _to = widget.index.toDouble();
     if (!widget.animate || context.disableAnimations || widget.count < 2) {
       _position.value = _to;
+      if (_probe) {
+        debugPrint(
+          'taildeck tabprobe: jump animate=${widget.animate} '
+          'still=${context.disableAnimations}',
+        );
+      }
       return;
     }
     _position.animateTo(
@@ -843,6 +849,11 @@ class _TabSwitcherState extends State<TabSwitcher>
 
   @override
   Widget build(BuildContext context) {
+    // Built once per shell build, not once per animation frame: a settings
+    // page rebuilding at 60 fps would cost more than the transition.
+    final pages = <int, Widget>{
+      for (final index in _built) index: _pageContent(context, index),
+    };
     return ClipRect(
       child: AnimatedBuilder(
         animation: _position,
@@ -852,8 +863,8 @@ class _TabSwitcherState extends State<TabSwitcher>
             fit: StackFit.expand,
             children: [
               for (var index = 0; index < widget.count; index++)
-                if (_built.contains(index))
-                  _page(context, index, position)
+                if (pages[index] case final page?)
+                  _frame(index, page, position)
                 else
                   const SizedBox.shrink(),
             ],
@@ -863,27 +874,33 @@ class _TabSwitcherState extends State<TabSwitcher>
     );
   }
 
-  Widget _page(BuildContext context, int index, double position) {
+  Widget _pageContent(BuildContext context, int index) {
+    return ColoredBox(
+      key: _pageKeys.putIfAbsent(index, GlobalKey.new),
+      color: widget.background,
+      child: widget.pageBuilder(context, index),
+    );
+  }
+
+  Widget _frame(int index, Widget page, double position) {
     final delta = index - position;
     final alpha = widget.fade
         ? ((_fadeSpan - delta.abs()) / _fadeSpan).clamp(0.0, 1.0)
         : (delta.abs() < 1 ? 1.0 : 0.0);
     final current = index == widget.index;
-    Widget page = ColoredBox(
-      key: _pageKeys.putIfAbsent(index, GlobalKey.new),
-      color: widget.background,
-      child: widget.pageBuilder(context, index),
-    );
-    if (widget.fade) {
-      page = delta.abs() < 1 ? Opacity(opacity: alpha, child: page) : page;
-    } else if (delta.abs() < 1) {
-      page = FractionalTranslation(translation: Offset(delta, 0), child: page);
-    }
+    // The wrapper shape stays the same for every page and every frame, so the
+    // page's element (and its state) is never reparented.
     return Offstage(
       offstage: alpha == 0,
       child: TickerMode(
         enabled: current,
-        child: ExcludeFocus(excluding: !current, child: page),
+        child: ExcludeFocus(
+          excluding: !current,
+          child: FractionalTranslation(
+            translation: widget.fade ? Offset.zero : Offset(delta, 0),
+            child: Opacity(opacity: alpha, child: page),
+          ),
+        ),
       ),
     );
   }

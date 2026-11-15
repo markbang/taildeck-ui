@@ -62,13 +62,15 @@ void main() {
     await tester.pump(const Duration(milliseconds: 160));
     expect(find.text('page0'), findsOneWidget);
     expect(find.text('page1'), findsOneWidget);
-    expect(
-      find.descendant(
-        of: find.byType(TabSwitcher),
-        matching: find.byType(Opacity),
-      ),
-      findsNothing,
-    );
+    final opacities = tester
+        .widgetList<Opacity>(
+          find.descendant(
+            of: find.byType(TabSwitcher),
+            matching: find.byType(Opacity),
+          ),
+        )
+        .map((widget) => widget.opacity);
+    expect(opacities, everyElement(1));
     await tester.pumpAndSettle();
     expect(find.text('page0'), findsNothing);
   });
