@@ -21,12 +21,17 @@ import '../native/keys.dart';
 import '../native/term.dart';
 import '../native/term_demo.dart';
 import '../preview_env.dart';
+import '../term_session.dart';
+import '../terminal_appearance.dart';
 import '../terminal_gestures.dart';
 import '../terminal_keys.dart';
+import '../terminal_snippets.dart';
 import '../terminal_store.dart';
 import '../widgets/controls.dart';
 import 'term_key_bar.dart';
+import 'terminal_sessions.dart';
 import 'term_view.dart';
+import 'terminal_snippets_sheet.dart';
 
 enum _Kind { command, output, muted, error, ok }
 
@@ -49,6 +54,8 @@ class TerminalPage extends StatefulWidget {
     this.onDisconnect,
     this.onReconnect,
     this.onAgents,
+    this.sessions = const [],
+    this.onSwitch,
   });
 
   final NodeItem node;
@@ -64,6 +71,12 @@ class TerminalPage extends StatefulWidget {
 
   /// Opening the herdr agents for this node, when the link is up.
   final VoidCallback? onAgents;
+
+  /// Every session that is still open, for the strip under the header.
+  final List<SshTerminal> sessions;
+
+  /// Switching to another session without dialing again.
+  final ValueChanged<SshTerminal>? onSwitch;
 
   final String user;
   final int port;
@@ -83,13 +96,6 @@ class TerminalPage extends StatefulWidget {
 
 class _TerminalPageState extends State<TerminalPage>
     with WidgetsBindingObserver {
-  static const _bgTop = Color(0xFF090A0C);
-  static const _bgBottom = Color(0xFF101319);
-  static const _fg = Color(0xFFE7E9ED);
-  static const _dim = Color(0xFF7C838D);
-  static const _green = Color(0xFF57D7A0);
-  static const _red = Color(0xFFFF7B72);
-
   final _input = TextEditingController();
   final _scroll = ScrollController();
   late final List<_Line> _lines = [
@@ -106,8 +112,10 @@ class _TerminalPageState extends State<TerminalPage>
     const _Line('code-server:latest    Up 12 days', _Kind.output),
   ];
 
-  /// The libghostty-vt emulator; null on Web or when the library is missing.
+  /// The libghostty-vt emulator; the store owns the live one, so switching
+  /// sessions or leaving the page keeps its grid and scrollback.
   TerminalSession? _session;
+  bool _ownsSession = false;
   final _focus = FocusNode(debugLabel: 'terminal');
   StreamSubscription<SshOutput>? _output;
   String? _closedReason;
@@ -129,29 +137,24 @@ class _TerminalPageState extends State<TerminalPage>
   void initState() {
     super.initState();
     final terminal = widget.terminal;
-    final term = createNativeTerm(cols: 80, rows: 24, scrollback: 5000);
-    if (term != null) {
-      _session = TerminalSession(term)
-        ..addListener(_onSessionChanged)
-        ..onResize = (cols, rows) {
-          terminal.resize(cols, rows);
-          // The demo re-reads its size so its tail always sits on the last
-          // rows, whatever the device and keyboard do to the grid.
-          if (widget.demo && rows != _demoRows) {
-            _demoRows = rows;
-            _session?.feed(demoSessionBytes(rows: rows));
-          }
+    final shared = terminal.view;
+    if (widget.demo) {
+      // The demo feeds its own emulator, whatever the store holds.
+      final term = createNativeTerm(cols: 80, rows: 24, scrollback: 5000);
+      if (term != null) {
+        _ownsSession = true;
+        _session = TerminalSession(term)..addListener(_onSessionChanged);
+        _session!.onResize = (cols, rows) {
+          if (rows == _demoRows) return;
+          _demoRows = rows;
+          _session?.feed(demoSessionBytes(rows: rows));
         };
-      if (widget.demo) {
         _session!.feed(demoSessionBytes());
-      } else {
-        // Output that arrived while no page was attached.
-        final buffered = terminal.takeBuffered();
-        if (buffered.isNotEmpty) {
-          _session!.feed(buffered);
-          _connected = terminal.live;
-        }
       }
+    } else if (shared != null) {
+      _session = shared..addListener(_onSessionChanged);
+      _connected = terminal.received;
+      _closedReason = terminal.closed ? terminal.closeReason : null;
     }
     // Hardware keys go through the emulator's encoder in the demo too, so a
     // keyboard can be tried without a tailnet.
@@ -194,10 +197,9 @@ class _TerminalPageState extends State<TerminalPage>
       session?.feed(_ansi('\r\n\x1b[31m$line\x1b[0m\r\n'));
       return;
     }
-    final bytes = frame.bytes;
-    if (bytes == null) return;
-    final reply = session?.feed(bytes);
-    if (reply != null && reply.isNotEmpty) widget.terminal.write(reply);
+    // The store already fed the grid (it owns the emulator), so the page only
+    // tracks status here; feeding again would double every byte.
+    if (frame.bytes == null) return;
     if (!frame.notice && !_connected) setState(() => _connected = true);
   }
 
@@ -319,6 +321,28 @@ class _TerminalPageState extends State<TerminalPage>
     _haptic();
   }
 
+  /// A snippet is typed input: the payload goes out as bytes, Return
+  /// included when the snippet asks for it.
+  void _sendSnippet(TerminalSnippet snippet) {
+    _haptic();
+    if (!widget.live) {
+      final session = _session;
+      if (session == null) return;
+      session.feed(Uint8List.fromList(utf8.encode(snippet.payload)));
+      return;
+    }
+    widget.terminal.write(Uint8List.fromList(utf8.encode(snippet.payload)));
+  }
+
+  Future<void> _openSnippets() async {
+    final backend = BackendScope.of(context);
+    await showTerminalSnippetsSheet(
+      context,
+      backend: backend,
+      onSend: _sendSnippet,
+    );
+  }
+
   /// Pinch zoom: the grid follows the finger, the config follows the release.
   void _zoomTo(double size) {
     final backend = BackendScope.of(context);
@@ -405,7 +429,7 @@ class _TerminalPageState extends State<TerminalPage>
     _output?.cancel();
     _focus.dispose();
     _session?.removeListener(_onSessionChanged);
-    _session?.dispose();
+    if (_ownsSession) _session?.dispose();
     _input.dispose();
     _scroll.dispose();
     super.dispose();
@@ -490,12 +514,12 @@ class _TerminalPageState extends State<TerminalPage>
     });
   }
 
-  Color _colorOf(_Kind kind) => switch (kind) {
-    _Kind.command => _fg,
-    _Kind.output => const Color(0xFFC9CDD6),
-    _Kind.muted => _dim,
-    _Kind.error => _red,
-    _Kind.ok => _green,
+  Color _colorOf(TerminalPalette palette, _Kind kind) => switch (kind) {
+    _Kind.command => palette.foreground,
+    _Kind.output => palette.foreground.withValues(alpha: 0.86),
+    _Kind.muted => palette.dim,
+    _Kind.error => palette.error,
+    _Kind.ok => palette.success,
   };
 
   @override
@@ -503,27 +527,33 @@ class _TerminalPageState extends State<TerminalPage>
     final wide = MediaQuery.sizeOf(context).width > 900;
     final keyboard = _keyboardInset(context);
     final l10n = AppLocalizations.of(context);
+    final backend = BackendScope.of(context);
+    final palette = terminalPaletteOf(
+      backend.terminalTheme,
+      Theme.of(context).brightness,
+    );
+    final family = terminalFontFamily(backend.terminalFont);
     final session = _session;
     final mono = TextStyle(
-      fontFamily: 'DejaVuSansMono',
-      fontFamilyFallback: const ['NotoSansCJK'],
+      fontFamily: family,
+      fontFamilyFallback: terminalFontFallback,
       fontSize: wide ? 14.5 : 13.5,
       height: 1.6,
-      color: _fg,
+      color: palette.foreground,
       decoration: TextDecoration.none,
     );
+    final closed = _closedReason != null || widget.terminal.closed;
     final (status, statusColor) = widget.demo
-        ? (l10n.demo, const Color(0xFFE3B341))
+        ? (l10n.demo, palette.warning)
         : widget.live
-        ? (_closedReason != null
-              ? (l10n.disconnected, _red)
+        ? (closed
+              ? (l10n.disconnected, palette.error)
               : _connected
-              ? (l10n.connected, _green)
-              : (l10n.connecting, const Color(0xFFE3B341)))
+              ? (l10n.connected, palette.success)
+              : (l10n.connecting, palette.warning))
         : session == null
-        ? (l10n.connected, _green)
-        : (l10n.notConnected, _dim);
-    final backend = BackendScope.of(context);
+        ? (l10n.connected, palette.success)
+        : (l10n.notConnected, palette.dim);
     final fontSize = _pinchFont ?? backend.terminalFontSize;
     // Landscape on a phone is short: the quick commands would cost half the
     // rows the grid needs.
@@ -536,20 +566,24 @@ class _TerminalPageState extends State<TerminalPage>
         : widget.live
         ? '${widget.node.ip}:${widget.port} · ${widget.node.os}'
         : '${widget.node.os} · ${widget.node.ip} · 18 ms';
+    final keyRow = _showKeyRow(context);
+    // The chrome under the grid owns the gesture bar (or the notch) below it,
+    // so the row's surface reaches the screen edge instead of stopping short.
+    final bottomInset = keyboard > 0 ? 0.0 : MediaQuery.viewPaddingOf(context).bottom;
     return Surface(
-      color: _bgTop,
+      color: palette.background,
       child: DefaultTextStyle(
         style: mono,
         child: DecoratedBox(
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
-              colors: [_bgTop, _bgBottom],
+              colors: [palette.background, palette.backgroundAlt],
             ),
           ),
           child: SafeArea(
-            bottom: keyboard == 0,
+            bottom: false,
             child: Padding(
               padding: EdgeInsets.only(bottom: keyboard),
               child: Column(
@@ -558,15 +592,21 @@ class _TerminalPageState extends State<TerminalPage>
                     node: widget.node,
                     onClose: widget.onClose,
                     mono: mono,
+                    palette: palette,
                     user: widget.user,
                     subtitle: subtitle,
                     status: status,
                     statusColor: statusColor,
-                    reconnect: _closedReason != null
-                        ? widget.onReconnect
-                        : null,
+                    reconnect: closed ? widget.onReconnect : null,
                     agents: widget.onAgents,
                   ),
+                  if (widget.sessions.length > 1)
+                    TerminalSessionStrip(
+                      sessions: widget.sessions,
+                      current: widget.terminal,
+                      palette: palette,
+                      onSwitch: widget.onSwitch,
+                    ),
                   LiveRegion(message: status),
                   Expanded(
                     child: Semantics(
@@ -575,19 +615,30 @@ class _TerminalPageState extends State<TerminalPage>
                       label: l10n.terminalOutput,
                       hint: l10n.terminalReadOnly,
                       child: session == null
-                          ? _simulated(wide, mono)
+                          ? _simulated(wide, mono, palette)
                           : _emulator(
                               session,
                               fontSize,
                               backend.terminalSwipeArrows,
+                              palette,
+                              family,
                             ),
                     ),
                   ),
-                  if (!compact) _QuickBar(onRun: _run),
+                  if (!compact)
+                    _QuickBar(
+                      palette: palette,
+                      snippets: backend.terminalSnippets,
+                      onRun: _run,
+                      onSnippet: _sendSnippet,
+                      onManage: () => unawaited(_openSnippets()),
+                    ),
                   _InputBar(
                     controller: _input,
                     mono: mono,
+                    palette: palette,
                     focusNode: _focus,
+                    bottomInset: keyRow ? 0 : bottomInset,
                     onPaste: session == null ? null : _paste,
                     onTap: _focusTerminal,
                     onChanged: _session == null ? null : _onTextChanged,
@@ -607,10 +658,12 @@ class _TerminalPageState extends State<TerminalPage>
                       _input.clear();
                     },
                   ),
-                  if (_showKeyRow(context))
+                  if (keyRow)
                     TerminalKeyBar(
                       pages: backend.terminalKeyPages,
                       mods: _mods,
+                      palette: palette,
+                      bottomInset: bottomInset,
                       onKey: _tapKey,
                       onModifier: (mod) {
                         setState(() => _mods.tap(mod));
@@ -650,7 +703,14 @@ class _TerminalPageState extends State<TerminalPage>
   static double _keyboardInset(BuildContext context) =>
       MediaQuery.viewInsetsOf(context).bottom;
 
-  Widget _emulator(TerminalSession session, double fontSize, bool swipeArrows) {
+  Widget _emulator(
+    TerminalSession session,
+    double fontSize,
+    bool swipeArrows,
+    TerminalPalette palette,
+    String family,
+  ) {
+    final backend = BackendScope.of(context);
     return Listener(
       onPointerSignal: (event) {
         if (event is! PointerScrollEvent) return;
@@ -660,6 +720,11 @@ class _TerminalPageState extends State<TerminalPage>
       child: TerminalCanvas(
         session: session,
         fontSize: fontSize,
+        fontFamily: family,
+        fontFallback: terminalFontFallback,
+        palette: palette,
+        cursor: backend.terminalCursor,
+        cursorBlink: backend.terminalCursorBlink,
         swipeArrows: swipeArrows,
         onArrow: _onArrow,
         onFontSize: _zoomTo,
@@ -670,7 +735,7 @@ class _TerminalPageState extends State<TerminalPage>
     );
   }
 
-  Widget _simulated(bool wide, TextStyle mono) {
+  Widget _simulated(bool wide, TextStyle mono, TerminalPalette palette) {
     // The demo node is not an SSH session, so it never claims to be connected.
     final banner = !widget.demo;
     return ListView.builder(
@@ -683,7 +748,7 @@ class _TerminalPageState extends State<TerminalPage>
             padding: const EdgeInsets.only(bottom: 2),
             child: Text(
               AppLocalizations.of(context).connectedTo(widget.node.name),
-              style: mono.copyWith(color: _green),
+              style: mono.copyWith(color: palette.success),
             ),
           );
         }
@@ -696,12 +761,13 @@ class _TerminalPageState extends State<TerminalPage>
               ? _PromptLine(
                   command: line.text,
                   mono: mono,
+                  palette: palette,
                   user: widget.user,
                   host: widget.node.name,
                 )
               : Text(
                   line.text,
-                  style: mono.copyWith(color: _colorOf(line.kind)),
+                  style: mono.copyWith(color: _colorOf(palette, line.kind)),
                 ),
         );
       },
@@ -713,12 +779,14 @@ class _PromptLine extends StatelessWidget {
   const _PromptLine({
     required this.command,
     required this.mono,
+    required this.palette,
     required this.user,
     required this.host,
   });
 
   final String command;
   final TextStyle mono;
+  final TerminalPalette palette;
   final String user;
   final String host;
 
@@ -729,16 +797,16 @@ class _PromptLine extends StatelessWidget {
         children: [
           TextSpan(
             text: '$user@$host',
-            style: mono.copyWith(color: const Color(0xFF57D7A0)),
+            style: mono.copyWith(color: palette.success),
           ),
           TextSpan(
             text: ':~\$ ',
-            style: mono.copyWith(color: const Color(0xFF5C6370)),
+            style: mono.copyWith(color: palette.dim),
           ),
           TextSpan(
             text: command,
             style: mono.copyWith(
-              color: const Color(0xFFE7E9ED),
+              color: palette.foreground,
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -753,6 +821,7 @@ class _Header extends StatelessWidget {
     required this.node,
     required this.onClose,
     required this.mono,
+    required this.palette,
     required this.user,
     required this.subtitle,
     required this.status,
@@ -764,6 +833,7 @@ class _Header extends StatelessWidget {
   final NodeItem node;
   final VoidCallback onClose;
   final TextStyle mono;
+  final TerminalPalette palette;
   final String user;
   final String subtitle;
   final String status;
@@ -775,16 +845,16 @@ class _Header extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.fromLTRB(6, 8, 14, 10),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         border: Border(
-          bottom: BorderSide(color: Color(0x14FFFFFF), width: 0.5),
+          bottom: BorderSide(color: palette.border, width: 0.5),
         ),
       ),
       child: Row(
         children: [
           IconButton(
             onPressed: onClose,
-            icon: const GlyphIcon(Glyphs.chevronBack, color: Color(0xFFE7E9ED)),
+            icon: GlyphIcon(Glyphs.chevronBack, color: palette.foreground),
             tooltip: AppLocalizations.of(context).close,
           ),
           const SizedBox(width: 2),
@@ -809,10 +879,7 @@ class _Header extends StatelessWidget {
                     child: Text(
                       subtitle,
                       key: ValueKey(subtitle),
-                      style: mono.copyWith(
-                        fontSize: 11,
-                        color: const Color(0xFF7C838D),
-                      ),
+                      style: mono.copyWith(fontSize: 11, color: palette.dim),
                     ),
                   ),
                 ),
@@ -826,6 +893,7 @@ class _Header extends StatelessWidget {
               label: AppLocalizations.of(context).reconnect,
               onPressed: reconnect ?? () {},
               mono: mono,
+              color: palette.accent,
             ),
           ),
           if (agents != null)
@@ -843,7 +911,7 @@ class _Header extends StatelessWidget {
                       icon: GlyphIcon(
                         Glyphs2.agents,
                         size: 18,
-                        color: const Color(0xFFE7E9ED),
+                        color: palette.foreground,
                       ),
                       tooltip: AppLocalizations.of(context).agentsTitle,
                     ),
@@ -887,18 +955,20 @@ class _HeaderTextButton extends StatelessWidget {
     required this.label,
     required this.onPressed,
     required this.mono,
+    required this.color,
   });
 
   final String label;
   final VoidCallback onPressed;
   final TextStyle mono;
+  final Color color;
 
   @override
   Widget build(BuildContext context) {
     return TextButton(
       onPressed: onPressed,
       style: ButtonStyle.from(
-        foregroundColor: const Color(0xFF7FB4FF),
+        foregroundColor: color,
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         minimumSize: Size.zero,
         textStyle: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600),
@@ -909,10 +979,22 @@ class _HeaderTextButton extends StatelessWidget {
   }
 }
 
+/// The snippets button comes first, then the saved commands, or the built-in
+/// ones while the drawer is empty.
 class _QuickBar extends StatelessWidget {
-  const _QuickBar({required this.onRun});
+  const _QuickBar({
+    required this.palette,
+    required this.snippets,
+    required this.onRun,
+    required this.onSnippet,
+    required this.onManage,
+  });
 
+  final TerminalPalette palette;
+  final List<TerminalSnippet> snippets;
   final ValueChanged<String> onRun;
+  final ValueChanged<TerminalSnippet> onSnippet;
+  final VoidCallback onManage;
 
   static const _commands = [
     'ls',
@@ -924,38 +1006,99 @@ class _QuickBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return SizedBox(
       height: 44,
       child: ListView(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 14),
         children: [
-          for (final command in _commands)
-            Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: TapFeedback(
+          _QuickChip(
+            label: l10n.terminalSnippets,
+            palette: palette,
+            glyph: Glyphs2.bolt,
+            onTap: onManage,
+          ),
+          for (final snippet in snippets)
+            _QuickChip(
+              label: snippet.label,
+              palette: palette,
+              tooltip: snippet.command,
+              onTap: () => onSnippet(snippet),
+            ),
+          if (snippets.isEmpty)
+            for (final command in _commands)
+              _QuickChip(
+                label: command,
+                palette: palette,
                 onTap: () => onRun(command),
-                squish: true,
-                shape: AppShape.full,
-                child: Container(
-                  alignment: Alignment.center,
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  decoration: const ShapeDecoration(
-                    color: Color(0xFF15181F),
-                    shape: StadiumBorder(),
-                  ),
-                  child: Text(
-                    command,
-                    style: const TextStyle(
-                      fontFamily: 'DejaVuSansMono',
+              ),
+        ],
+      ),
+    );
+  }
+}
+
+class _QuickChip extends StatelessWidget {
+  const _QuickChip({
+    required this.label,
+    required this.palette,
+    required this.onTap,
+    this.tooltip,
+    this.glyph,
+  });
+
+  final String label;
+  final TerminalPalette palette;
+  final VoidCallback onTap;
+  final String? tooltip;
+  final Glyph? glyph;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: Tooltip(
+        message: tooltip ?? '',
+        child: Semantics(
+          button: true,
+          label: tooltip == null ? label : '$label: $tooltip',
+          excludeSemantics: true,
+          onTap: onTap,
+          child: TapFeedback(
+            onTap: onTap,
+            excludeFromSemantics: true,
+            squish: true,
+            shape: AppShape.full,
+            child: Container(
+              alignment: Alignment.center,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              decoration: ShapeDecoration(
+                color: palette.surface,
+                shape: const StadiumBorder(),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (glyph case final glyph?) ...[
+                    GlyphIcon(glyph, size: 13, color: palette.dim),
+                    const SizedBox(width: 5),
+                  ],
+                  Text(
+                    label,
+                    maxLines: 1,
+                    style: TextStyle(
+                      fontFamily: terminalFontFamily(TerminalFontId.dejavu),
                       fontSize: 11.5,
-                      color: Color(0xFFAEB4BE),
+                      color: palette.foreground.withValues(alpha: 0.9),
+                      decoration: TextDecoration.none,
                     ),
                   ),
-                ),
+                ],
               ),
             ),
-        ],
+          ),
+        ),
       ),
     );
   }
@@ -965,8 +1108,10 @@ class _InputBar extends StatelessWidget {
   const _InputBar({
     required this.controller,
     required this.mono,
+    required this.palette,
     required this.onSubmitted,
     this.focusNode,
+    this.bottomInset = 0,
     this.onChanged,
     this.onPaste,
     this.onTap,
@@ -974,8 +1119,12 @@ class _InputBar extends StatelessWidget {
 
   final TextEditingController controller;
   final TextStyle mono;
+  final TerminalPalette palette;
   final ValueChanged<String> onSubmitted;
   final FocusNode? focusNode;
+
+  /// Gesture bar or cutout below the input line, when no key row follows it.
+  final double bottomInset;
   final ValueChanged<String>? onChanged;
   final VoidCallback? onPaste;
   final VoidCallback? onTap;
@@ -983,21 +1132,17 @@ class _InputBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 2, 12, 12),
+      padding: EdgeInsets.fromLTRB(12, 2, 12, 12 + bottomInset),
       child: Container(
         padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
         decoration: ShapeDecoration(
-          color: const Color(0xFF15181F),
+          color: palette.surface,
           shape: AppShape.all(12),
           shadows: const [],
         ),
         child: Row(
           children: [
-            const GlyphIcon(
-              Glyphs.chevronForward,
-              size: 13,
-              color: Color(0xFF7FB4FF),
-            ),
+            GlyphIcon(Glyphs.chevronForward, size: 13, color: palette.accent),
             const SizedBox(width: 8),
             Expanded(
               child: Semantics(
@@ -1010,15 +1155,15 @@ class _InputBar extends StatelessWidget {
                   onTap: onTap,
                   onChanged: onChanged,
                   onSubmitted: onSubmitted,
-                  cursorColor: const Color(0xFF7FB4FF),
+                  cursorColor: palette.accent,
                   cursorHeight: 15,
                   style: mono.copyWith(fontSize: 13),
                   decoration: InputDecoration.collapsed(
                     hintText: AppLocalizations.of(context).typeCommand,
-                    hintStyle: const TextStyle(
-                      fontFamily: 'DejaVuSansMono',
+                    hintStyle: TextStyle(
+                      fontFamily: terminalFontFamily(TerminalFontId.dejavu),
                       fontSize: 13,
-                      color: Color(0xFF4A515B),
+                      color: palette.dim.withValues(alpha: 0.8),
                     ),
                   ),
                 ),
@@ -1031,15 +1176,11 @@ class _InputBar extends StatelessWidget {
                 child: GestureDetector(
                   behavior: HitTestBehavior.opaque,
                   onTap: onPaste,
-                  child: const SizedBox(
+                  child: SizedBox(
                     width: 34,
                     height: 34,
                     child: Center(
-                      child: GlyphIcon(
-                        Glyphs.paste,
-                        size: 16,
-                        color: Color(0xFF7C838D),
-                      ),
+                      child: GlyphIcon(Glyphs.paste, size: 16, color: palette.dim),
                     ),
                   ),
                 ),

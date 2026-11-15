@@ -489,6 +489,85 @@ class AppLocalizations implements UiLocalizations {
       ? '接着外接键盘时隐藏，把屏幕留给终端。'
       : 'Hidden while a keyboard is attached, to give the screen to the grid.';
 
+  // Appearance, snippets and sessions.
+  String get terminalColors => _zh ? '颜色主题' : 'Color theme';
+  String get terminalThemeFollow => _zh ? '跟随外观' : 'Match appearance';
+  String get terminalThemeTaildeck => _zh ? 'Taildeck 深色' : 'Taildeck dark';
+  String get terminalThemeMidnight => _zh ? '午夜蓝' : 'Midnight';
+  String get terminalThemePaper => _zh ? '纸张浅色' : 'Paper light';
+  String get terminalThemeSolarizedDark => _zh ? 'Solarized 深色' : 'Solarized dark';
+  String get terminalThemeSolarizedLight =>
+      _zh ? 'Solarized 浅色' : 'Solarized light';
+  String get terminalFontFamily => _zh ? '字体' : 'Font family';
+  String get terminalFontDejavu => 'DejaVu Sans Mono';
+  String get terminalFontSystem => _zh ? '系统等宽' : 'System monospace';
+  String get terminalFontSans => _zh ? '无衬线（非等宽）' : 'Sans (not monospace)';
+  String get terminalCursorLabel => _zh ? '光标样式' : 'Cursor';
+  String get terminalCursorFollow => _zh ? '跟随程序' : 'From the program';
+  String get terminalCursorBlock => _zh ? '方块' : 'Block';
+  String get terminalCursorBar => _zh ? '竖线' : 'Bar';
+  String get terminalCursorUnderline => _zh ? '下划线' : 'Underline';
+  String get terminalCursorBlink => _zh ? '光标闪烁' : 'Blinking cursor';
+  String get terminalCursorBlinkOn =>
+      _zh ? '光标按 530 ms 亮暗交替。' : 'The cursor blinks every 530 ms.';
+  String get terminalCursorBlinkOff =>
+      _zh ? '光标常亮。' : 'The cursor stays solid.';
+  String get terminalKeepAlive => _zh ? '后台保持会话' : 'Keep sessions in background';
+  String get terminalKeepAliveOn => _zh
+      ? '切到后台后 SSH 会话继续运行，由前台服务维持进程。'
+      : 'SSH sessions keep running while the app is away, held by the foreground service.';
+  String get terminalKeepAliveOff => _zh
+      ? '离开前台即断开会话，前台服务也随之停止。'
+      : 'Sessions end when the app leaves the foreground, and the foreground service stops.';
+  String get terminalKeepAliveLimits => _zh
+      ? '系统仍可能回收进程：Android 的 dataSync 前台服务有 6 小时上限，Doze 和省电模式会限制网络；iOS 没有等效的前台服务。'
+      : 'The OS can still reclaim the process: Android caps a dataSync foreground service at 6 hours, Doze and battery saver throttle the network, and iOS has no equivalent foreground service.';
+
+  String get terminalSnippets => _zh ? '命令片段' : 'Snippets';
+  String terminalSnippetsHint(int count) => _zh
+      ? '$count 条已保存的命令'
+      : '$count saved ${count == 1 ? 'command' : 'commands'}';
+  String get terminalSnippetsEmpty => _zh
+      ? '还没有命令片段。保存常用命令，在终端里一点就发。'
+      : 'No snippets yet. Save a command and send it from the terminal with one tap.';
+  String get snippetNew => _zh ? '新建片段' : 'New snippet';
+  String get snippetName => _zh ? '名称' : 'Name';
+  String get snippetNameHint => _zh ? '例如：查看磁盘' : 'e.g. Disk usage';
+  String get snippetCommand => _zh ? '命令' : 'Command';
+  String get snippetCommandHint => _zh ? '例如：df -h' : 'e.g. df -h';
+  String get snippetAppendEnter => _zh ? '发送后回车' : 'Append Enter';
+  String get onLabel => _zh ? '开' : 'On';
+  String get offLabel => _zh ? '关' : 'Off';
+  String get snippetAppendEnterOn =>
+      _zh ? '发完命令直接执行。' : 'The command runs as soon as it is sent.';
+  String get snippetAppendEnterOff =>
+      _zh ? '只输入命令，由你按回车。' : 'Types the command only; you press Return.';
+  String get snippetSave => _zh ? '保存' : 'Save';
+  String get snippetDeleted => _zh ? '已删除片段' : 'Snippet deleted';
+  String get snippetCommandRequired => _zh ? '命令不能为空' : 'A command is needed';
+  String snippetLimit(int max) =>
+      _zh ? '最多 $max 条片段' : 'Up to $max snippets';
+  String snippetDeleteConfirm(String name) =>
+      _zh ? '删除“$name”？' : 'Delete “$name”?';
+  String get snippetMoveUp => _zh ? '上移' : 'Move up';
+  String get snippetMoveDown => _zh ? '下移' : 'Move down';
+  String get snippetUntitled => _zh ? '未命名' : 'Untitled';
+  String get snippetNoSession =>
+      _zh ? '这条会话没有连到远端，片段没有发出。' : 'This session has no remote; nothing was sent.';
+
+  String get terminalSessions => _zh ? '会话' : 'Sessions';
+  String get terminalSessionDropped => _zh ? '已断开' : 'Dropped';
+  String get terminalSessionReconnecting => _zh ? '正在重连' : 'Reconnecting';
+  String get terminalSessionSwitchHint =>
+      _zh ? '点击切换会话' : 'Tap to switch sessions';
+  String get terminalReconnectFailed => _zh ? '重连失败' : 'Reconnect failed';
+  String a11yTerminalSession(String target, String state) =>
+      _zh ? '$target，$state' : '$target, $state';
+  String a11yTerminalSnippet(String name) =>
+      _zh ? '发送片段：$name' : 'Send snippet: $name';
+  String a11yTerminalSessions(int count) =>
+      _zh ? '$count 个会话' : '$count sessions';
+
   String terminalKeyName(String id) => switch (id) {
     'esc' => _zh ? 'Esc 键' : 'Escape',
     'tab' => 'Tab',

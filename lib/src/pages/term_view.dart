@@ -6,63 +6,19 @@ import 'package:flutter/widgets.dart';
 
 import '../l10n.dart';
 import '../native/term.dart';
+import '../term_session.dart';
+import '../terminal_appearance.dart';
 import '../terminal_gestures.dart';
 
-/// Owns one libghostty-vt terminal and notifies when a new snapshot is ready.
-class TerminalSession extends ChangeNotifier {
-  TerminalSession(this.term) : _snapshot = term.snapshot();
-
-  final NativeTerm term;
-  TermSnapshot _snapshot;
-  TermSnapshot get snapshot => _snapshot;
-
-  /// Called after the emulator grid changed, so an SSH session can follow.
-  void Function(int cols, int rows)? onResize;
-
-  /// Feeds remote output; returns the bytes the remote should get back.
-  Uint8List? feed(Uint8List bytes) {
-    final reply = term.write(bytes);
-    _refresh();
-    return reply;
-  }
-
-  void scroll(int delta) {
-    term.scroll(delta);
-    _refresh();
-  }
-
-  void resize(int cols, int rows, int cellWidth, int cellHeight) {
-    if (cols == term.cols && rows == term.rows) return;
-    term.resize(cols, rows, cellWidth, cellHeight);
-    onResize?.call(cols, rows);
-    _refresh();
-  }
-
-  String? get title => term.title();
-
-  /// Re-reads the grid, e.g. after the selection changed.
-  void refresh() => _refresh();
-
-  void _refresh() {
-    _snapshot = term.snapshot();
-    notifyListeners();
-  }
-
-  @override
-  void dispose() {
-    term.dispose();
-    super.dispose();
-  }
-}
-
-/// Monospace cell metrics for one font size.
+/// Monospace cell metrics for one font family at one size.
 class _Metrics {
-  _Metrics(double fontSize)
-    : style = const TextStyle(
-        fontFamily: 'DejaVuSansMono',
-        fontFamilyFallback: ['NotoSansCJK'],
+  _Metrics(this.fontSize, this.family, this.fallback)
+    : style = TextStyle(
+        fontFamily: family,
+        fontFamilyFallback: fallback,
         height: 1.0,
-      ).copyWith(fontSize: fontSize) {
+        fontSize: fontSize,
+      ) {
     final painter = TextPainter(
       text: TextSpan(text: 'M', style: style),
       textDirection: TextDirection.ltr,
@@ -74,6 +30,9 @@ class _Metrics {
     painter.dispose();
   }
 
+  final double fontSize;
+  final String family;
+  final List<String> fallback;
   final TextStyle style;
   late final double cellWidth;
   late final double cellHeight;
@@ -88,6 +47,11 @@ class TerminalCanvas extends StatefulWidget {
     super.key,
     required this.session,
     this.fontSize = terminalFontDefault,
+    this.fontFamily = 'DejaVuSansMono',
+    this.fontFallback = terminalFontFallback,
+    this.palette = defaultTerminalPalette,
+    this.cursor = TerminalCursorId.follow,
+    this.cursorBlink = true,
     this.padding = const EdgeInsets.fromLTRB(18, 10, 18, 10),
     this.swipeArrows = true,
     this.onArrow,
@@ -99,6 +63,18 @@ class TerminalCanvas extends StatefulWidget {
 
   final TerminalSession session;
   final double fontSize;
+
+  /// Family, fallback and palette come from Settings → Terminal; the grid
+  /// measures the family, so cells change width with it.
+  final String fontFamily;
+  final List<String> fontFallback;
+  final TerminalPalette palette;
+
+  /// Shape and blink of the cursor; [TerminalCursorId.follow] keeps the
+  /// program's DECSCUSR request.
+  final TerminalCursorId cursor;
+  final bool cursorBlink;
+
   final EdgeInsets padding;
 
   /// One-finger swipe sends arrow keys; off, a vertical drag walks the
@@ -124,8 +100,13 @@ class TerminalCanvas extends StatefulWidget {
   State<TerminalCanvas> createState() => _TerminalCanvasState();
 }
 
-class _TerminalCanvasState extends State<TerminalCanvas> {
-  late _Metrics _metrics = _Metrics(widget.fontSize);
+class _TerminalCanvasState extends State<TerminalCanvas>
+    with SingleTickerProviderStateMixin {
+  late _Metrics _metrics = _measure();
+  late final AnimationController _blink = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 530),
+  );
   final _gridKey = GlobalKey();
   final _swipe = SwipeStepper();
   GridSelection? _selection;
@@ -137,11 +118,32 @@ class _TerminalCanvasState extends State<TerminalCanvas> {
   String _notice = '';
   Timer? _noticeTimer;
 
+  _Metrics _measure() => _Metrics(
+    widget.fontSize,
+    widget.fontFamily,
+    widget.fontFallback,
+  );
+
+  void _syncBlink() {
+    final wanted =
+        widget.cursorBlink &&
+        widget.session.snapshot.cursorVisible &&
+        !(MediaQuery.maybeDisableAnimationsOf(context) ?? false);
+    if (!wanted) {
+      if (_blink.isAnimating) _blink.stop();
+      _blink.value = 1;
+      return;
+    }
+    if (!_blink.isAnimating) _blink.repeat(reverse: true);
+  }
+
   @override
   void didUpdateWidget(TerminalCanvas oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.fontSize != widget.fontSize) {
-      _metrics = _Metrics(widget.fontSize);
+    if (oldWidget.fontSize != widget.fontSize ||
+        oldWidget.fontFamily != widget.fontFamily ||
+        oldWidget.fontFallback != widget.fontFallback) {
+      _metrics = _measure();
     }
     if (oldWidget.session != widget.session) _selection = null;
   }
@@ -149,6 +151,7 @@ class _TerminalCanvasState extends State<TerminalCanvas> {
   @override
   void dispose() {
     _noticeTimer?.cancel();
+    _blink.dispose();
     super.dispose();
   }
 
@@ -171,6 +174,9 @@ class _TerminalCanvasState extends State<TerminalCanvas> {
               .floor(),
         );
         _scheduleResize(cols, rows);
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _syncBlink();
+        });
         return ClipRect(
           child: ListenableBuilder(
             listenable: widget.session,
@@ -199,12 +205,32 @@ class _TerminalCanvasState extends State<TerminalCanvas> {
                         painter: _GridPainter(
                           snapshot: snapshot,
                           metrics: _metrics,
+                          palette: widget.palette,
                           origin: Offset(
                             widget.padding.left,
                             widget.padding.top,
                           ),
                         ),
                         size: Size.infinite,
+                      ),
+                    ),
+                  ),
+                  // The cursor blinks on its own layer, so a tick never
+                  // repaints the grid text.
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      child: CustomPaint(
+                        painter: _CursorPainter(
+                          snapshot: snapshot,
+                          metrics: _metrics,
+                          palette: widget.palette,
+                          style: widget.cursor,
+                          blink: widget.cursorBlink ? _blink : null,
+                          origin: Offset(
+                            widget.padding.left,
+                            widget.padding.top,
+                          ),
+                        ),
                       ),
                     ),
                   ),
@@ -374,9 +400,9 @@ class _TerminalCanvasState extends State<TerminalCanvas> {
             width: 13,
             height: 13,
             decoration: BoxDecoration(
-              color: const Color(0xFF57D7A0),
+              color: widget.palette.accent,
               shape: BoxShape.circle,
-              border: Border.all(color: const Color(0xFF0B0D10), width: 2),
+              border: Border.all(color: widget.palette.background, width: 2),
             ),
           ),
         ),
@@ -403,9 +429,9 @@ class _TerminalCanvasState extends State<TerminalCanvas> {
           label: l10n.terminalSelection,
           child: DecoratedBox(
             decoration: ShapeDecoration(
-              color: const Color(0xF21A1E25),
+              color: widget.palette.surface,
               shape: StadiumBorder(
-                side: BorderSide(color: const Color(0x26FFFFFF), width: 0.5),
+                side: BorderSide(color: widget.palette.border, width: 0.5),
               ),
               shadows: const [
                 BoxShadow(
@@ -425,26 +451,30 @@ class _TerminalCanvasState extends State<TerminalCanvas> {
                       padding: const EdgeInsets.symmetric(horizontal: 10),
                       child: Text(
                         _notice,
-                        style: const TextStyle(
-                          fontFamily: 'DejaVuSansMono',
+                        style: _metrics.style.copyWith(
                           fontSize: 12,
-                          color: Color(0xFF57D7A0),
+                          color: widget.palette.success,
                           decoration: TextDecoration.none,
                         ),
                       ),
                     )
                   else ...[
-                    _ToolButton(label: l10n.copy, onTap: _copy),
+                    _ToolButton(label: l10n.copy, onTap: _copy, palette: widget.palette),
                     if (url != null) ...[
                       const SizedBox(width: gap / 2),
                       _ToolButton(
                         label: l10n.terminalOpenLink,
                         onTap: () => unawaited(_open(url)),
+                        palette: widget.palette,
                       ),
                     ],
                     if (widget.onPaste != null) ...[
                       const SizedBox(width: gap / 2),
-                      _ToolButton(label: l10n.paste, onTap: widget.onPaste!),
+                      _ToolButton(
+                        label: l10n.paste,
+                        onTap: widget.onPaste!,
+                        palette: widget.palette,
+                      ),
                     ],
                   ],
                 ],
@@ -496,10 +526,15 @@ class _TerminalCanvasState extends State<TerminalCanvas> {
 }
 
 class _ToolButton extends StatelessWidget {
-  const _ToolButton({required this.label, required this.onTap});
+  const _ToolButton({
+    required this.label,
+    required this.onTap,
+    required this.palette,
+  });
 
   final String label;
   final VoidCallback onTap;
+  final TerminalPalette palette;
 
   @override
   Widget build(BuildContext context) {
@@ -518,11 +553,10 @@ class _ToolButton extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 14),
           child: Text(
             label,
-            style: const TextStyle(
-              fontFamily: 'DejaVuSansMono',
+            style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w600,
-              color: Color(0xFFE7E9ED),
+              color: palette.foreground,
               decoration: TextDecoration.none,
             ),
           ),
@@ -536,16 +570,14 @@ class _GridPainter extends CustomPainter {
   _GridPainter({
     required this.snapshot,
     required this.metrics,
+    required this.palette,
     required this.origin,
   });
 
   final TermSnapshot snapshot;
   final _Metrics metrics;
+  final TerminalPalette palette;
   final Offset origin;
-
-  static const _selectionBg = Color(0xFF2C4A38);
-  static const _selectionFg = Color(0xFFFFFFFF);
-  static const _cursorFallback = Color(0xFF8FD3A8);
 
   double get _cw => metrics.cellWidth;
   double get _ch => metrics.cellHeight;
@@ -553,10 +585,7 @@ class _GridPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final brush = Paint()..isAntiAlias = false;
-    canvas.drawRect(
-      Offset.zero & size,
-      Paint()..color = Color(snapshot.defaultBg),
-    );
+    canvas.drawRect(Offset.zero & size, Paint()..color = palette.background);
     final gridWidth = math.min(size.width, snapshot.cols * _cw + origin.dx);
     final gridHeight = math.min(size.height, snapshot.rows * _ch + origin.dy);
     canvas.save();
@@ -564,43 +593,53 @@ class _GridPainter extends CustomPainter {
 
     _paintBackgrounds(canvas, brush);
     _paintText(canvas);
-    _paintCursor(canvas, brush);
     _paintScrollbar(canvas, brush, size);
     canvas.restore();
   }
 
+  /// Colors the emulator reports for a cell, with the theme standing in for
+  /// the defaults it was created with: a theme change then shows up without
+  /// rebuilding the emulator (and losing its scrollback).
+  Color _cellColor(int value, int fallback) {
+    if (value == snapshot.defaultFg) return palette.foreground;
+    if (value == snapshot.defaultBg) return palette.background;
+    if (value == fallback) return palette.foreground;
+    return Color(value);
+  }
+
   int _bgOf(int x, int y) {
     final flags = snapshot.flagsAt(x, y);
-    if (flags & TermFlags.selected != 0) return _selectionBg.toARGB32();
+    if (flags & TermFlags.selected != 0) return palette.selection.toARGB32();
     if (flags & TermFlags.inverse != 0) {
       return flags & TermFlags.hasFg != 0
           ? snapshot.fgAt(x, y)
-          : snapshot.defaultFg;
+          : palette.foreground.toARGB32();
     }
-    return flags & TermFlags.hasBg != 0
+    return flags & TermFlags.hasBg != 0 &&
+            snapshot.bgAt(x, y) != snapshot.defaultBg
         ? snapshot.bgAt(x, y)
-        : snapshot.defaultBg;
+        : palette.background.toARGB32();
   }
 
   Color _fgOf(int x, int y) {
     final flags = snapshot.flagsAt(x, y);
-    var value = flags & TermFlags.hasFg != 0
-        ? snapshot.fgAt(x, y)
-        : snapshot.defaultFg;
+    var color = flags & TermFlags.hasFg != 0
+        ? _cellColor(snapshot.fgAt(x, y), snapshot.defaultFg)
+        : palette.foreground;
     if (flags & TermFlags.inverse != 0) {
-      value = flags & TermFlags.hasBg != 0
-          ? snapshot.bgAt(x, y)
-          : snapshot.defaultBg;
+      color = flags & TermFlags.hasBg != 0
+          ? Color(snapshot.bgAt(x, y))
+          : palette.background;
     }
-    if (flags & TermFlags.selected != 0) return _selectionFg;
+    if (flags & TermFlags.selected != 0) return palette.selectionText;
     if (flags & TermFlags.faint != 0) {
-      return Color(value & 0xFFFFFF).withValues(alpha: 0.6);
+      return color.withValues(alpha: 0.6);
     }
-    return Color(value);
+    return color;
   }
 
   void _paintBackgrounds(Canvas canvas, Paint brush) {
-    final defaultBg = snapshot.defaultBg;
+    final defaultBg = palette.background.toARGB32();
     for (var y = 0; y < snapshot.rows; y++) {
       final top = origin.dy + y * _ch;
       for (var x = 0; x < snapshot.cols; x++) {
@@ -752,8 +791,56 @@ class _GridPainter extends CustomPainter {
     }
   }
 
-  void _paintCursor(Canvas canvas, Paint brush) {
+  void _paintScrollbar(Canvas canvas, Paint brush, Size size) {
+    final total = snapshot.scrollTotal;
+    final offset = snapshot.scrollOffset;
+    final len = snapshot.scrollLen;
+    if (total <= len || offset + len >= total) return;
+    final height = math.max(0.0, size.height - origin.dy);
+    final top = origin.dy + height * offset / total;
+    final bottom = math.max(
+      top + 24,
+      origin.dy + height * (offset + len) / total,
+    );
+    brush.color = palette.foreground.withValues(alpha: 0.4);
+    canvas.drawRect(
+      Rect.fromLTRB(size.width - 6, top, size.width - 2, bottom),
+      brush,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_GridPainter old) =>
+      old.snapshot != snapshot ||
+      old.metrics != metrics ||
+      old.palette != palette ||
+      old.origin != origin;
+}
+class _CursorPainter extends CustomPainter {
+  _CursorPainter({
+    required this.snapshot,
+    required this.metrics,
+    required this.palette,
+    required this.style,
+    required this.blink,
+    required this.origin,
+  }) : super(repaint: blink);
+
+  final TermSnapshot snapshot;
+  final _Metrics metrics;
+  final TerminalPalette palette;
+  final TerminalCursorId style;
+  final Animation<double>? blink;
+  final Offset origin;
+
+  double get _cw => metrics.cellWidth;
+  double get _ch => metrics.cellHeight;
+
+  @override
+  void paint(Canvas canvas, Size size) {
     if (!snapshot.cursorVisible) return;
+    final on = blink == null || blink!.value > 0.5;
+    if (!on) return;
     final x = snapshot.cursorX;
     final y = snapshot.cursorY;
     if (x < 0 || y < 0 || x >= snapshot.cols || y >= snapshot.rows) return;
@@ -761,11 +848,15 @@ class _GridPainter extends CustomPainter {
     final left = origin.dx + x * _cw;
     final top = origin.dy + y * _ch;
     final right = left + (flags & TermFlags.wide != 0 ? 2 : 1) * _cw;
-    brush.color = snapshot.cursorColor != 0
+    final brush = Paint()..isAntiAlias = false;
+    final cursor = snapshot.cursorColor != 0 &&
+            snapshot.cursorColor != palette.cursor.toARGB32()
         ? Color(snapshot.cursorColor | 0xFF000000)
-        : _cursorFallback;
+        : palette.cursor;
+    brush.color = cursor;
     final bar = math.max(2.0, _cw / 6);
-    switch (snapshot.cursorStyle) {
+    final shape = terminalCursorStyleOf(style, snapshot.cursorStyle);
+    switch (shape) {
       case CursorStyle.bar:
         canvas.drawRect(Rect.fromLTWH(left, top, bar, _ch), brush);
       case CursorStyle.underline:
@@ -786,42 +877,29 @@ class _GridPainter extends CustomPainter {
         canvas.drawRect(Rect.fromLTRB(left, top, right, top + _ch), brush);
         // Keep the glyph under a block cursor readable.
         final cp = snapshot.codepointAt(x, y);
-        if (cp > 32) {
-          final painter = TextPainter(
-            text: TextSpan(
-              text: _textOf(x, y),
-              style: _styleFor(x, y, Color(snapshot.defaultBg)),
-            ),
-            textDirection: TextDirection.ltr,
-            maxLines: 1,
-          )..layout();
-          painter.paint(canvas, Offset(left, top));
-          painter.dispose();
-        }
+        if (cp <= 32) return;
+        final painter = TextPainter(
+          text: TextSpan(
+            text: _textOf(),
+            style: metrics.style.copyWith(color: palette.background),
+          ),
+          textDirection: TextDirection.ltr,
+          maxLines: 1,
+        )..layout();
+        painter.paint(canvas, Offset(left, top));
+        painter.dispose();
     }
   }
 
-  void _paintScrollbar(Canvas canvas, Paint brush, Size size) {
-    final total = snapshot.scrollTotal;
-    final offset = snapshot.scrollOffset;
-    final len = snapshot.scrollLen;
-    if (total <= len || offset + len >= total) return;
-    final height = math.max(0.0, size.height - origin.dy);
-    final top = origin.dy + height * offset / total;
-    final bottom = math.max(
-      top + 24,
-      origin.dy + height * (offset + len) / total,
-    );
-    brush.color = const Color(0x66FFFFFF);
-    canvas.drawRect(
-      Rect.fromLTRB(size.width - 6, top, size.width - 2, bottom),
-      brush,
-    );
-  }
+  String _textOf() => snapshot.graphemeAt(snapshot.cursorX, snapshot.cursorY) ??
+      String.fromCharCode(snapshot.codepointAt(snapshot.cursorX, snapshot.cursorY));
 
   @override
-  bool shouldRepaint(_GridPainter old) =>
+  bool shouldRepaint(_CursorPainter old) =>
       old.snapshot != snapshot ||
       old.metrics != metrics ||
+      old.palette != palette ||
+      old.style != style ||
+      old.blink != blink ||
       old.origin != origin;
 }

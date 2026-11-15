@@ -22,6 +22,8 @@ import '../widgets/foundation.dart';
 import '../widgets/select_row.dart';
 import 'key_sheet.dart';
 import 'terminal_keys_sheet.dart';
+import '../terminal_appearance.dart';
+import 'terminal_snippets_sheet.dart';
 import 'logs.dart';
 import '../widgets/loading.dart';
 
@@ -562,6 +564,52 @@ class _SettingsPageState extends State<SettingsPage> {
                 ],
               ),
             ),
+            SelectRow<TerminalThemeId>(
+              label: l10n.terminalColors,
+              value: backend.terminalTheme,
+              options: [
+                (TerminalThemeId.follow, l10n.terminalThemeFollow),
+                (TerminalThemeId.taildeck, l10n.terminalThemeTaildeck),
+                (TerminalThemeId.midnight, l10n.terminalThemeMidnight),
+                (TerminalThemeId.paper, l10n.terminalThemePaper),
+                (TerminalThemeId.solarizedDark, l10n.terminalThemeSolarizedDark),
+                (
+                  TerminalThemeId.solarizedLight,
+                  l10n.terminalThemeSolarizedLight,
+                ),
+              ],
+              onChanged: (value) => unawaited(backend.setTerminalTheme(value)),
+            ),
+            SelectRow<TerminalFontId>(
+              label: l10n.terminalFontFamily,
+              value: backend.terminalFont,
+              options: [
+                (TerminalFontId.dejavu, l10n.terminalFontDejavu),
+                (TerminalFontId.systemMono, l10n.terminalFontSystem),
+                (TerminalFontId.sans, l10n.terminalFontSans),
+              ],
+              onChanged: (value) => unawaited(backend.setTerminalFont(value)),
+            ),
+            SelectRow<TerminalCursorId>(
+              label: l10n.terminalCursorLabel,
+              value: backend.terminalCursor,
+              options: [
+                (TerminalCursorId.follow, l10n.terminalCursorFollow),
+                (TerminalCursorId.block, l10n.terminalCursorBlock),
+                (TerminalCursorId.bar, l10n.terminalCursorBar),
+                (TerminalCursorId.underline, l10n.terminalCursorUnderline),
+              ],
+              onChanged: (value) => unawaited(backend.setTerminalCursor(value)),
+            ),
+            _TerminalToggleRow(
+              label: l10n.terminalCursorBlink,
+              caption: backend.terminalCursorBlink
+                  ? l10n.terminalCursorBlinkOn
+                  : l10n.terminalCursorBlinkOff,
+              value: backend.terminalCursorBlink,
+              onChanged: (value) =>
+                  unawaited(backend.setTerminalCursorBlink(value)),
+            ),
             _TerminalToggleRow(
               label: l10n.terminalSwipeArrows,
               caption: backend.terminalSwipeArrows
@@ -579,6 +627,46 @@ class _SettingsPageState extends State<SettingsPage> {
               value: backend.terminalKeyRowWithKeyboard,
               onChanged: (value) =>
                   unawaited(backend.setTerminalKeyRowWithKeyboard(value)),
+            ),
+            _TerminalToggleRow(
+              label: l10n.terminalKeepAlive,
+              caption: backend.terminalKeepAlive
+                  ? l10n.terminalKeepAliveOn
+                  : l10n.terminalKeepAliveOff,
+              value: backend.terminalKeepAlive,
+              onChanged: (value) =>
+                  unawaited(backend.setTerminalKeepAlive(value)),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+              child: Text(
+                l10n.terminalKeepAliveLimits,
+                style: context.listCaptionStyle,
+              ),
+            ),
+            TapFeedback(
+              onTap: () => unawaited(
+                showTerminalSnippetsSheet(context, backend: backend),
+              ),
+              child: ListRow(
+                leading: const IconBadge(Glyphs2.bolt),
+                title: Text(l10n.terminalSnippets, style: context.listTitleStyle),
+                subtitle: Text(
+                  backend.terminalSnippets.isEmpty
+                      ? l10n.terminalSnippetsEmpty
+                      : l10n.terminalSnippetsHint(
+                          backend.terminalSnippets.length,
+                        ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: context.listCaptionStyle,
+                ),
+                trailing: GlyphIcon(
+                  Glyphs.chevronForward,
+                  size: 16,
+                  color: scheme.onSurfaceVariant.opacity50,
+                ),
+              ),
             ),
             TapFeedback(
               onTap: () => unawaited(showTerminalKeysSheet(context, backend)),
@@ -879,29 +967,6 @@ class _KeyRow extends StatelessWidget {
             ),
         ],
       ),
-    );
-  }
-}
-
-class IconBadge extends StatelessWidget {
-  const IconBadge(this.glyph, {super.key, this.tint});
-
-  final Glyph glyph;
-  final Color? tint;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = context.colorScheme;
-    final color = tint ?? scheme.primary;
-    return Container(
-      width: 34,
-      height: 34,
-      alignment: Alignment.center,
-      decoration: ShapeDecoration(
-        color: color.withValues(alpha: 0.14),
-        shape: AppShape.all(10),
-      ),
-      child: GlyphIcon(glyph, size: 18, color: color),
     );
   }
 }

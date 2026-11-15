@@ -228,6 +228,29 @@ class SectionLabel extends StatelessWidget {
 
 /// One screen-reader node for a pressable row: [label] replaces the texts
 /// inside, so the row reads as a single item.
+class IconBadge extends StatelessWidget {
+  const IconBadge(this.glyph, {super.key, this.tint});
+
+  final Glyph glyph;
+  final Color? tint;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = context.colorScheme;
+    final color = tint ?? scheme.primary;
+    return Container(
+      width: 34,
+      height: 34,
+      alignment: Alignment.center,
+      decoration: ShapeDecoration(
+        color: color.withValues(alpha: 0.14),
+        shape: AppShape.all(10),
+      ),
+      child: GlyphIcon(glyph, size: 18, color: color),
+    );
+  }
+}
+
 class RowSemantics extends StatelessWidget {
   const RowSemantics({
     super.key,
