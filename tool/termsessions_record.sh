@@ -101,6 +101,18 @@ scroll_clear() { # <text> [tries]
   return 1
 }
 
+# A popup option: a plain tap on a visible label, never a scroll (a drag
+# closes the popup) and never under the dock.
+tap_option() { # <text>
+  local attempt point
+  for attempt in 1 2 3; do
+    point=$(ui tap "$1") && { tap_xy "$point"; sleep 1; return 0; }
+    sleep 0.6
+  done
+  note "no option '$1'"
+  return 1
+}
+
 # Back to the tab shell from wherever a step left off.
 to_tabs() {
   local attempt
@@ -312,8 +324,12 @@ switch_back() {
 
 # ---- reconnect -----------------------------------------------------------
 reconnect_step() {
+  # Drop both peers: the active session may be either one after the switch.
+  if ! curl -fsS "http://127.0.0.1:$drop_a/drop" > /dev/null 2>&1; then
+    note "reconnect: could not drop the first peer's sessions"
+  fi
   if ! curl -fsS "http://127.0.0.1:$drop_b/drop" > /dev/null 2>&1; then
-    note "reconnect: could not drop the peer's sessions"
+    note "reconnect: could not drop the second peer's sessions"
   fi
   sleep 3
   if ! ui has "Reconnect" > /dev/null 2>&1; then
@@ -346,6 +362,7 @@ appearance_step() {
   record term-theme 12 theme_step
   check term-theme "Paper light"
   record term-cursor-font 12 cursor_font_step
+  scroll_clear "Cursor" > /dev/null 2>&1 || true
   check term-cursor-font "Bar"
   shot term-settings-applied
   # Back into the terminal: the theme and font are live on the real session.
@@ -367,25 +384,22 @@ theme_step() {
   local point
   point=$(scroll_clear "Color theme") || return 1
   tap_xy "$point"
+  sleep 1.2
+  tap_option "Paper light" || return 1
   sleep 1
-  point=$(find_or_scroll "Paper light") || return 1
-  tap_xy "$point"
-  sleep 1.5
 }
 
 cursor_font_step() {
   local point
   point=$(scroll_clear "Cursor") || return 1
   tap_xy "$point"
-  sleep 1
-  point=$(find_or_scroll "Bar") || return 1
-  tap_xy "$point"
+  sleep 1.2
+  tap_option "Bar" || return 1
   sleep 1
   point=$(scroll_clear "Font family") || return 1
   tap_xy "$point"
-  sleep 1
-  point=$(find_or_scroll "Sans") || return 1
-  tap_xy "$point"
+  sleep 1.2
+  tap_option "Sans (not monospace)" || tap_option "Sans" || return 1
   sleep 1.5
 }
 
