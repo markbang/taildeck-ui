@@ -91,7 +91,7 @@ a command typed after the tap runs on the shell, the key row's keyboard button
 hides the IME, and a tap after it shows the IME again. The same run starts a
 small Python program on the peer that enables mouse tracking (1000 + SGR 1006)
 and logs what it reads; the gate fails unless a tap arrives as `<0;Cx;CyM`
-then `<0;Cx;Cym`, with the cell of the tap, and a Ctrl-armed tap as `<16;`.
+then `<0;Cx;Cym` on the same cell, and a Ctrl-armed tap as `<16;`.
 The clips are `tap-focus.mp4` (IME put away, tap, keyboard up, second tap),
 `tap-mouse.mp4` and `tap-mouse-ctrl.mp4` (the probe's reports on the grid),
 `tap-vim.mp4` with `tap-vim-before.png` / `tap-vim-after.png` (vim started with

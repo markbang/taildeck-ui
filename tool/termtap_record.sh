@@ -110,30 +110,20 @@ record() { # <name> <seconds> <function>
 }
 
 # ---- grid geometry from the a11y tree ------------------------------------
-grid_cells() { # prints "N M"
-  local text
-  text=$(ui text 'libghostty-vt') || return 1
-  echo "$text" | sed -n 's/.*[·] *\([0-9][0-9]*\)×\([0-9][0-9]*\).*/\1 \2/p'
-}
-
 grid_box() { # prints "x1 y1 x2 y2"
   ui bounds 'Terminal output'
 }
 
-cell() { # <col> <row> -> "x y" in screen pixels
-  local col=$1 row=$2 gx1 gy1 gx2 gy2 n m
-  read -r gx1 gy1 gx2 gy2 <<< "$(grid_box)" || return 1
-  read -r n m <<< "$(grid_cells)" || return 1
-  awk -v c="$col" -v r="$row" -v x1="$gx1" -v y1="$gy1" -v x2="$gx2" -v y2="$gy2" \
-    -v n="$n" -v m="$m" \
-    'BEGIN { printf "%d %d", x1 + (c + 0.5) * (x2 - x1) / n, y1 + (r + 0.5) * (y2 - y1) / m }'
-}
-
-tap_cell() { # <col> <row>
-  local point
-  point=$(cell "$1" "$2") || { note "no grid cell $1,$2"; return 1; }
-  # shellcheck disable=SC2086
-  tap_xy "$point"
+# A live session's header carries no cols×rows, so the grid is addressed by
+# position: fractions of its a11y bounds. The readOnly semantics node covers
+# the whole canvas, padding included.
+tap_grid() { # <fx> <fy>, both 0..1
+  local fx=$1 fy=$2 box gx1 gy1 gx2 gy2 x y
+  box=$(grid_box) || { note "no grid bounds"; return 1; }
+  read -r gx1 gy1 gx2 gy2 <<< "$box"
+  x=$(awk -v f="$fx" -v a="$gx1" -v b="$gx2" 'BEGIN { printf "%d", a + f * (b - a) }')
+  y=$(awk -v f="$fy" -v a="$gy1" -v b="$gy2" 'BEGIN { printf "%d", a + f * (b - a) }')
+  tap_xy "$x $y"
 }
 
 tap_label() {
@@ -252,7 +242,7 @@ send_command() { # <text> [settle seconds]
 gate() {
   hide_ime
   [ "$(ime_state)" = "mInputShown=true" ] && { fail "IME did not close"; return 0; }
-  tap_cell 12 8 || fail "no grid cell to tap"
+  tap_grid 0.3 0.35 || fail "no grid point to tap"
   sleep 4
   [ "$(ime_state)" = "mInputShown=true" ] || fail "tap did not show the IME"
   shot tap-keyboard
@@ -263,7 +253,7 @@ gate() {
     *) fail "terminal window is not focused: ${focus:-none}" ;;
   esac
 
-  tap_cell 12 8
+  tap_grid 0.3 0.35
   sleep 2.5
   [ "$(ime_state)" = "mInputShown=true" ] || fail "a second tap hid the IME"
 
@@ -286,7 +276,7 @@ gate() {
   tap_label 'Hide keyboard' || fail "no Hide keyboard button on the key row"
   sleep 2.5
   [ "$(ime_state)" = "mInputShown=true" ] && fail "the keyboard button did not hide the IME"
-  tap_cell 12 8
+  tap_grid 0.3 0.35
   sleep 3
   [ "$(ime_state)" = "mInputShown=true" ] || fail "a tap after the keyboard button did not show the IME again"
   if [ "$failures" -eq 0 ]; then
@@ -297,15 +287,15 @@ gate() {
 }
 
 # ---- mouse reporting -----------------------------------------------------
-mouse_probe() { # <col> <row> [ctrl]
-  local col=$1 row=$2 point
+mouse_probe() { # <fx> <fy> [ctrl]
+  local fx=$1 fy=$2
   rm -f /tmp/tap-mouse-ready /tmp/tap-mouse.log
   send_command "python3 /tmp/mouseprobe.py" 1
   local waited=0
   while [ ! -f /tmp/tap-mouse-ready ] && [ "$waited" -lt 15 ]; do sleep 1; waited=$((waited + 1)); done
   [ -f /tmp/tap-mouse-ready ] || { fail "the mouse probe did not start"; return 0; }
   [ "${3:-}" = ctrl ] && { tap_label 'Control' || fail "no Control key"; sleep 0.5; }
-  tap_cell "$col" "$row"
+  tap_grid "$fx" "$fy"
   waited=0
   while [ ! -s /tmp/tap-mouse.log ] && [ "$waited" -lt 12 ]; do sleep 1; waited=$((waited + 1)); done
   if [ -s /tmp/tap-mouse.log ]; then
@@ -330,20 +320,17 @@ check_mouse() { # <log> [ctrl]
   fi
 }
 
-# The encoder adds one to the cell it was given, so a tap on cell C lands at
-# C+1; allow one neighbouring cell for a font-metric rounding.
-check_cell() { # <col> <row> <log>
-  local col=$1 row=$2 log=$3 line cx cy
+# The press and the release must name the same cell, and it must be inside
+# the grid the program drew (the emulator reports cells from 1).
+check_cell() { # <log>
+  local log=$1 press release
   [ -s "$log" ] || return 0
-  line=$(head -1 "$log")
-  cx=$(printf '%s' "$line" | sed -n 's/.*<[0-9]*;\([0-9]*\);[0-9]*[Mm].*/\1/p')
-  cy=$(printf '%s' "$line" | sed -n 's/.*<[0-9]*;[0-9]*;\([0-9]*\)[Mm].*/\1/p')
-  if [ -n "$cx" ] && [ -n "$cy" ] && \
-     [ "$cx" -ge "$col" ] && [ "$cx" -le $((col + 2)) ] && \
-     [ "$cy" -ge "$row" ] && [ "$cy" -le $((row + 2)) ]; then
-    note "mouse: report at cell $cx,$cy for a tap on $((col + 1)),$((row + 1))"
+  press=$(head -1 "$log" | sed -n 's/.*<[0-9]*;\([0-9]*\);\([0-9]*\)[Mm].*/\1 \2/p')
+  release=$(tail -1 "$log" | sed -n 's/.*<[0-9]*;\([0-9]*\);\([0-9]*\)[Mm].*/\1 \2/p')
+  if [ -n "$press" ] && [ "$press" = "$release" ]; then
+    note "mouse: press and release name cell $press"
   else
-    fail "a tap on cell $((col + 1)),$((row + 1)) reported cell ${cx:-?},${cy:-?}"
+    fail "press '${press:-none}' and release '${release:-none}' disagree"
   fi
 }
 
@@ -351,10 +338,10 @@ check_cell() { # <col> <row> <log>
 vim_step() {
   send_command "vim -u NONE -c 'set mouse=a' -c 'set laststatus=2'" 4
   hide_ime
-  tap_cell 15 10
+  tap_grid 0.45 0.4
   sleep 2
   shot tap-vim-before
-  tap_cell 4 10
+  tap_grid 0.15 0.4
   sleep 2
   shot tap-vim-after
   note "vim: tapped one cell, then another with the keyboard up; stills tap-vim-*.png"
@@ -366,10 +353,10 @@ vim_step() {
 htop_step() {
   send_command "htop" 4
   hide_ime
-  tap_cell 15 10
+  tap_grid 0.5 0.35
   sleep 2
   shot tap-htop-before
-  tap_cell 15 14
+  tap_grid 0.5 0.55
   sleep 2
   shot tap-htop-after
   note "htop: tapped one process row, then another; stills tap-htop-*.png"
@@ -414,15 +401,15 @@ finally:
 open('/tmp/tap-mouse.log', 'w').write('\n'.join(reports))
 PY
 
-mouse_probe_plain() { mouse_probe 10 5; }
+mouse_probe_plain() { mouse_probe 0.3 0.3; }
 record tap-mouse 13 mouse_probe_plain
 check_mouse /tmp/tap-mouse.log
-check_cell 10 5 /tmp/tap-mouse.log
+check_cell /tmp/tap-mouse.log
 
-mouse_probe_ctrl() { mouse_probe 20 5 ctrl; }
+mouse_probe_ctrl() { mouse_probe 0.6 0.5 ctrl; }
 record tap-mouse-ctrl 13 mouse_probe_ctrl
 check_mouse /tmp/tap-mouse.log ctrl
-check_cell 20 5 /tmp/tap-mouse.log
+check_cell /tmp/tap-mouse.log
 
 record tap-vim 18 vim_step
 record tap-htop 16 htop_step
