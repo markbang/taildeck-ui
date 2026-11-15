@@ -27,16 +27,23 @@ gate_ui() { # <out-dir> <tool-dir> <ui.py args...>
   python3 "$tools/ui.py" "$out/ui.xml" "$@" 2> /dev/null
 }
 
-# The shell is painted and the launch screen has faded.
+# The shell is painted and the launch screen has faded. The cheap signals come
+# first: a uiautomator dump during a cold start is what ANRs the app on a loaded
+# emulator, so the tree is read only after the route is the shell.
 wait_home() { # <app> <out-dir> <tool-dir> [marker] [seconds]
   local app=$1 out=$2 tools=$3 marker=${4:-Services} limit=${5:-45} waited=0
+  local attempt
   while [ "$waited" -lt "$limit" ]; do
     if gate_in_front "$app" &&
-      adb logcat -d 2>/dev/null | grep -q 'taildeck route: shell' &&
-      gate_ui "$out" "$tools" has "$marker" > /dev/null 2>&1; then
+      adb logcat -d 2>/dev/null | grep -q 'taildeck route: shell'; then
       # The launch screen fades over 340 ms after the route is decided.
-      sleep 0.6
-      gate_in_front "$app" && return 0
+      sleep 0.8
+      for attempt in 1 2 3; do
+        gate_in_front "$app" || return 1
+        gate_ui "$out" "$tools" has "$marker" > /dev/null 2>&1 && return 0
+        sleep 1
+      done
+      return 1
     fi
     sleep 1
     waited=$((waited + 1))
