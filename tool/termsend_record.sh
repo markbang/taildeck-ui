@@ -25,6 +25,13 @@ adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS > /dev/null
 # The emulator reports a physical keyboard, which hides the IME by default.
 adb shell settings put secure show_ime_with_hard_keyboard 1 > /dev/null 2>&1 || true
 
+wake() { # the emulator still locks itself on a long run
+  adb shell input keyevent KEYCODE_WAKEUP > /dev/null 2>&1 || true
+  adb shell wm dismiss-keyguard > /dev/null 2>&1 || true
+  adb shell svc power stayon true > /dev/null 2>&1 || true
+  adb shell settings put system screen_off_timeout 2147483647 > /dev/null 2>&1 || true
+}
+
 dump() {
   adb shell uiautomator dump /sdcard/ui.xml > /dev/null 2>&1 || true
   adb pull /sdcard/ui.xml "$out/ui.xml" > /dev/null 2>&1 || true
@@ -80,6 +87,7 @@ shot() { # <name>
 
 record() { # <name> <seconds> <shell function>
   local name=$1 seconds=$2 action=$3
+  wake
   adb shell pkill -f screenrecord > /dev/null 2>&1 || true
   sleep 0.7
   adb shell rm -f /sdcard/rec.mp4 > /dev/null 2>&1 || true
@@ -230,7 +238,9 @@ tap_ime_action() { # the soft keyboard's own send key
   read -r x y <<< "$point"
   adb shell input tap "$x" "$y" > /dev/null 2>&1 || true
   note "ime-action: tapped the keyboard's send key at $x,$y"
-  sleep 1.6
+  sleep 0.4
+  shot ime-action-grid
+  sleep 1.2
   if ui has 'echo action' > /dev/null 2>&1; then
     note "ime-action: the line did not leave the input bar"
   else
@@ -240,8 +250,12 @@ tap_ime_action() { # the soft keyboard's own send key
 
 # ---- the steps -----------------------------------------------------------
 start_fresh() { # each clip opens the demo page itself
+  wake
   launch "$demo_url" || return 0
   focus_input
+  if ! ui has 'Terminal output' > /dev/null 2>&1; then
+    note "step: the terminal page is not on screen"
+  fi
 }
 
 send_step() {
