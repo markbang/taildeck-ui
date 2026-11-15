@@ -97,8 +97,8 @@ forbidden() {
 }
 
 launch() {
-  adb shell am force-stop "$app" > /dev/null 2>&1 || true
-  sleep 3
+  gate_stop "$app" || fail "the app would not stop before launch"
+  sleep 1
   adb logcat -c > /dev/null 2>&1 || true
   # Straight into the Agents tab, with the shell shown but no node behind it.
   # `splash=0` drops the launch animation so the screenshot is the page itself.

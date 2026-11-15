@@ -18,6 +18,20 @@ gate_in_front() { # <app>
   return 1
 }
 
+# The process is gone, so the next am start reads its deep link from a fresh
+# launch. A force-stop of a live app with a pending ANR can leave it running,
+# and `am start` then delivers the intent without the app re-reading it.
+gate_stop() { # <app>
+  local app=$1 waited=0
+  adb shell am force-stop "$app" > /dev/null 2>&1 || true
+  while [ "$waited" -lt 10 ]; do
+    [ -z "$(adb shell pidof "$app" 2>/dev/null | tr -d '\r' || true)" ] && return 0
+    sleep 1
+    waited=$((waited + 1))
+  done
+  return 1
+}
+
 # One dump, parsed with tool/ui.py: `gate_ui <out> <tools> has Services`.
 gate_ui() { # <out-dir> <tool-dir> <ui.py args...>
   local out=$1 tools=$2

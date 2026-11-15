@@ -146,8 +146,8 @@ settle_headers() { # <index> <tag>
 launch() {
   local attempt
   for attempt in 1 2 3; do
-    adb shell am force-stop "$app" > /dev/null 2>&1 || true
-    sleep 2
+    gate_stop "$app" || fail "the app would not stop before launch"
+    sleep 1
     adb logcat -c > /dev/null 2>&1 || true
     adb shell "am start -W -a android.intent.action.VIEW -d 'taildeck://preview/?preview=1&tab=0&tabprobe=1&splash=0&slow=$slow' -n $activity" \
       > "$out/launch.txt" 2>&1 || true

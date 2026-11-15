@@ -55,9 +55,9 @@ wait_first_frame() {
 
 # One quoted command: an unquoted '&' in the query would split it on the device.
 start() { # $1: preview query
-  adb shell am force-stop "$app" > /dev/null 2>&1 || true
+  gate_stop "$app" || fail "the app would not stop before launch"
   # The previous Go node finishes its shutdown on this emulator's few cores.
-  sleep 3
+  sleep 2
   adb logcat -c > /dev/null 2>&1 || true
   adb shell "am start -W -a android.intent.action.VIEW -d 'taildeck://preview/?$1' -n $activity" \
     > "$out/launch.txt" 2>&1 || return 1
