@@ -39,8 +39,21 @@ adb shell svc power stayon true > /dev/null 2>&1 || true
 adb shell settings put system screen_off_timeout 2147483647 > /dev/null 2>&1 || true
 adb shell wm dismiss-keyguard > /dev/null 2>&1 || true
 
-activity=$(adb shell cmd package resolve-activity --brief "$app" 2>/dev/null | tail -n 1 | tr -d '\r')
-[ -n "$activity" ] || fail "no launcher activity for $app"
+# The launcher activity is resolved after the install commits; a package
+# manager that has not caught up yet answers "No activity found".
+resolve_activity() {
+  local found
+  for _ in 1 2 3 4 5; do
+    found=$(adb shell cmd package resolve-activity --brief "$app" 2>/dev/null | tail -n 1 | tr -d '\r')
+    case "$found" in
+      */*) echo "$found"; return 0 ;;
+    esac
+    sleep 2
+  done
+  echo "$app/.MainActivity"
+}
+activity=$(resolve_activity)
+note "activity: $activity"
 
 ui() {
   for _ in 1 2 3; do
@@ -52,10 +65,17 @@ ui() {
   return 1
 }
 
+# One dump per check: waiting for a page must not pay for retries.
+seen() { # <marker>
+  adb shell uiautomator dump /sdcard/ui.xml > /dev/null 2>&1 || true
+  adb pull /sdcard/ui.xml "$out/ui.xml" > /dev/null 2>&1 || true
+  python3 tool/ui.py "$out/ui.xml" has "$1" 2> /dev/null
+}
+
 wait_for() { # <marker> <seconds>
   local waited=0
   while [ "$waited" -lt "$2" ]; do
-    ui has "$1" > /dev/null 2>&1 && return 0
+    seen "$1" && return 0
     sleep 1
     waited=$((waited + 1))
   done
