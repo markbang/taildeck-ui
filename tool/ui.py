@@ -5,6 +5,7 @@ Usage: ui.py dump.xml tap <needle>     -> prints "x y" for the smallest match
        ui.py dump.xml has <needle>     -> exit 0 when a match exists
        ui.py dump.xml text <needle>    -> prints the smallest match's label
        ui.py dump.xml bounds <needle>  -> prints "x1 y1 x2 y2"
+       ui.py dump.xml texts <ymax>     -> every labelled node above ymax
        ui.py dump.xml edits            -> prints every text-field point, top first
        ui.py dump.xml edit <index>     -> prints "x y" for one of those fields
 """
@@ -70,6 +71,18 @@ def edits(path):
     return [point for _, point in sorted(fields)]
 
 
+def texts(path, ymax):
+    """Every labelled node above ymax: "text x1 y1 x2 y2", one per line."""
+    root = ET.parse(path).getroot()
+    for node in root.iter("node"):
+        box = bounds(node)
+        if box is None or center(box)[1] >= ymax:
+            continue
+        label = (node.get("text") or node.get("content-desc") or "").strip()
+        if label:
+            print(label.replace("\n", " "), *box)
+
+
 def main():
     path, command = sys.argv[1:3]
     if command == "edits":
@@ -83,6 +96,9 @@ def main():
             print(f"no text field {index} of {len(fields)}", file=sys.stderr)
             return 1
         print(*fields[index])
+        return 0
+    if command == "texts":
+        texts(path, int(sys.argv[3]))
         return 0
     needle = sys.argv[3]
     found = matches(path, needle)
