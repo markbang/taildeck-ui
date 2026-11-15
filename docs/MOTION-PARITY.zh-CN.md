@@ -116,6 +116,7 @@ Flutter 侧全部走 `context.motionDuration(spec)`（`prism_ui`），因此系�
 | `flutter-tabs.mp4` | 本版本：节点 → 服务 → Agent → 节点，滑动 1/8 并交叉淡化 |
 | `tab-overlap-before.mp4` | v0.2.15：标签页半透明叠加，两个页头和两份内容同时可见 |
 | `tab-overlap-after.mp4` | 本版本：同样的切换，一次只有一个不透明的页面 |
+| `tab-overlap-pair.mp4` / `.gif` | 两段录像同样的六秒并排；单帧在 `docs/motion/tab-overlap-frames/` |
 | `flutter-detail.mp4` | 本版本：节点页从 1/5 处滑入，返回时反向 |
 | `flutter-start.mp4` | 本版本：登录阶段切换（淡入 + 垂直滑动 1/6） |
 
