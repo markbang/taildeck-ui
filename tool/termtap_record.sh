@@ -338,19 +338,26 @@ check_cell() { # <log>
 
 # ---- vim and htop --------------------------------------------------------
 vim_step() {
-  send_command "vim -u NONE -c 'set mouse=a' -c 'set laststatus=2'" 4
+  # A script on the runner keeps the quotes out of `adb shell input text`,
+  # which would otherwise hand vim `-c set` and a file called `mouse=a`.
+  cat > /tmp/tapvim.sh <<'VIM'
+#!/bin/sh
+printf 'one\ntwo\nthree\nfour\nfive\nsix\nseven\neight\nnine\nten\neleven\ntwelve\n' > /tmp/tapvim.txt
+exec vim -u NONE -c 'set mouse=a' -c 'set laststatus=2' -c 'set ruler' /tmp/tapvim.txt
+VIM
+  send_command "sh /tmp/tapvim.sh" 5
   hide_ime
   tap_grid 0.45 0.4
   sleep 2
   shot tap-vim-before
-  tap_grid 0.15 0.4
+  tap_grid 0.15 0.6
   sleep 2
   shot tap-vim-after
-  note "vim: tapped one cell, then another with the keyboard up; stills tap-vim-*.png"
-  adb shell input text ":q!" > /dev/null 2>&1 || true
-  adb shell input keyevent 66 > /dev/null 2>&1 || true
-  sleep 1
+  note "vim: tapped one line, then another with the keyboard up; stills tap-vim-*.png"
+  send_command ':q!' 1
 }
+
+quit_htop() { send_command q 1; }
 
 htop_step() {
   send_command "htop" 4
@@ -362,8 +369,7 @@ htop_step() {
   sleep 2
   shot tap-htop-after
   note "htop: tapped one process row, then another; stills tap-htop-*.png"
-  adb shell input text "q" > /dev/null 2>&1 || true
-  sleep 1
+  quit_htop
 }
 
 # ---- setup ---------------------------------------------------------------
