@@ -74,7 +74,11 @@ launch() {
   return 1
 }
 
-launch || fail "the Agents tab never opened; see launch.txt and logcat-fail.txt"
+# A cold start on a loaded emulator can ANR the debug build; one retry.
+if ! launch; then
+  sleep 5
+  launch || fail "the Agents tab never opened; see launch.txt and logcat-fail.txt"
+fi
 
 phase=$(adb logcat -d 2>/dev/null | grep -oE 'taildeck agents: [a-z]+' | tail -1 | awk '{print $3}')
 note "first phase in logcat: ${phase:-none}"
