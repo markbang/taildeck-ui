@@ -71,7 +71,7 @@ class NodeItem {
 }
 
 /// Shown in Settings; keep in step with `version:` in pubspec.yaml.
-const appVersion = '0.2.13';
+const appVersion = '0.2.14';
 const repoUrl = 'https://github.com/markbang/taildeck-ui';
 
 /// Maps one node from `td_status` (`native/bridge/bridge.go` `nodeJSON`) onto
