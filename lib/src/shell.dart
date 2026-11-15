@@ -76,8 +76,6 @@ class _TaildeckShellState extends State<TaildeckShell>
   bool _previewNodeDone = false;
   AgentNotifications? _alerts;
 
-  late final PageController _pageController = PageController(initialPage: _tab);
-
   static NodeItem? _querySsh() {
     final name = previewParam('ssh');
     if (name == null || !demoData) return null;
@@ -162,7 +160,6 @@ class _TaildeckShellState extends State<TaildeckShell>
     _terminals
       ..removeListener(_onTerminalsChanged)
       ..dispose();
-    _pageController.dispose();
     super.dispose();
   }
 
@@ -195,23 +192,6 @@ class _TaildeckShellState extends State<TaildeckShell>
       _tab = index;
       if (index != 0) _node = null;
     });
-    if (!_pageController.hasClients) return;
-    if (context.disableAnimations) {
-      _pageController.jumpToPage(index);
-      return;
-    }
-    if (ViewScope.isMobileOf(context)) {
-      final fade = _animation == TabAnimation.fade;
-      _pageController.animateToPage(
-        index,
-        duration: fade ? fadeTabDuration : motionDuration(context, slowSpatial),
-        curve: fade
-            ? fadeTabCurve
-            : (context.disableAnimations ? Curves.linear : slowSpatial.curve),
-      );
-    } else {
-      _pageController.jumpToPage(index);
-    }
   }
 
   /// Esc leaves the terminal and node detail, the two pages the shell opens
@@ -641,27 +621,13 @@ class _TaildeckShellState extends State<TaildeckShell>
   }
 
   Widget _pages() {
-    return PageView.builder(
-      controller: _pageController,
-      physics: const NeverScrollableScrollPhysics(),
-      itemCount: _tabs,
-      itemBuilder: (context, index) {
-        return KeepScope(
-          key: ValueKey(index),
-          child: TickerMode(
-            enabled: index == _tab,
-            child: ExcludeFocus(
-              excluding: index != _tab,
-              child: _TabPage(
-                controller: _pageController,
-                position: index,
-                fadeOnly: _animation == TabAnimation.fade,
-                child: _pageAt(index),
-              ),
-            ),
-          ),
-        );
-      },
+    return TabSwitcher(
+      index: _tab,
+      count: _tabs,
+      background: SurfaceLevel.page.colorOf(context.colorScheme),
+      fade: _animation == TabAnimation.fade,
+      animate: ViewScope.isMobileOf(context),
+      pageBuilder: (context, index) => _pageAt(index),
     );
   }
 
@@ -703,63 +669,6 @@ class _TaildeckShellState extends State<TaildeckShell>
               : () => _disconnectTerminal(session),
         );
     }
-  }
-}
-
-/// How far [position] sits from the visible page, clamped to one page.
-///
-/// `ScrollController.position` throws when the controller owns no position or
-/// two at once, which happens while the shell is reparented during the login
-/// cross-fade. A build must never throw over a missing metric.
-double tabOffset(PageController controller, int position) {
-  if (!controller.hasClients || controller.positions.isEmpty) return 0;
-  final metrics = controller.positions.first;
-  if (!metrics.hasContentDimensions || metrics.viewportDimension == 0) {
-    return 0;
-  }
-  final page = metrics.pixels / metrics.viewportDimension;
-  return (position - page).clamp(-1.0, 1.0);
-}
-
-/// Keeps the page at rest while the controller slides, so a tab switch
-/// cross-fades in place — FlClash's fade mode, minus the snapshotting.
-class _TabPage extends StatelessWidget {
-  const _TabPage({
-    required this.controller,
-    required this.position,
-    required this.fadeOnly,
-    required this.child,
-  });
-
-  final PageController controller;
-  final int position;
-
-  /// The user's fade tab mode: the page does not travel at all.
-  final bool fadeOnly;
-  final Widget child;
-
-  double get _offset => tabOffset(controller, position);
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: controller,
-      builder: (context, child) {
-        final delta = _offset;
-        // A tab switch moves a tab by an eighth of the page, not the whole
-        // page: the rest of the travel is taken back so both tabs meet in the
-        // middle and cross-fade, as the Kotlin app's tab AnimatedContent does.
-        final shift = fadeOnly ? -delta : -delta * 7 / 8;
-        // The cross-fade runs on the default effects spring, as the Kotlin
-        // tab `AnimatedContent` fades with `Motion.fade()`.
-        final alpha = fade.curve.transform((1 - delta.abs()).clamp(0.0, 1.0));
-        return FractionalTranslation(
-          translation: Offset(shift, 0),
-          child: Opacity(opacity: alpha, child: child),
-        );
-      },
-      child: child,
-    );
   }
 }
 

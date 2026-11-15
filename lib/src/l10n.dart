@@ -634,7 +634,7 @@ class AppLocalizations implements UiLocalizations {
   String get slide => _zh ? '滑动' : 'Slide';
   String get fade => _zh ? '淡入' : 'Fade';
   String get slideHint => _zh ? '页面左右滑动' : 'Slide between pages';
-  String get fadeHint => _zh ? '原地交叉淡入' : 'Cross-fade in place';
+  String get fadeHint => _zh ? '旧页面淡出后新页面淡入' : 'Fade the old page out, then the new one in';
   String get motionHint => _zh
       ? '系统开启「减少动态效果」时，切换与弹层会即时完成。'
       : 'With the system reduce-motion setting on, switches and sheets complete at once.';
