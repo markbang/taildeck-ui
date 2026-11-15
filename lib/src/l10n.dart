@@ -549,7 +549,7 @@ class AppLocalizations implements UiLocalizations {
   String get floating => _zh ? '悬浮' : 'Floating';
   String get docked => _zh ? '贴底' : 'Docked';
   String get floatingHint =>
-      _zh ? '悬浮在内容之上的玻璃 Dock' : 'Floating dock over the content';
+      _zh ? '悬浮在内容之上的玻璃底栏' : 'Floating dock over the content';
   String get dockedHint => _zh ? '固定在内容下方的底栏' : 'Docked bar under the content';
   String get tabAnimation => _zh ? '切换动画' : 'Tab animation';
   String get slide => _zh ? '滑动' : 'Slide';
@@ -656,6 +656,11 @@ class AppLocalizations implements UiLocalizations {
       : 'Check that the node and gateway are online, then retry.';
   String get logs => _zh ? '日志' : 'Logs';
   String get logsEmpty => _zh ? '还没有日志。' : 'No logs yet.';
+  String get logsNoEntries => _zh ? '暂无记录' : 'No entries';
+  String logsLines(int count) =>
+      _zh ? '$count 行' : '$count ${count == 1 ? 'line' : 'lines'}';
+  String logsSummary(int count, String? lastTime) =>
+      lastTime == null ? logsLines(count) : '${logsLines(count)} · $lastTime';
   String get logsCopied => _zh ? '日志已复制' : 'Logs copied';
   String get refresh => _zh ? '刷新' : 'Refresh';
   String get signOutTitle => _zh ? '退出登录？' : 'Sign out?';
