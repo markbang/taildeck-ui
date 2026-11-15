@@ -4,7 +4,9 @@ import 'dart:math' as math;
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
+import '../l10n.dart';
 import '../native/term.dart';
+import '../terminal_gestures.dart';
 
 /// Owns one libghostty-vt terminal and notifies when a new snapshot is ready.
 class TerminalSession extends ChangeNotifier {
@@ -37,6 +39,9 @@ class TerminalSession extends ChangeNotifier {
   }
 
   String? get title => term.title();
+
+  /// Re-reads the grid, e.g. after the selection changed.
+  void refresh() => _refresh();
 
   void _refresh() {
     _snapshot = term.snapshot();
@@ -75,19 +80,45 @@ class _Metrics {
   late final double ascent;
 }
 
-/// Paints terminal snapshots on a fixed grid and resizes the emulator to the
-/// available cells.
+/// Paints terminal snapshots on a fixed grid, resizes the emulator to the
+/// available cells, and turns finger gestures on that grid into terminal
+/// input: swipe arrows, word selection with draggable handles, and pinch zoom.
 class TerminalCanvas extends StatefulWidget {
   const TerminalCanvas({
     super.key,
     required this.session,
-    this.fontSize = 13.5,
+    this.fontSize = terminalFontDefault,
     this.padding = const EdgeInsets.fromLTRB(18, 10, 18, 10),
+    this.swipeArrows = true,
+    this.onArrow,
+    this.onFontSize,
+    this.onFocus,
+    this.onOpenUrl,
+    this.onPaste,
   });
 
   final TerminalSession session;
   final double fontSize;
   final EdgeInsets padding;
+
+  /// One-finger swipe sends arrow keys; off, a vertical drag walks the
+  /// scrollback instead.
+  final bool swipeArrows;
+
+  /// A swipe crossed one step along its axis.
+  final ValueChanged<TerminalArrow>? onArrow;
+
+  /// The font size a pinch asks for, already inside the zoom limits.
+  final ValueChanged<double>? onFontSize;
+
+  /// A tap on the grid, for the soft keyboard.
+  final VoidCallback? onFocus;
+
+  /// Opens the URL a selection holds; false when it did not open.
+  final Future<bool> Function(String url)? onOpenUrl;
+
+  /// Pastes the clipboard through the emulator's encoder.
+  final VoidCallback? onPaste;
 
   @override
   State<TerminalCanvas> createState() => _TerminalCanvasState();
@@ -95,6 +126,16 @@ class TerminalCanvas extends StatefulWidget {
 
 class _TerminalCanvasState extends State<TerminalCanvas> {
   late _Metrics _metrics = _Metrics(widget.fontSize);
+  final _gridKey = GlobalKey();
+  final _swipe = SwipeStepper();
+  GridSelection? _selection;
+  Offset? _doubleTapAt;
+  double _pinchStart = terminalFontDefault;
+  bool _pinching = false;
+  double _scrollCarry = 0;
+  double _height = 0;
+  String _notice = '';
+  Timer? _noticeTimer;
 
   @override
   void didUpdateWidget(TerminalCanvas oldWidget) {
@@ -102,12 +143,20 @@ class _TerminalCanvasState extends State<TerminalCanvas> {
     if (oldWidget.fontSize != widget.fontSize) {
       _metrics = _Metrics(widget.fontSize);
     }
+    if (oldWidget.session != widget.session) _selection = null;
+  }
+
+  @override
+  void dispose() {
+    _noticeTimer?.cancel();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
+        _height = constraints.maxHeight;
         // Leave room for padding, so the last row and column are never clipped.
         final cols = math.max(
           1,
@@ -125,52 +174,309 @@ class _TerminalCanvasState extends State<TerminalCanvas> {
         return ClipRect(
           child: ListenableBuilder(
             listenable: widget.session,
-            builder: (context, _) => GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              // Kotlin's TerminalView selects the word under a long press and
-              // fires the long-press haptic.
-              onLongPressStart: _selectWord,
-              child: CustomPaint(
-                painter: _GridPainter(
-                  snapshot: widget.session.snapshot,
-                  metrics: _metrics,
-                  origin: Offset(widget.padding.left, widget.padding.top),
-                ),
-                size: Size.infinite,
-              ),
-            ),
+            builder: (context, _) {
+              final snapshot = widget.session.snapshot;
+              final selection = _selection;
+              return Stack(
+                key: _gridKey,
+                children: [
+                  Positioned.fill(
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTapUp: _onTap,
+                      onDoubleTapDown: (details) =>
+                          _doubleTapAt = details.localPosition,
+                      onDoubleTap: _onDoubleTap,
+                      onLongPressStart: (details) =>
+                          _selectWord(details.localPosition),
+                      onScaleStart: (_) {
+                        _swipe.reset();
+                        _scrollCarry = 0;
+                        _pinching = false;
+                      },
+                      onScaleUpdate: _onScaleUpdate,
+                      child: CustomPaint(
+                        painter: _GridPainter(
+                          snapshot: snapshot,
+                          metrics: _metrics,
+                          origin: Offset(
+                            widget.padding.left,
+                            widget.padding.top,
+                          ),
+                        ),
+                        size: Size.infinite,
+                      ),
+                    ),
+                  ),
+                  if (selection != null) ..._handles(snapshot, selection),
+                  if (selection != null) _toolbar(snapshot, selection),
+                ],
+              );
+            },
           ),
         );
       },
     );
   }
 
-  /// Selects the word under [details] in one row, as a terminal does.
-  void _selectWord(LongPressStartDetails details) {
+  void _onTap(TapUpDetails details) {
+    if (_selection != null) {
+      _clearSelection();
+      return;
+    }
+    widget.onFocus?.call();
+  }
+
+  void _onDoubleTap() {
+    final at = _doubleTapAt;
+    if (at != null) _selectWord(at);
+  }
+
+  void _onScaleUpdate(ScaleUpdateDetails details) {
+    if (details.pointerCount >= 2) {
+      final onFontSize = widget.onFontSize;
+      if (onFontSize == null) return;
+      if (!_pinching) {
+        _pinching = true;
+        _pinchStart = widget.fontSize;
+      }
+      final next = clampTerminalFont(_pinchStart * details.scale);
+      if ((next - widget.fontSize).abs() >= 0.5) onFontSize(next);
+      return;
+    }
+    final selection = _selection;
+    if (selection != null) {
+      _extendSelection(details.localFocalPoint);
+      return;
+    }
+    if (widget.swipeArrows) {
+      for (final arrow in _swipe.update(details.focalPointDelta)) {
+        widget.onArrow?.call(arrow);
+      }
+      return;
+    }
+    _scrollCarry += details.focalPointDelta.dy;
+    final lines = (_scrollCarry / _metrics.cellHeight).truncate();
+    if (lines == 0) return;
+    _scrollCarry -= lines * _metrics.cellHeight;
+    widget.session.scroll(lines);
+  }
+
+  (int, int) _cellAt(Offset local, TermSnapshot snapshot) {
+    final columns = math.max(1, snapshot.cols);
+    final x = ((local.dx - widget.padding.left) / _metrics.cellWidth)
+        .floor()
+        .clamp(0, columns - 1)
+        .toInt();
+    final y = ((local.dy - widget.padding.top) / _metrics.cellHeight)
+        .floor()
+        .clamp(0, math.max(0, snapshot.rows - 1))
+        .toInt();
+    return (x, y);
+  }
+
+  Offset _cellOrigin(int x, int y) => Offset(
+    widget.padding.left + x * _metrics.cellWidth,
+    widget.padding.top + y * _metrics.cellHeight,
+  );
+
+  /// Selects the word under [local]; a long press and a double tap both land
+  /// here.
+  void _selectWord(Offset local) {
     final snapshot = widget.session.snapshot;
-    final cols = widget.session.term.cols;
-    if (snapshot.rows == 0 || cols == 0) return;
-    final x = ((details.localPosition.dx - widget.padding.left) /
-            _metrics.cellWidth)
-        .floor()
-        .clamp(0, cols - 1);
-    final y = ((details.localPosition.dy - widget.padding.top) /
-            _metrics.cellHeight)
-        .floor()
-        .clamp(0, snapshot.rows - 1);
-    final cells = snapshot.cells;
-    bool isWord(int column) => cells[(y * cols + column) * 4] > 0x20;
-    if (!isWord(x)) return;
-    var from = x;
-    while (from > 0 && isWord(from - 1)) {
-      from--;
+    final columns = snapshot.cols;
+    if (snapshot.rows == 0 || columns == 0) return;
+    final (x, y) = _cellAt(local, snapshot);
+    bool filled(int column) {
+      final index = (y * columns + column) * 4;
+      if (index + 3 >= snapshot.cells.length) return false;
+      if (snapshot.cells[index + 3] & TermFlags.spacer != 0) return false;
+      return snapshot.cells[index] > 32;
     }
-    var to = x;
-    while (to < cols - 1 && isWord(to + 1)) {
-      to++;
-    }
-    widget.session.term.select(from, y, to, y);
+
+    final range = wordRange(x, columns, filled);
+    _applySelection(GridSelection(range.from, y, range.to, y));
     unawaited(HapticFeedback.mediumImpact());
+  }
+
+  void _extendSelection(Offset local) {
+    final selection = _selection;
+    if (selection == null) return;
+    final (x, y) = _cellAt(local, widget.session.snapshot);
+    if (x == selection.endX && y == selection.endY) return;
+    _applySelection(selection.withEnd(x, y));
+  }
+
+  void _dragHandle(Offset global, {required bool start}) {
+    final selection = _selection;
+    final box = _gridKey.currentContext?.findRenderObject();
+    if (selection == null || box is! RenderBox) return;
+    final (x, y) = _cellAt(box.globalToLocal(global), widget.session.snapshot);
+    final next = start ? selection.withStart(x, y) : selection.withEnd(x, y);
+    if (start
+        ? next.startX == selection.startX && next.startY == selection.startY
+        : next.endX == selection.endX && next.endY == selection.endY) {
+      return;
+    }
+    unawaited(HapticFeedback.selectionClick());
+    _applySelection(next);
+  }
+
+  void _applySelection(GridSelection selection) {
+    widget.session.term.select(
+      selection.startX,
+      selection.startY,
+      selection.endX,
+      selection.endY,
+    );
+    widget.session.refresh();
+    setState(() => _selection = selection);
+  }
+
+  void _clearSelection() {
+    widget.session.term.select(-1, 0, 0, 0);
+    widget.session.refresh();
+    setState(() => _selection = null);
+  }
+
+  List<Widget> _handles(TermSnapshot snapshot, GridSelection selection) {
+    final start = _cellOrigin(selection.startX, selection.startY);
+    final end = _cellOrigin(selection.endX, selection.endY);
+    return [
+      _handle(
+        Offset(
+          start.dx + _metrics.cellWidth / 2,
+          start.dy + _metrics.cellHeight,
+        ),
+        start: true,
+      ),
+      _handle(
+        Offset(end.dx + _metrics.cellWidth / 2, end.dy + _metrics.cellHeight),
+        start: false,
+      ),
+    ];
+  }
+
+  Widget _handle(Offset anchor, {required bool start}) {
+    const size = 34.0;
+    return Positioned(
+      left: anchor.dx - size / 2,
+      top: anchor.dy - 4,
+      width: size,
+      height: size,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        excludeFromSemantics: true,
+        onPanUpdate: (details) =>
+            _dragHandle(details.globalPosition, start: start),
+        child: Center(
+          child: Container(
+            width: 13,
+            height: 13,
+            decoration: BoxDecoration(
+              color: const Color(0xFF57D7A0),
+              shape: BoxShape.circle,
+              border: Border.all(color: const Color(0xFF0B0D10), width: 2),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _toolbar(TermSnapshot snapshot, GridSelection selection) {
+    final l10n = AppLocalizations.of(context);
+    final text = widget.session.term.selectionText();
+    final url = urlInSelection(text);
+    const gap = 10.0;
+    final top = (widget.padding.top + selection.top * _metrics.cellHeight - 46)
+        .clamp(4.0, math.max(4.0, _height - 46))
+        .toDouble();
+    return Positioned(
+      left: 0,
+      right: 0,
+      top: top,
+      child: Center(
+        child: Semantics(
+          container: true,
+          explicitChildNodes: true,
+          label: l10n.terminalSelection,
+          child: DecoratedBox(
+            decoration: ShapeDecoration(
+              color: const Color(0xF21A1E25),
+              shape: StadiumBorder(
+                side: BorderSide(color: const Color(0x26FFFFFF), width: 0.5),
+              ),
+              shadows: const [
+                BoxShadow(
+                  color: Color(0x66000000),
+                  blurRadius: 12,
+                  offset: Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (_notice.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      child: Text(
+                        _notice,
+                        style: const TextStyle(
+                          fontFamily: 'DejaVuSansMono',
+                          fontSize: 12,
+                          color: Color(0xFF57D7A0),
+                          decoration: TextDecoration.none,
+                        ),
+                      ),
+                    )
+                  else ...[
+                    _ToolButton(label: l10n.copy, onTap: _copy),
+                    if (url != null) ...[
+                      const SizedBox(width: gap / 2),
+                      _ToolButton(
+                        label: l10n.terminalOpenLink,
+                        onTap: () => unawaited(_open(url)),
+                      ),
+                    ],
+                    if (widget.onPaste != null) ...[
+                      const SizedBox(width: gap / 2),
+                      _ToolButton(label: l10n.paste, onTap: widget.onPaste!),
+                    ],
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _copy() async {
+    final text = widget.session.term.selectionText();
+    if (text == null || text.trim().isEmpty) return;
+    await Clipboard.setData(ClipboardData(text: text));
+    if (!mounted) return;
+    unawaited(HapticFeedback.lightImpact());
+    _flash(AppLocalizations.of(context).terminalCopied);
+  }
+
+  Future<void> _open(String url) async {
+    final opened = await (widget.onOpenUrl?.call(url) ?? Future.value(false));
+    if (!mounted || opened) return;
+    _flash(AppLocalizations.of(context).terminalOpenFailed);
+  }
+
+  void _flash(String message) {
+    _noticeTimer?.cancel();
+    setState(() => _notice = message);
+    _noticeTimer = Timer(const Duration(milliseconds: 1600), () {
+      if (mounted) setState(() => _notice = '');
+    });
   }
 
   void _scheduleResize(int cols, int rows) {
@@ -186,6 +492,43 @@ class _TerminalCanvasState extends State<TerminalCanvas> {
         _metrics.cellHeight.ceil(),
       );
     });
+  }
+}
+
+class _ToolButton extends StatelessWidget {
+  const _ToolButton({required this.label, required this.onTap});
+
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      container: true,
+      button: true,
+      label: label,
+      onTap: onTap,
+      excludeSemantics: true,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Container(
+          alignment: Alignment.center,
+          constraints: const BoxConstraints(minHeight: 40),
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          child: Text(
+            label,
+            style: const TextStyle(
+              fontFamily: 'DejaVuSansMono',
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFFE7E9ED),
+              decoration: TextDecoration.none,
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 
