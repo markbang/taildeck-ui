@@ -37,7 +37,13 @@ keys inside that row.
 | Zoom | Blink: pinch on the grid | Pinch changes the grid font size from 8 to 24 pt and keeps it. Settings → Terminal shows the same value with A− / A+ | Implemented |
 | Keyboard and rotation | — | Showing or hiding the soft keyboard, and rotation, resize the grid, which resizes the emulator (`td_term_resize`) and the SSH PTY; the columns and rows follow the cells, so the cursor stays above the key row. Landscape below 420 dp of height drops the quick-command strip | Implemented |
 | Hardware keyboard | Blink hides its Smart Keys when a keyboard is attached | Ctrl, Alt, Meta, arrows, Esc and Tab go through `td_term_encode_key` from the input line's focus node. The row hides while Android reports a physical keyboard (`Configuration.keyboard`), unless Settings → Terminal keeps it or the soft keyboard is up. iOS and desktop keep their current behaviour: desktop always hides, iOS cannot tell | Implemented |
-| Snippets, sessions, custom key sequences | Termius snippets, Blink Snips | Not in this change | Later |
+| Snippets | Termius snippets, Blink Snips | Settings → Terminal → Snippets, or the chip at the head of the quick-command row: a name, the command line, and "Append Enter" per snippet (off types the text without running it). A tap in the terminal sends it, the panel edits it, and up/down reorder; up to 40 entries in the app config | Implemented |
+| Sessions | Termius session tabs | Every SSH session stays open in the store, one per node. The emulator belongs to the session, not the page, so its scrollback and an alternate-screen program survive. With two or more sessions a strip under the header shows `user@node` with a live or dropped dot; a tap switches, and the grid returns as it was left (vim keeps its screen) | Implemented |
+| Reconnect | Termius reconnect | A dropped session keeps its page, turns the status pill red and offers Reconnect in the header. One tap dials the same node, user, port and key or password, which the session holds in memory only; nothing is re-typed and the password never reaches disk | Implemented |
+| Background keep-alive | Termius keeps sessions alive; the OS decides for how long | Settings → Terminal → "Keep sessions in background" (on by default). On, the Android `dataSync` foreground service keeps the process while the app is away. Off, the service stops as the app leaves the foreground and the shell ends every session. Sign-out always ends the sessions and stops the service | Implemented |
+| Themes and font | Termius, Blink and JuiceSSH ship palettes; Termius and Blink ship font choices | Five palettes (Taildeck dark, Midnight, Paper light, Solarized dark, Solarized light) or "Match appearance", which takes a light palette under the app's light theme. A theme paints the whole page — header, chips, input bar, key row — and supplies the grid's default foreground and background; colors the remote sets itself stay as reported. Font: DejaVu Sans Mono, the platform monospace or Roboto (proportional); the grid re-measures cells, so columns and rows follow | Implemented |
+| Cursor | DECSCUSR; iTerm and Termius expose cursor settings | Block, bar or underline, or "From the program"; a blink toggle (530 ms) draws the cursor on its own layer, so a tick never repaints the text, and reduce-motion keeps it solid | Implemented |
+| Safe areas | — | The grid reaches the top edge; the key row and the input line own the bottom inset, so the row's surface covers the gesture bar instead of leaving a strip of page below it. In landscape the notch inset stays on the chrome rather than on the grid | Implemented |
 
 ## Verification
 
@@ -54,6 +60,32 @@ Two rows come from the Linux build with a real keyboard, because the emulator
 routes injected key events to Gboard: `term-hardware.png` (Esc, Tab, Ctrl+C and
 the arrows encode to `^[`, `^I`, `^C`, `^[[D`, `^[[A`) and `term-paste.png`.
 The clips next to them are `docs/screenshots/term-*.mp4`.
+
+`tool/termsessions_record.sh` (workflow `termsessions-record`) drives the same
+flows on the emulator against a real shell: the recording runner starts a test
+control plane plus two peer nodes whose `motion_peer` now serves SSH on port 22
+(any key or password, bash on a pty), so the app dials a genuine session.
+
+The desktop build ran the same flows against that tailnet from this machine,
+which is what the stills under `docs/screenshots/term-*` show: a live prompt,
+`htop` on the alternate screen (`term-htop.png`), vim in insert mode with CJK
+(`term-vim.png`), a snippet that ran `df -h /autodl-fs` on the remote
+(`term-snippet-sent.png`), two sessions in the strip with the first one's
+scrollback intact after switching (`term-sessions.png`), the red Disconnected
+state with Reconnect (`term-reconnect.png`) and the same session back after one
+tap (`term-reconnect-restored.png`). Theme, font and cursor stills come from
+the same native renderer (`term-theme-*.png`, `term-font-sans.png`,
+`term-cursor-*.png`), and the Settings rows from the app
+(`term-settings-appearance.png`, `term-settings-applied.png`).
+
+Two things were not exercised. The Android build, its foreground service and
+the display cutout need the emulator run: the desktop window has no notch, no
+gesture bar and no `dataSync` service, so the safe-area result and the
+keep-alive toggle are shown by the script's own stills rather than here.
+Typing quickly into the input bar in the desktop build repeats a character now
+and then (GTK delivers the same key twice while the buffer is being cleared);
+it is the input line, not the session, and one character per 400 ms types
+cleanly.
 
 What the emulator could not exercise: the pinch itself. Its touch input is a
 set of `virtio_input_multi_touch_*` devices without `INPUT_PROP_DIRECT`, so
