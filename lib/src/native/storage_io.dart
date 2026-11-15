@@ -59,6 +59,17 @@ class _IoStorage implements BackendStorage {
   }
 
   @override
+  Future<bool> hasSavedLogin() async {
+    final file = File('${(await _rootDir()).path}/tsnet/tailscaled.state');
+    try {
+      if (!await file.exists()) return false;
+      return savedLoginInState(await file.readAsString());
+    } on Object {
+      return false;
+    }
+  }
+
+  @override
   Future<String?> readServicesJson() async {
     final file = await _servicesFile();
     if (!await file.exists()) return null;

@@ -11,6 +11,7 @@ import '../glyphs.dart';
 import '../l10n.dart';
 import '../motion.dart';
 import '../preview_env.dart';
+import '../splash.dart';
 import '../widgets/controls.dart';
 import '../widgets/foundation.dart';
 import '../widgets/loading.dart';
@@ -137,13 +138,11 @@ class _LoginPageState extends State<LoginPage> {
                             height: 56,
                             alignment: Alignment.center,
                             decoration: ShapeDecoration(
-                              color: scheme.primary.withValues(alpha: 0.16),
+                              color: splashBackground,
                               shape: AppShape.all(18),
                             ),
-                            child: GlyphIcon(
-                              Glyphs2.nodes,
-                              size: 28,
-                              color: scheme.primary,
+                            child: const Center(
+                              child: SplashMark(dotsSpan: 44),
                             ),
                           ),
                         ),

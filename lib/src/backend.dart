@@ -90,6 +90,9 @@ class TaildeckBackend extends ChangeNotifier {
   bool _started = false;
   bool _waitingForLogin = false;
   bool _persistedSignIn = false;
+  bool _sessionKnown = false;
+  bool _hasPersistedLogin = false;
+  final Completer<void> _session = Completer<void>();
   NodeItem? _self;
   List<NodeItem> _peers = const [];
   int _gatewayPort = 0;
@@ -260,6 +263,20 @@ class TaildeckBackend extends ChangeNotifier {
   bool get signedIn => _state == BackendState.running;
   bool get needsLogin => _state == BackendState.needsLogin;
 
+  /// The saved login has been read, so the first route is known; the splash
+  /// waits for this and never for the node.
+  bool get sessionKnown => _sessionKnown;
+  Future<void> get sessionReady => _session.future;
+
+  /// A login is on disk: the config flag or an authenticated profile in the
+  /// tsnet state dir.
+  bool get hasPersistedLogin => _hasPersistedLogin;
+
+  /// The shell is the right route: a saved login the node has not rejected.
+  /// Pages keep their loading states until the node is Running.
+  bool get showShell =>
+      hasPersistedLogin && _state != BackendState.needsLogin;
+
   /// Start was requested and we are waiting for the user (or the control
   /// server) to finish signing in.
   bool get waitingForLogin =>
@@ -267,15 +284,32 @@ class TaildeckBackend extends ChangeNotifier {
       (_state == BackendState.starting || _state == BackendState.needsLogin);
 
   Future<void> init() async {
-    await notifications.init();
     final bridge = _bridge;
     final storage = _storage;
-    if (bridge == null || storage == null) return;
+    if (bridge == null || storage == null) {
+      _sessionKnown = true;
+      _session.complete();
+      return;
+    }
     _events = bridge.events.listen(_onEvent);
+    // Only the saved login stands between the splash and the first route;
+    // platform hooks, notifications and tsnet come after it.
+    await _readSavedSession(storage);
+    _sessionKnown = true;
+    if (!_session.isCompleted) _session.complete();
+    notifyListeners();
+    await notifications.init();
     final mode = await resolvePlatformMode();
     _platform = mode.name;
     _platformWarning = mode.warning ?? '';
     if (_platformWarning.isNotEmpty) debugPrint('taildeck: $_platformWarning');
+    // The tsnet state dir keeps the node key, so a saved login reconnects
+    // without a new one.
+    if (_hasPersistedLogin) await _start('');
+    notifyListeners();
+  }
+
+  Future<void> _readSavedSession(BackendStorage storage) async {
     try {
       final config = await storage.readConfig();
       _hostname = config.hostname;
@@ -303,13 +337,10 @@ class TaildeckBackend extends ChangeNotifier {
       _herdrIdentity = config.herdrIdentity;
       _sshUsers = config.sshUsers;
       _sshPorts = config.sshPorts;
-      // The tsnet state dir keeps the node key, so a previous session can
-      // reconnect without a new key.
-      if (config.signedIn) await _start('');
+      _hasPersistedLogin = config.signedIn || await storage.hasSavedLogin();
     } on Object catch (error) {
       _fail(error);
     }
-    notifyListeners();
   }
 
   Future<void> signInWithKey(String authKey, {String? controlURL}) async {
@@ -831,6 +862,7 @@ class TaildeckBackend extends ChangeNotifier {
     _statusApplied = false;
     _herdrAutoTried = false;
     unawaited(_herdr?.disconnect() ?? Future<void>.value());
+    _hasPersistedLogin = false;
     await _persist(signedIn: false);
     notifyListeners();
   }
@@ -839,6 +871,7 @@ class TaildeckBackend extends ChangeNotifier {
   Future<void> cancelSignIn() async {
     _cancelStart = true;
     await _stopNode();
+    _hasPersistedLogin = false;
     await _persist(signedIn: false);
     notifyListeners();
   }
@@ -981,6 +1014,7 @@ class TaildeckBackend extends ChangeNotifier {
     };
     if (_state == BackendState.running) {
       _waitingForLogin = false;
+      _hasPersistedLogin = true;
       if (!_persistedSignIn) _persist(signedIn: true);
     }
     _syncService();

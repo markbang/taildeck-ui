@@ -11,6 +11,9 @@ class _MemoryStorage implements BackendStorage {
   StoredConfig config = const StoredConfig();
 
   @override
+  Future<bool> hasSavedLogin() async => false;
+
+  @override
   Future<StoredConfig> readConfig() async => config;
 
   @override

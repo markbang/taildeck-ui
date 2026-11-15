@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import '../terminal_appearance.dart';
 import '../terminal_gestures.dart';
 import '../terminal_keys.dart';
@@ -173,6 +175,49 @@ class StoredConfig {
 String sshLoginKey(String node, {String service = ''}) =>
     service.isEmpty ? node : '$node/$service';
 
+/// Whether tsnet's `tailscaled.state` holds an authenticated profile: the
+/// FileStore keeps each value as base64 of its JSON, and a `Persist.NodeID`
+/// set means the control server accepted this node's key. A key alone is not
+/// enough, and reading one small file must not wait for the node to start.
+bool savedLoginInState(String raw) {
+  try {
+    final state = jsonDecode(raw);
+    if (state is! Map) return false;
+    for (final value in state.values) {
+      for (final text in _stateTexts(value)) {
+        if (_signedInPrefs(text)) return true;
+      }
+    }
+  } on Object {
+    return false;
+  }
+  return false;
+}
+
+/// A state value both as the FileStore writes it (base64) and as plain JSON,
+/// since older files may hold either.
+List<String> _stateTexts(Object? value) {
+  if (value is! String || value.isEmpty) return const [];
+  try {
+    return [utf8.decode(base64Decode(value)), value];
+  } on FormatException {
+    return [value];
+  }
+}
+
+bool _signedInPrefs(String text) {
+  try {
+    final prefs = jsonDecode(text);
+    if (prefs is! Map) return false;
+    final persist = prefs['Persist'];
+    if (persist is! Map) return false;
+    final node = persist['NodeID'];
+    return node is String && node.isNotEmpty;
+  } on FormatException {
+    return false;
+  }
+}
+
 abstract class BackendStorage {
   /// tsnet state dir; created on demand.
   Future<String> stateDir();
@@ -181,6 +226,10 @@ abstract class BackendStorage {
   Future<String> sshDir();
   Future<StoredConfig> readConfig();
   Future<void> writeConfig(StoredConfig config);
+
+  /// Whether a signed-in tsnet profile is already on disk; one small read, so
+  /// the first route does not wait for the node.
+  Future<bool> hasSavedLogin();
 
   /// Raw `services.json`, or null when the file does not exist.
   Future<String?> readServicesJson();
