@@ -112,6 +112,8 @@ Pick the control from the kind of value, not from how it looks in the form:
   opens a section page over the tab (`BackStack`, so back returns to the list).
   This is FlClash's grouped settings, and it keeps every row the Kotlin page
   had.
+- A section opens in place (a fade-through swap, 200 ms, instant with reduce
+  motion), so the tab and its dock stay under the thumb.
 - A section page keeps the floating dock; its last row clears the dock plus
   the gesture area (`pageBottomPadding`). The same padding ends every page
   that scrolls, so nothing sits under the dock.

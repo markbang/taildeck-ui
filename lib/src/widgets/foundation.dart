@@ -64,6 +64,7 @@ class PageBody extends StatelessWidget {
     this.onRefresh,
     this.animateSize = false,
     this.titleMaxLines = 1,
+    this.bottomExtra = 0,
   });
 
   final String title;
@@ -79,6 +80,9 @@ class PageBody extends StatelessWidget {
 
   /// A section page names itself in full rather than ending in an ellipsis.
   final int titleMaxLines;
+
+  /// More room at the foot, for a button floating above the dock.
+  final double bottomExtra;
 
   /// Resizes the page's sections with `animateContentSize(Motion.slow())`, as
   /// the Kotlin settings page does.
@@ -105,7 +109,7 @@ class PageBody extends StatelessWidget {
                     20,
                     context.contentTopPadding,
                     20,
-                    pageBottomPadding(context),
+                    pageBottomPadding(context) + bottomExtra,
                   ),
               children: [
                 Row(

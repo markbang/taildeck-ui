@@ -101,7 +101,9 @@ launch() { # [url]
   return 1
 }
 
-flow() { # the settings flow, for the recording and the stills
+settings_url="taildeck://preview/?preview=1&tab=3&lang=en"
+
+flow() { # the settings flow, for the recording
   tap 'Tailnet & device' || true
   sleep 1.5
   adb shell input keyevent KEYCODE_BACK > /dev/null 2>&1 || true
@@ -114,50 +116,63 @@ flow() { # the settings flow, for the recording and the stills
   sleep 1
 }
 
+# Each still starts from the same screen: a fresh launch costs a few seconds
+# and makes a failed shot point at the page, not at the one before it.
+
 adb uninstall "$app" > /dev/null 2>&1 || true
 adb install -g "$apk" > "$out/install.txt" 2>&1 || { note "install failed, see install.txt"; exit 0; }
 
-launch "taildeck://preview/?preview=1&tab=3&lang=en"
-
+launch "$settings_url"
 if ui has 'Tailnet & device' > /dev/null 2>&1; then
   note "settings list: opened"
 else
   note "settings list: the grouped list did not show"
 fi
 shot settings-grouped
-record settings-flow 14 flow
 
 # ---- a section page, and the long control server at the row's end ---------
 if tap 'Tailnet & device'; then
   sleep 1
   if ui has 'controlplane' > /dev/null 2>&1; then
-    note "control server: on one line, $(ui text 'controlplane' | tr -d '\n')"
+    note "control server: $(ui text 'controlplane' | tr -d '\n')"
   fi
   shot settings-tailnet
-  adb shell input keyevent KEYCODE_BACK > /dev/null 2>&1 || true
-  sleep 2
 fi
 
 # ---- an open picker ------------------------------------------------------
+launch "$settings_url"
 if tap 'Appearance & language'; then
   shot settings-appearance
   if tap 'Theme'; then
     sleep 1
     shot settings-picker
-    adb shell input keyevent KEYCODE_BACK > /dev/null 2>&1 || true
-    sleep 1.5
   fi
-  adb shell input keyevent KEYCODE_BACK > /dev/null 2>&1 || true
-  sleep 2
 fi
 
-# ---- the foot of the logs, above the floating dock ----------------------
+# ---- the logs page -------------------------------------------------------
+launch "$settings_url"
 if tap 'Logs'; then
   sleep 2
-  swipe_up
-  shot settings-logs-statusbar
-  for _ in 1 2 3 4 5 6 7 8; do swipe_up; done
-  shot settings-logs-bottom
+  shot settings-logs
 fi
+
+# ---- the foot of a long page, above the floating dock -------------------
+launch "taildeck://preview/?preview=1&tab=3&lang=en&scale=1.3"
+for _ in 1 2 3 4 5 6 7 8; do swipe_up; done
+shot settings-bottom-dock
+# ... and the same page scrolled only a little, so its title runs under the
+# status bar behind the scrim.
+launch "taildeck://preview/?preview=1&tab=3&lang=en&scale=1.3"
+swipe_up
+shot settings-statusbar
+
+# ---- the key sheet, over the dock ---------------------------------------
+launch "taildeck://preview/?preview=1&sheet=key&lang=en"
+sleep 2
+shot settings-key-sheet
+
+# ---- the recorded flow --------------------------------------------------
+launch "$settings_url"
+record settings-flow 14 flow
 
 note "done"

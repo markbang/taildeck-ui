@@ -156,6 +156,7 @@ class _SettingsPageState extends State<SettingsPage> {
     final theme = widget.theme;
     return PageBody(
       title: l10n.tabSettings,
+      animateSize: true,
       children: [
         GroupCard(
           dividerInset: 60,
@@ -224,13 +225,6 @@ class _SettingsPageState extends State<SettingsPage> {
           dividerInset: 16,
           children: [_SignOutRow(onTap: () => unawaited(_signOut(context)))],
         ),
-        if (context.disableAnimations) ...[
-          const SizedBox(height: 8),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 6),
-            child: Text(l10n.motionHint, style: context.listCaptionStyle),
-          ),
-        ],
       ],
     );
   }
@@ -1006,6 +1000,13 @@ class _AppearanceSection extends StatelessWidget {
             ),
           ],
         ),
+        if (context.disableAnimations) ...[
+          const SizedBox(height: 8),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 6),
+            child: Text(l10n.motionHint, style: context.listCaptionStyle),
+          ),
+        ],
       ],
     );
   }

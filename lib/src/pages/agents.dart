@@ -106,6 +106,8 @@ class _AgentsPageState extends State<AgentsPage> {
             title: l10n.agentsTitle,
             subtitle: herdr.node.isEmpty ? 'herdr' : 'herdr · ${herdr.node}',
             onRefresh: herdr.ready ? herdr.refresh : null,
+            // The new-agent button floats at the foot; its rows stop above it.
+            bottomExtra: 64,
             children: [
               if (!backend.signedIn) ...[
                 InlineNotice(
@@ -258,6 +260,7 @@ class _AgentsPageState extends State<AgentsPage> {
         PageBody(
           title: l10n.agentsTitle,
           subtitle: 'herdr · devbox',
+          bottomExtra: 64,
           children: [
             InlineNotice(
               text: l10n.herdrNeedsBackend,
