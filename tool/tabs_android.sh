@@ -96,6 +96,8 @@ expect_header() { # <seen> <tab index> <what>
 headers() { # <texts-file>
   awk -v titles="${titles[*]}" '
     BEGIN { n = split(titles, t, " ") }
+    # The demo dataset titles the node list after the tailnet.
+    index($0, "markbang.github") > 0 { print "Nodes"; next }
     { for (i = 1; i <= n; i++) if (index($0, t[i]) > 0) { print t[i]; break } }
   ' "$1" | sort -u | tr '\n' ' ' | sed 's/ *$//'
 }
