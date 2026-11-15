@@ -10,10 +10,17 @@ import 'native/term.dart';
 /// A modifier the row holds for the next key.
 enum TerminalMod { ctrl, alt }
 
-enum TerminalKeyKind { modifier, key, character }
+enum TerminalKeyKind { modifier, key, character, toggle }
 
 class TerminalKey {
-  const TerminalKey(this.id, this.label, {this.code, this.text, this.modifier});
+  const TerminalKey(
+    this.id,
+    this.label, {
+    this.code,
+    this.text,
+    this.modifier,
+    this.toggle = false,
+  });
 
   /// Stable id, persisted in the app config.
   final String id;
@@ -30,7 +37,12 @@ class TerminalKey {
 
   final TerminalMod? modifier;
 
-  TerminalKeyKind get kind => modifier != null
+  /// A switch on the terminal rather than a byte: the page acts on its id.
+  final bool toggle;
+
+  TerminalKeyKind get kind => toggle
+      ? TerminalKeyKind.toggle
+      : modifier != null
       ? TerminalKeyKind.modifier
       : text != null
       ? TerminalKeyKind.character
@@ -63,6 +75,7 @@ const terminalKeyCatalog = <TerminalKey>[
   TerminalKey('question', '?', text: '?'),
   TerminalKey('quote', "'", text: "'"),
   TerminalKey('backslash', '\\', text: '\\'),
+  TerminalKey('insert', 'Ins', toggle: true),
 ];
 
 final _byId = {for (final key in terminalKeyCatalog) key.id: key};
@@ -70,14 +83,14 @@ final _byId = {for (final key in terminalKeyCatalog) key.id: key};
 TerminalKey? terminalKeyById(String id) => _byId[id];
 
 /// A row page holds at most this many keys before the labels crowd.
-const maxKeysPerPage = 8;
+const maxKeysPerPage = 9;
 
 /// More pages than this and the dots stop being tappable targets.
 const maxKeyPages = 3;
 
 const defaultTerminalKeyPages = <List<String>>[
   ['esc', 'tab', 'ctrl', 'alt', 'left', 'up', 'down', 'right'],
-  ['home', 'end', 'pgup', 'pgdn', 'pipe', 'tilde', 'slash', 'dash'],
+  ['home', 'end', 'pgup', 'pgdn', 'pipe', 'tilde', 'slash', 'dash', 'insert'],
   [
     'underscore',
     'colon',
@@ -115,6 +128,7 @@ List<List<String>> parseTerminalKeyPages(Object? value) {
 
 /// Bytes [key] sends with [mods] armed; null when the emulator cannot encode it.
 Uint8List? encodeTerminalKey(NativeTerm term, TerminalKey key, int mods) {
+  if (key.toggle) return null;
   final text = key.text;
   if (text != null) {
     return term.encodeKey(ghosttyKeyForText(text), mods, text: text);

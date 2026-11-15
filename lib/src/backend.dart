@@ -89,6 +89,7 @@ class TaildeckBackend extends ChangeNotifier {
   double _terminalFontSize = terminalFontDefault;
   bool _terminalSwipeArrows = true;
   bool _terminalKeyRowWithKeyboard = false;
+  bool _terminalSendEnter = true;
   String _platform = 'go';
   String _platformWarning = '';
   bool _herdrAutoTried = false;
@@ -152,6 +153,9 @@ class TaildeckBackend extends ChangeNotifier {
 
   /// Whether the extra key row stays while a hardware keyboard is attached.
   bool get terminalKeyRowWithKeyboard => _terminalKeyRowWithKeyboard;
+
+  /// Whether Send presses Enter after the line; off inserts the text only.
+  bool get terminalSendEnter => _terminalSendEnter;
 
   /// herdr link, agent list and pane calls; null without a native backend.
   HerdrController? get herdr => _herdr;
@@ -231,6 +235,7 @@ class TaildeckBackend extends ChangeNotifier {
       _terminalFontSize = config.terminalFontSize;
       _terminalSwipeArrows = config.terminalSwipeArrows;
       _terminalKeyRowWithKeyboard = config.terminalKeyRowWithKeyboard;
+      _terminalSendEnter = config.terminalSendEnter;
       notifications.setEnabled(config.agentNotifications);
       _herdrNode = config.herdrNode;
       _herdrUser = config.herdrUser;
@@ -640,6 +645,13 @@ class TaildeckBackend extends ChangeNotifier {
     await _persist();
   }
 
+  Future<void> setTerminalSendEnter(bool value) async {
+    if (value == _terminalSendEnter) return;
+    _terminalSendEnter = value;
+    notifyListeners();
+    await _persist();
+  }
+
   /// Pages of the extra key row; unknown ids and duplicates are dropped.
   Future<void> setTerminalKeyPages(List<List<String>> pages) async {
     final next = parseTerminalKeyPages(pages);
@@ -897,6 +909,7 @@ class TaildeckBackend extends ChangeNotifier {
           terminalFontSize: _terminalFontSize,
           terminalSwipeArrows: _terminalSwipeArrows,
           terminalKeyRowWithKeyboard: _terminalKeyRowWithKeyboard,
+          terminalSendEnter: _terminalSendEnter,
           agentNotifications: notifications.enabled,
           herdrNode: _herdrNode,
           herdrUser: _herdrUser,

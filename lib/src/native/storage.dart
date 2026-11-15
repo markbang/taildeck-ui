@@ -15,6 +15,7 @@ class StoredConfig {
     this.terminalFontSize = terminalFontDefault,
     this.terminalSwipeArrows = true,
     this.terminalKeyRowWithKeyboard = false,
+    this.terminalSendEnter = true,
     this.herdrNode = '',
     this.herdrUser = 'root',
     this.herdrPort = 22,
@@ -41,6 +42,7 @@ class StoredConfig {
     terminalSwipeArrows: json['terminalSwipeArrows'] as bool? ?? true,
     terminalKeyRowWithKeyboard:
         json['terminalKeyRowWithKeyboard'] as bool? ?? false,
+    terminalSendEnter: json['terminalSendEnter'] as bool? ?? true,
     herdrNode: json['herdrNode'] as String? ?? '',
     herdrUser: json['herdrUser'] as String? ?? 'root',
     herdrPort: (json['herdrPort'] as num?)?.toInt() ?? 22,
@@ -94,6 +96,9 @@ class StoredConfig {
   /// Whether the extra key row stays while a hardware keyboard is attached.
   final bool terminalKeyRowWithKeyboard;
 
+  /// Whether Send presses Enter after the line. Off inserts the text only.
+  final bool terminalSendEnter;
+
   /// Node, user and auth the Agents page reconnects to herdr with. The
   /// password itself is never written.
   final String herdrNode;
@@ -119,6 +124,7 @@ class StoredConfig {
     'terminalFontSize': terminalFontSize,
     'terminalSwipeArrows': terminalSwipeArrows,
     'terminalKeyRowWithKeyboard': terminalKeyRowWithKeyboard,
+    'terminalSendEnter': terminalSendEnter,
     'herdrNode': herdrNode,
     'herdrUser': herdrUser,
     'herdrPort': herdrPort,

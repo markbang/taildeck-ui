@@ -25,6 +25,7 @@ keys inside that row.
 | Row placement | Termius puts the add-on directly above the system keyboard and keeps it while typing | Docked at the bottom of the terminal page, under the input line and above the soft keyboard. The page pads by `MediaQuery.viewInsets` on every platform (nothing above it builds a `Scaffold` that would resize), and the terminal grid shrinks with the row, so the cursor stays visible. A desktop window has a hardware keyboard, so it hides the row | Implemented |
 | Keys | Termius: modifiers, arrows, function and symbol keys. Termux: a fixed two-row default | Page 1: Esc, Tab, Ctrl, Alt, ←, ↑, ↓, →. Page 2: Home, End, PgUp, PgDn, `\|`, `~`, `/`, `-`. Page 3: `_`, `:`, `*`, `&`, `=`, `?`, `'`, `\` | Implemented |
 | Encoding | — | Every key goes through libghostty-vt's encoder (`td_term_encode_key`) with the armed modifiers, so Alt and Ctrl produce what the running program expects | Implemented |
+| Send | Termius and Blink use the keyboard's own Enter; JuiceSSH has no input line to send | The input line is the buffer: Send, or the soft keyboard's send/done key, writes the text and then one CR per line, so a three-line paste runs three commands 20 ms apart. A long-press on Send, or the row's `Ins` key, inserts without Enter and keeps that choice in the app config. Bracketed paste from the selection toolbar stays literal | Implemented |
 | Sticky modifiers | Blink: hold a modifier to chain. Termux: CTRL/ALT are special keys | One tap arms Ctrl/Alt and highlights the key; the next key (row key or typed character) carries the modifier and clears the highlight | Implemented |
 | Modifier lock | JuiceSSH: Alt can be set to send Esc permanently | Double-tap locks the modifier (stronger highlight, stays armed); a further tap clears it | Implemented |
 | Pages | Termux: `extra-keys` rows, swipe for the rest. JuiceSSH: swipe right/left on the popup | Horizontal swipe between pages, plus tappable page dots for keyboards and screen readers | Implemented |
@@ -62,6 +63,19 @@ input` has no multi-pointer command. The zoom maths are covered by
 `test/terminal_gestures_test.dart`, and Settings exercises the same setter and
 the same grid resize. No tailnet was reachable from here either, so nothing ran
 against a real shell (vim, htop, tmux).
+
+`tool/termsend_record.sh` (workflow `termsend-record`) records what Send
+writes. The demo session echoes every byte with caret notation, so the CR shows
+on the grid as `^M`: `term-send-button.png` is the input line's Send
+(`echo send^M`), `term-send-ime.png` the soft keyboard's Enter
+(`echo enter^M`), `term-send-ime-action.png` Gboard's own send key
+(`echo action^M`, tap point found by colour because the keyboard keeps its keys
+out of the accessibility tree), and `term-send-insert.png` with
+`-insert-cr.png` the long-press that inserts `echo ins` without Enter and then
+sends the bare CR alone. The clips are the matching `term-send-*.mp4`. No
+tailnet was reachable from the emulator, so no shell ran those lines: a real
+`echo` output, history recall and completion are unverified.
+
 
 ## Sources
 

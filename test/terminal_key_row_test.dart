@@ -26,6 +26,12 @@ void main() {
     expect(mods.mask, 0);
   });
 
+  test('the insert-only key keeps its default page and sends no bytes', () {
+    final pages = parseTerminalKeyPages(defaultTerminalKeyPages);
+    expect(pages.expand((page) => page), contains('insert'));
+    expect(terminalKeyById('insert')?.toggle, isTrue);
+  });
+
   test('an armed modifier clears after the next key', () {
     final mods = TerminalMods()
       ..tap(TerminalMod.alt, now: DateTime(2026, 11, 14, 12));

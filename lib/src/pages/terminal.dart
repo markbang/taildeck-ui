@@ -24,8 +24,10 @@ import '../demo/demo_term.dart';
 import '../preview_env.dart';
 import '../terminal_gestures.dart';
 import '../terminal_keys.dart';
+import '../terminal_send.dart';
 import '../terminal_store.dart';
 import '../widgets/controls.dart';
+import '../widgets/snackbar.dart';
 import 'term_key_bar.dart';
 import 'term_view.dart';
 
@@ -126,8 +128,14 @@ class _TerminalPageState extends State<TerminalPage>
   bool _connected = false;
   bool _bannerFed = false;
   int _demoRows = 0;
-  String _sent = '';
   final _mods = TerminalMods();
+
+  /// What the input line held at the last change: an armed modifier consumes
+  /// the one character typed after it.
+  String _typed = '';
+
+  /// One Send at a time, so the lines of a paste reach the remote in order.
+  Future<void> _sending = Future<void>.value();
 
   /// Pinch size while the finger is down; the backend value lands after the
   /// debounce, then this falls back to it.
@@ -215,76 +223,158 @@ class _TerminalPageState extends State<TerminalPage>
 
   static Uint8List _ansi(String text) => Uint8List.fromList(utf8.encode(text));
 
-  /// Hardware keys reach the emulator's encoder; printable characters come
-  /// through the text field below and are encoded there.
+  /// Editing keys the text field owns while the line holds text.
+  static const _editing = {
+    GhosttyKeys.backspace,
+    GhosttyKeys.deleteKey,
+    GhosttyKeys.home,
+    GhosttyKeys.end,
+    GhosttyKeys.arrowLeft,
+    GhosttyKeys.arrowRight,
+  };
+
+  /// Hardware keys: printing keys fill the input line, Enter sends it, and the
+  /// rest go through the emulator's encoder.
   KeyEventResult _onKey(FocusNode node, KeyEvent event) {
     final session = _session;
     if (session == null) return KeyEventResult.ignored;
     if (event is KeyUpEvent) return KeyEventResult.handled;
     final mods = ghosttyModsOf(HardwareKeyboard.instance);
     final text = event.character;
-    // Printable keys go through the text field, which encodes them. Esc, Tab
-    // and Backspace also carry a control character, so they must not: their
-    // shortcuts would pop the page or edit the keystroke buffer.
+    // Printable keys go through the text field, which buffers them: Esc, Tab
+    // and Backspace also carry a control character, so they must not, or their
+    // shortcuts would pop the page or edit the line.
     final printable =
         text != null && text.isNotEmpty && text.codeUnitAt(0) >= 0x20;
     if (printable && mods & ~GhosttyMods.shift == 0) {
       return KeyEventResult.ignored;
     }
-    final encoded = session.term.encodeKey(ghosttyKeyOf(event), mods);
+    final key = ghosttyKeyOf(event);
+    if (key == GhosttyKeys.enter && mods == 0) {
+      // An IME composition still owes the field its commit.
+      if (_input.value.composing.isValid) return KeyEventResult.ignored;
+      // The line lives in the input, so Enter sends it rather than a bare CR.
+      unawaited(_submit());
+      return KeyEventResult.handled;
+    }
+    if (_input.text.isNotEmpty && _editing.contains(key)) {
+      return KeyEventResult.ignored;
+    }
+    if (key == GhosttyKeys.tab && _input.text.isNotEmpty) {
+      // Completion needs the text typed so far, without an Enter.
+      unawaited(_send(_input.text, enter: false));
+      _input.clear();
+    }
+    final encoded = session.term.encodeKey(key, mods);
     if (encoded != null) _deliver(encoded);
     return KeyEventResult.handled;
   }
 
+  /// An armed Ctrl/Alt applies to the next typed character, as it does to the
+  /// next key on the row: that character is a keystroke, not line text.
   void _onTextChanged(String value) {
-    final session = _session;
-    if (session == null) return;
-    // An IME preedit is not committed text: wait for the commit.
-    if (_input.value.composing.isValid) return;
-    final added = _sent.isEmpty
-        ? value
-        : (value.startsWith(_sent) ? value.substring(_sent.length) : value);
-    _sent = value;
-    final armed = _mods.mask;
-    for (final (index, rune) in added.runes.indexed) {
-      final text = String.fromCharCode(rune);
-      // A sticky modifier applies to the next key only.
-      final encoded = session.term.encodeKey(
-        ghosttyKeyForText(text),
-        index == 0 ? armed : 0,
-        text: text,
-      );
-      if (encoded != null) _deliver(encoded);
+    final before = _typed;
+    _typed = value;
+    final mods = _mods.mask;
+    if (mods == 0 || _input.value.composing.isValid) return;
+    if (value.length != before.length + 1 || !value.startsWith(before)) return;
+    final added = value.substring(before.length);
+    final encoded = _session?.term.encodeKey(
+      ghosttyKeyForText(added),
+      mods,
+      text: added,
+    );
+    if (encoded == null) return;
+    _deliver(encoded);
+    if (_mods.consume()) setState(() {});
+    _typed = before;
+    _input.value = TextEditingValue(
+      text: before,
+      selection: TextSelection.collapsed(offset: before.length),
+    );
+  }
+
+  /// How long each line of a paste waits for the one before it.
+  static const _linePace = Duration(milliseconds: 20);
+
+  /// Sends the input line: the text, then Enter unless insert-only is on.
+  Future<void> _submit() {
+    final text = _input.text;
+    _input.clear();
+    _typed = '';
+    return _send(text);
+  }
+
+  /// One Send, one chunk per line, written in order.
+  ///
+  /// The line breaks an Enter adds come from [terminalSendChunks], so a
+  /// multi-line paste runs each line instead of landing in one command.
+  Future<void> _send(String text, {bool? enter}) {
+    final pressesEnter = enter ?? BackendScope.of(context).terminalSendEnter;
+    final chunks = terminalSendChunks(
+      text,
+      pressesEnter ? TerminalSendMode.enter : TerminalSendMode.insert,
+    );
+    if (chunks.isEmpty) return Future<void>.value();
+    if (!widget.live && !widget.demo) {
+      // The mock has no remote shell; its fake one runs the line.
+      if (pressesEnter) _run(text);
+      return Future<void>.value();
     }
-    if (armed != 0 && added.isNotEmpty && _mods.consume()) setState(() {});
-    if (value.isEmpty) return;
-    // The line is a keystroke buffer, not an input box: clear it once the
-    // frames are out.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      _input.clear();
-      _sent = '';
+    _haptic();
+    return _sending = _sending.then((_) async {
+      for (final (index, chunk) in chunks.indexed) {
+        if (!mounted) return;
+        _writeChunk(chunk);
+        if (index + 1 < chunks.length) {
+          await Future<void>.delayed(_linePace);
+        }
+      }
     });
   }
 
-  void _sendLine(String text) {
-    final terminal = widget.terminal;
-    if (!terminal.live || _session == null) return;
-    final session = _session!;
-    for (final rune in text.runes) {
+  /// A line through the emulator's encoder: its characters, then the Enter
+  /// that the trailing CR stands for.
+  void _writeChunk(String chunk) {
+    final session = _session;
+    if (session == null) return;
+    final enter = chunk.endsWith('\r');
+    final body = enter ? chunk.substring(0, chunk.length - 1) : chunk;
+    for (final rune in body.runes) {
+      if (rune == 0x0a) {
+        // Insert-only keeps the text's own line breaks.
+        _deliver(session.term.encodeKey(GhosttyKeys.enter, 0));
+        continue;
+      }
       final ch = String.fromCharCode(rune);
-      final encoded = session.term.encodeKey(
-        ghosttyKeyForText(ch),
-        0,
-        text: ch,
-      );
-      if (encoded != null) terminal.write(encoded);
+      _deliver(session.term.encodeKey(ghosttyKeyForText(ch), 0, text: ch));
     }
-    final enter = session.term.encodeKey(GhosttyKeys.enter, 0);
-    if (enter != null) terminal.write(enter);
+    if (!enter) return;
+    _deliver(session.term.encodeKey(GhosttyKeys.enter, 0));
+    // The demo has no shell to echo the line break.
+    if (widget.demo) _session?.feed(_ansi('\r\n'));
+  }
+
+  /// The long-press on Send and the row's Ins key: keep the text, skip Enter.
+  void _toggleSendEnter() {
+    final backend = BackendScope.of(context);
+    final enter = !backend.terminalSendEnter;
+    final l10n = AppLocalizations.of(context);
+    unawaited(backend.setTerminalSendEnter(enter));
+    _haptic();
+    _focus.requestFocus();
+    setState(() {});
+    showMotionSnack(
+      context,
+      enter ? l10n.terminalSendEnterOn : l10n.terminalSendInsertOnly,
+    );
   }
 
   void _tapKey(TerminalKey key) {
+    if (key.toggle) {
+      _toggleSendEnter();
+      return;
+    }
     final mod = key.modifier;
     if (mod != null) {
       setState(() => _mods.tap(mod));
@@ -427,7 +517,7 @@ class _TerminalPageState extends State<TerminalPage>
     final command = raw.trim();
     if (command.isEmpty) return;
     if (widget.live) {
-      _sendLine(command);
+      unawaited(_send(command));
       return;
     }
     final session = _session;
@@ -602,29 +692,18 @@ class _TerminalPageState extends State<TerminalPage>
                     controller: _input,
                     mono: mono,
                     focusNode: _focus,
+                    insertOnly: !backend.terminalSendEnter,
+                    onChanged: session == null ? null : _onTextChanged,
                     onPaste: session == null ? null : _paste,
                     onTap: _focusTerminal,
-                    onChanged: _session == null ? null : _onTextChanged,
-                    onSubmitted: (value) {
-                      if (widget.live) {
-                        if (value.isNotEmpty) _sendLine(value);
-                        _input.clear();
-                        return;
-                      }
-                      if (widget.demo) {
-                        // Typed characters were already echoed as they arrived.
-                        _session?.feed(Uint8List.fromList(utf8.encode('\r\n')));
-                        _input.clear();
-                        return;
-                      }
-                      _run(value);
-                      _input.clear();
-                    },
+                    onSubmit: () => unawaited(_submit()),
+                    onSendHold: _toggleSendEnter,
                   ),
                   if (_showKeyRow(context))
                     TerminalKeyBar(
                       pages: backend.terminalKeyPages,
                       mods: _mods,
+                      active: {if (!backend.terminalSendEnter) 'insert'},
                       onKey: _tapKey,
                       onModifier: (mod) {
                         setState(() => _mods.tap(mod));
@@ -979,7 +1058,9 @@ class _InputBar extends StatelessWidget {
   const _InputBar({
     required this.controller,
     required this.mono,
-    required this.onSubmitted,
+    required this.onSubmit,
+    required this.onSendHold,
+    required this.insertOnly,
     this.focusNode,
     this.onChanged,
     this.onPaste,
@@ -988,7 +1069,15 @@ class _InputBar extends StatelessWidget {
 
   final TextEditingController controller;
   final TextStyle mono;
-  final ValueChanged<String> onSubmitted;
+
+  /// Tap on Send, or the soft keyboard's send/done action.
+  final VoidCallback onSubmit;
+
+  /// Long-press on Send: turn the Enter after the text off and on.
+  final VoidCallback onSendHold;
+
+  /// The text is sent without Enter.
+  final bool insertOnly;
   final FocusNode? focusNode;
   final ValueChanged<String>? onChanged;
   final VoidCallback? onPaste;
@@ -1023,7 +1112,8 @@ class _InputBar extends StatelessWidget {
                   autofocus: true,
                   onTap: onTap,
                   onChanged: onChanged,
-                  onSubmitted: onSubmitted,
+                  textInputAction: TextInputAction.send,
+                  onSubmitted: (_) => onSubmit(),
                   cursorColor: const Color(0xFF7FB4FF),
                   cursorHeight: 15,
                   style: mono.copyWith(fontSize: 13),
@@ -1037,6 +1127,12 @@ class _InputBar extends StatelessWidget {
                   ),
                 ),
               ),
+            ),
+            const SizedBox(width: 4),
+            _SendButton(
+              insertOnly: insertOnly,
+              onSend: onSubmit,
+              onHold: onSendHold,
             ),
             if (onPaste != null)
               Semantics(
@@ -1059,6 +1155,61 @@ class _InputBar extends StatelessWidget {
                 ),
               ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The bar's Send: a tap sends the line, a long press turns its Enter off.
+class _SendButton extends StatelessWidget {
+  const _SendButton({
+    required this.insertOnly,
+    required this.onSend,
+    required this.onHold,
+  });
+
+  final bool insertOnly;
+  final VoidCallback onSend;
+  final VoidCallback onHold;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final accent = insertOnly
+        ? const Color(0xFF7C838D)
+        : const Color(0xFF7FB4FF);
+    return Semantics(
+      button: true,
+      selected: insertOnly,
+      label: l10n.terminalSend,
+      hint: l10n.terminalSendHint,
+      value: insertOnly ? l10n.terminalSendInsertOnly : null,
+      excludeSemantics: true,
+      onTap: onSend,
+      onLongPress: onHold,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onSend,
+        onLongPress: onHold,
+        child: SizedBox(
+          width: 38,
+          height: 34,
+          child: Center(
+            child: Container(
+              width: 28,
+              height: 28,
+              decoration: ShapeDecoration(
+                color: insertOnly
+                    ? const Color(0xFF20242C)
+                    : accent.withValues(alpha: 0.16),
+                shape: AppShape.all(8),
+              ),
+              child: Center(
+                child: GlyphIcon(Glyphs2.arrowUp, size: 15, color: accent),
+              ),
+            ),
+          ),
         ),
       ),
     );
