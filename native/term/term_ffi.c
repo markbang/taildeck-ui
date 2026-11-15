@@ -372,7 +372,7 @@ uint8_t* td_term_encode_key(TdTerm* t, int key, int mods, const char* text, int 
 // Encodes a mouse event at pixel (x, y) per the remote's tracking mode and
 // format. Returns NULL when the remote doesn't want this event.
 uint8_t* td_term_encode_mouse(TdTerm* t, int action, int button, int pressed, float x, float y,
-                              int w, int h, int cw, int ch, size_t* out_len) {
+                              int w, int h, int cw, int ch, int mods, size_t* out_len) {
   *out_len = 0;
   if (!t) return NULL;
   char buf[64];
@@ -393,7 +393,7 @@ uint8_t* td_term_encode_mouse(TdTerm* t, int action, int button, int pressed, fl
   } else {
     ghostty_mouse_event_clear_button(t->mouse_event);
   }
-  ghostty_mouse_event_set_mods(t->mouse_event, 0);
+  ghostty_mouse_event_set_mods(t->mouse_event, (GhosttyMods)mods);
   ghostty_mouse_event_set_position(t->mouse_event, (GhosttyMousePosition){.x = x, .y = y});
   GhosttyResult r = ghostty_mouse_encoder_encode(t->mouse, t->mouse_event, buf, sizeof(buf), &n);
   td_mutex_unlock(&t->mu);

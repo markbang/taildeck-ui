@@ -407,8 +407,12 @@ class _TerminalPageState extends State<TerminalPage>
     final session = _session;
     if (session == null) return;
     _deliver(session.term.encodeKey(code, _mods.mask));
-    if (_mods.consume()) setState(() {});
+    _consumeMods();
     _haptic();
+  }
+
+  void _consumeMods() {
+    if (_mods.consume()) setState(() {});
   }
 
   /// Pastes through the emulator's encoder, so a program that asked for
@@ -464,11 +468,31 @@ class _TerminalPageState extends State<TerminalPage>
     return launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
-  /// A tap on the grid or the input line brings the soft keyboard back, even
-  /// when the field never lost focus.
+  /// A tap on the grid or the input line brings the soft keyboard back.
+  ///
+  /// A field that kept focus does not ask Android for the IME again after the
+  /// user dismissed it with the back key, so the field takes focus anew: one
+  /// frame unfocused, then focused, which re-opens the input connection.
   void _focusTerminal() {
+    final keyboardUp = MediaQuery.viewInsetsOf(context).bottom > 0;
+    if (_focus.hasFocus && !keyboardUp) {
+      _focus.unfocus();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _focus.requestFocus();
+        unawaited(SystemChannels.textInput.invokeMethod<void>('TextInput.show'));
+      });
+      return;
+    }
     _focus.requestFocus();
     unawaited(SystemChannels.textInput.invokeMethod<void>('TextInput.show'));
+  }
+
+  /// The key row's keyboard button: only the IME goes away, the field keeps
+  /// focus so a hardware keyboard still types.
+  void _hideKeyboard() {
+    unawaited(SystemChannels.textInput.invokeMethod<void>('TextInput.hide'));
+    _haptic();
   }
 
   void _haptic() {
@@ -758,6 +782,7 @@ class _TerminalPageState extends State<TerminalPage>
                       palette: palette,
                       bottomInset: bottomInset,
                       onKey: _tapKey,
+                      onHideKeyboard: _hideKeyboard,
                       onModifier: (mod) {
                         setState(() => _mods.tap(mod));
                         _haptic();
@@ -822,6 +847,9 @@ class _TerminalPageState extends State<TerminalPage>
         onArrow: _onArrow,
         onFontSize: _zoomTo,
         onFocus: _focusTerminal,
+        onBytes: _deliver,
+        onMouseSent: _consumeMods,
+        mouseMods: _mods.mask,
         onOpenUrl: _openUrl,
         onPaste: _paste,
       ),

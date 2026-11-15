@@ -69,4 +69,32 @@ void main() {
     await tester.tap(find.text('Home'));
     expect(pressed.single.id, 'home');
   });
+
+  testWidgets('the keyboard button puts the soft keyboard away', (tester) async {
+    final semantics = tester.ensureSemantics();
+    var hidden = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('en'),
+        localizationsDelegates: const [AppLocalizations.delegate],
+        supportedLocales: const [Locale('en')],
+        home: Scaffold(
+          body: Align(
+            alignment: Alignment.bottomCenter,
+            child: TerminalKeyBar(
+              pages: defaultTerminalKeyPages,
+              mods: TerminalMods(),
+              onKey: (_) {},
+              onModifier: (_) {},
+              onHideKeyboard: () => hidden++,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.bySemanticsLabel('Hide keyboard'));
+    expect(hidden, 1);
+    semantics.dispose();
+  });
 }

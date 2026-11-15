@@ -57,6 +57,9 @@ class TerminalCanvas extends StatefulWidget {
     this.onArrow,
     this.onFontSize,
     this.onFocus,
+    this.onBytes,
+    this.onMouseSent,
+    this.mouseMods = 0,
     this.onOpenUrl,
     this.onPaste,
   });
@@ -87,8 +90,18 @@ class TerminalCanvas extends StatefulWidget {
   /// The font size a pinch asks for, already inside the zoom limits.
   final ValueChanged<double>? onFontSize;
 
-  /// A tap on the grid, for the soft keyboard.
+  /// A tap on the grid: focus the terminal and show the soft keyboard.
   final VoidCallback? onFocus;
+
+  /// Bytes a mouse report wrote, for the page to hand to the remote.
+  final ValueChanged<Uint8List>? onBytes;
+
+  /// Called once after a click's press and release went out, so the page can
+  /// clear the sticky modifier that carried it.
+  final VoidCallback? onMouseSent;
+
+  /// GhosttyMods bits a click carries, from the key row's sticky modifiers.
+  final int mouseMods;
 
   /// Opens the URL a selection holds; false when it did not open.
   final Future<bool> Function(String url)? onOpenUrl;
@@ -246,14 +259,47 @@ class _TerminalCanvasState extends State<TerminalCanvas>
   }
 
   void _onTap(TapUpDetails details) {
+    // A tap always brings the keyboard back; only the key row's keyboard
+    // button and the system back hide it.
+    widget.onFocus?.call();
     if (_selection != null) {
       _clearSelection();
       return;
     }
-    widget.onFocus?.call();
+    _clickGrid(details.localPosition);
+  }
+
+  /// Reports a tap to a program that tracks the mouse (SGR 1006 and the other
+  /// protocols the emulator knows), as a left press and release at the cell
+  /// under the finger. A terminal without mouse reporting gets no bytes.
+  void _clickGrid(Offset local) {
+    final snapshot = widget.session.snapshot;
+    if (!snapshot.mouseTracking) return;
+    final width = (snapshot.cols * _metrics.cellWidth).ceil();
+    final height = (snapshot.rows * _metrics.cellHeight).ceil();
+    if (width <= 0 || height <= 0) return;
+    final x = local.dx.clamp(0.0, width - 1.0);
+    final y = local.dy.clamp(0.0, height - 1.0);
+    for (final pressed in const [true, false]) {
+      final bytes = widget.session.term.encodeMouse(
+        action: pressed ? 0 : 1,
+        button: TerminalMouseButton.left,
+        pressed: pressed,
+        x: x,
+        y: y,
+        width: width,
+        height: height,
+        cellWidth: _metrics.cellWidth.ceil(),
+        cellHeight: _metrics.cellHeight.ceil(),
+        mods: widget.mouseMods,
+      );
+      if (bytes != null && bytes.isNotEmpty) widget.onBytes?.call(bytes);
+    }
+    widget.onMouseSent?.call();
   }
 
   void _onDoubleTap() {
+    widget.onFocus?.call();
     final at = _doubleTapAt;
     if (at != null) _selectWord(at);
   }
@@ -309,6 +355,7 @@ class _TerminalCanvasState extends State<TerminalCanvas>
   /// Selects the word under [local]; a long press and a double tap both land
   /// here.
   void _selectWord(Offset local) {
+    widget.onFocus?.call();
     final snapshot = widget.session.snapshot;
     final columns = snapshot.cols;
     if (snapshot.rows == 0 || columns == 0) return;
@@ -521,6 +568,14 @@ class _TerminalCanvasState extends State<TerminalCanvas>
         _metrics.cellWidth.ceil(),
         _metrics.cellHeight.ceil(),
       );
+      // A resize (the keyboard opening, a rotation) must leave the cursor on
+      // screen, so a viewport parked in the scrollback returns to the live
+      // screen.
+      final snapshot = widget.session.snapshot;
+      final bottom = snapshot.scrollTotal - snapshot.scrollLen;
+      if (snapshot.scrollOffset < bottom) {
+        widget.session.scroll(bottom - snapshot.scrollOffset);
+      }
     });
   }
 }

@@ -120,6 +120,7 @@ typedef _MouseNative = Pointer<Uint8> Function(
   Int32 height,
   Int32 cellWidth,
   Int32 cellHeight,
+  Int32 mods,
   Pointer<IntPtr> outLen,
 );
 typedef _Mouse = Pointer<Uint8> Function(
@@ -133,6 +134,7 @@ typedef _Mouse = Pointer<Uint8> Function(
   int height,
   int cellWidth,
   int cellHeight,
+  int mods,
   Pointer<IntPtr> outLen,
 );
 
@@ -421,6 +423,7 @@ class _FfiTerm implements NativeTerm {
     required int height,
     required int cellWidth,
     required int cellHeight,
+    int mods = 0,
   }) {
     final len = calloc<IntPtr>();
     try {
@@ -436,6 +439,7 @@ class _FfiTerm implements NativeTerm {
           height,
           cellWidth,
           cellHeight,
+          mods,
           len,
         ),
         len.value,

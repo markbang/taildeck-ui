@@ -42,9 +42,10 @@ int td_term_snapshot(TdTerm* t, int* cells, int cells_cap, int* meta, int* extra
 uint8_t* td_term_encode_key(TdTerm* t, int key, int mods, const char* text, int text_len,
                             uint32_t unshifted, size_t* out_len);
 
-// action: 0 press, 1 release, 2 motion. button: 0 none, 1 left, 4/5 wheel up/down.
+// action: 0 press, 1 release, 2 motion. button: 0 none, 1 left, 2 right,
+// 3 middle, 4/5 wheel up/down. mods is a GhosttyMods bitmask.
 uint8_t* td_term_encode_mouse(TdTerm* t, int action, int button, int pressed, float x, float y,
-                              int w, int h, int cw, int ch, size_t* out_len);
+                              int w, int h, int cw, int ch, int mods, size_t* out_len);
 
 uint8_t* td_term_encode_focus(TdTerm* t, int gained, size_t* out_len);
 
