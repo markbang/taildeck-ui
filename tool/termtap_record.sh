@@ -21,6 +21,7 @@ mkdir -p "$out"
 summary="$out/summary.txt"
 : > "$summary"
 failures=0
+gate_ran=0
 note() { echo "$*" | tee -a "$summary"; }
 fail() { note "GATE FAIL: $*"; failures=$((failures + 1)); }
 
@@ -240,6 +241,7 @@ send_command() { # <text> [settle seconds]
 # 3. the key row's keyboard button hides it; a tap brings it back.
 # 4. typing after the tap reaches the shell.
 gate() {
+  gate_ran=1
   hide_ime
   [ "$(ime_state)" = "mInputShown=true" ] && { fail "IME did not close"; return 0; }
   tap_grid 0.3 0.35 || fail "no grid point to tap"
@@ -376,6 +378,8 @@ if ! ui has 'Terminal output' > /dev/null 2>&1; then
   exit 1
 fi
 
+record tap-focus 30 gate
+
 # The probe runs on the runner, where the peer's bash runs too.
 cat > /tmp/mouseprobe.py <<'PY'
 import os, sys, termios, tty, time
@@ -413,6 +417,9 @@ check_cell /tmp/tap-mouse.log
 
 record tap-vim 18 vim_step
 record tap-htop 16 htop_step
+
+# A gate that never ran is not a gate: the call above must reach it.
+[ "$gate_ran" -eq 1 ] || fail "the tap gate did not run"
 
 if [ "$failures" -gt 0 ]; then
   note "termtap: $failures gate failure(s)"
