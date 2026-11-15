@@ -88,7 +88,9 @@ sessions in the strip (`term-android-sessions.png`,
 Two things were not exercised. The Android build, its foreground service and
 the display cutout need the emulator run: the desktop window has no notch, no
 gesture bar and no `dataSync` service, so the safe-area result and the
-keep-alive toggle are shown by the script's own stills rather than here.
+keep-alive toggle are still open. The emulator run also skipped the cursor and
+font rows: its taps landed under the floating dock, so those stills are the
+desktop renderer's.
 Typing quickly into the input bar in the desktop build repeats a character now
 and then (GTK delivers the same key twice while the buffer is being cleared);
 it is the input line, not the session, and one character per 400 ms types
