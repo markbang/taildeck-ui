@@ -49,12 +49,6 @@ enum HerdrFailure {
   notRunning,
   other;
 
-  /// A retry can succeed: the tailnet or the node may still be coming up.
-  bool get retryable => switch (this) {
-    unknownHost || timeout || unreachable || other => true,
-    _ => false,
-  };
-
   static HerdrFailure of(String message) {
     final text = message.toLowerCase();
     if (text.startsWith('herdr_not_installed')) return notInstalled;
@@ -86,11 +80,9 @@ enum HerdrFailure {
   }
 }
 
-/// Startup retry budget: three dials of at most four seconds plus 1 s and 2 s
-/// of backoff stay inside 15 s before the page reports a failure.
-const herdrStartupAttempts = 3;
-const herdrAttemptTimeout = Duration(seconds: 4);
-const herdrRetryBackoff = [Duration(seconds: 1), Duration(seconds: 2)];
+/// One startup dial gets four seconds; a failure is reported and the page
+/// offers Retry instead of dialing again by itself.
+const herdrConnectTimeout = Duration(seconds: 4);
 
 /// One agent pane as herdr reports it.
 class HerdrAgent {
@@ -391,8 +383,6 @@ class HerdrController extends ChangeNotifier {
   Timer? _debounce;
   HerdrFailure _failure = HerdrFailure.none;
   bool _waking = false;
-  int _attempt = 0;
-  int _attempts = 1;
 
   final Map<String, List<HerdrCommand>> _commands = {};
   final Map<String, DateTime> _commandsAt = {};
@@ -409,13 +399,9 @@ class HerdrController extends ChangeNotifier {
   String get detail => _detail;
   HerdrFailure get failure => _failure;
 
-  /// A startup connect or retry run is in flight, including the backoff
-  /// between attempts.
+  /// A connect dial is in flight.
   bool get waking => _waking;
 
-  /// Dial in progress and how many the current run makes.
-  int get attempt => _attempt;
-  int get attempts => _attempts;
   String get node => _node;
   List<HerdrAgent> get agents => List.unmodifiable(_agents);
   bool get available => _bridge != null;
@@ -428,8 +414,8 @@ class HerdrController extends ChangeNotifier {
   List<QueuedPrompt> queued(String pane) =>
       List.unmodifiable(_queues[pane] ?? const <QueuedPrompt>[]);
 
-  /// Connects to [node] with up to [attempts] dials. Retries keep the page on
-  /// "connecting" and only the last failure is reported.
+  /// Dials [node] exactly once. A failure leaves [failure] set and the page
+  /// shows a human message with a Retry the user presses.
   Future<void> connect({
     required String node,
     int port = 22,
@@ -437,7 +423,6 @@ class HerdrController extends ChangeNotifier {
     String password = '',
     String keyPath = '',
     String passphrase = '',
-    int attempts = 1,
   }) async {
     final bridge = _bridge;
     if (bridge == null) {
@@ -446,46 +431,37 @@ class HerdrController extends ChangeNotifier {
       return;
     }
     _node = node;
-    _attempts = attempts < 1 ? 1 : attempts;
     _waking = true;
     _failure = HerdrFailure.none;
-    for (var attempt = 1; attempt <= _attempts; attempt++) {
-      _attempt = attempt;
-      _link = HerdrLink.connecting;
+    _link = HerdrLink.connecting;
+    _detail = '';
+    notifyListeners();
+    try {
+      final reply = await bridge
+          .herdrConnect(
+            host: node,
+            port: port,
+            user: user,
+            password: password,
+            keyPath: keyPath,
+            passphrase: passphrase,
+          )
+          .timeout(herdrConnectTimeout);
+      _connId = (reply['id'] as num?)?.toInt() ?? 0;
+      _link = HerdrLink.ready;
       _detail = '';
+      _failure = HerdrFailure.none;
+      await refresh();
+      _waking = false;
       notifyListeners();
-      try {
-        final reply = await bridge
-            .herdrConnect(
-              host: node,
-              port: port,
-              user: user,
-              password: password,
-              keyPath: keyPath,
-              passphrase: passphrase,
-            )
-            .timeout(herdrAttemptTimeout);
-        _connId = (reply['id'] as num?)?.toInt() ?? 0;
-        _link = HerdrLink.ready;
-        _detail = '';
-        _failure = HerdrFailure.none;
-        await refresh();
-        _waking = false;
-        notifyListeners();
-        return;
-      } on Object catch (error) {
-        _agents = const [];
-        _detail = error is TimeoutException
-            ? 'connect timed out'
-            : _message(error);
-        _failure = HerdrFailure.of(_detail);
-        _link = _classify(_detail);
-        if (attempt < _attempts && _failure.retryable) {
-          await Future<void>.delayed(herdrRetryBackoff[attempt - 1]);
-          continue;
-        }
-        break;
-      }
+      return;
+    } on Object catch (error) {
+      _agents = const [];
+      _detail = error is TimeoutException
+          ? 'connect timed out'
+          : _message(error);
+      _failure = HerdrFailure.of(_detail);
+      _link = _classify(_detail);
     }
     // A dial that timed out may still land after the page gave up.
     if (_failure == HerdrFailure.timeout) unawaited(_closeQuietly());
@@ -515,7 +491,6 @@ class HerdrController extends ChangeNotifier {
     _commandsAt.clear();
     _failure = HerdrFailure.none;
     _waking = false;
-    _attempt = 0;
     notifyListeners();
     await _bridge?.herdrClose();
   }

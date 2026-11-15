@@ -167,7 +167,6 @@ class _AgentsPageState extends State<AgentsPage> {
       AgentsPhase.ready when herdr.agents.isEmpty => 'empty',
       AgentsPhase.ready =>
         'agents:${_groups(herdr.agents).map((g) => g.section).join('|')}',
-      AgentsPhase.connecting => 'connecting:${herdr.attempt}',
       AgentsPhase.failed => 'failed:${herdr.failure.name}',
       _ => phase.name,
     };
@@ -188,12 +187,7 @@ class _AgentsPageState extends State<AgentsPage> {
           caption: l10n.tailnetWaitingBody,
         );
       case AgentsPhase.connecting:
-        return NetLoading(
-          title: l10n.herdrConnecting(node),
-          caption: herdr.attempt > 1
-              ? l10n.herdrRetryAttempt(herdr.attempt, herdr.attempts)
-              : null,
-        );
+        return NetLoading(title: l10n.herdrConnecting(node));
       case AgentsPhase.failed:
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -294,10 +288,7 @@ class _AgentsPageState extends State<AgentsPage> {
               caption: l10n.tailnetWaitingBody,
             )
           else if (preview == 'connecting')
-            NetLoading(
-              title: l10n.herdrConnecting('devbox'),
-              caption: l10n.herdrRetryAttempt(2, 3),
-            )
+            NetLoading(title: l10n.herdrConnecting('devbox'))
           else ...[
             _HerdrMessageCard(
               message: l10n.herdrErrorNoHost('bangwu'),
