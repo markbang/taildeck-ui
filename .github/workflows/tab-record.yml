@@ -45,6 +45,32 @@ jobs:
           git fetch --depth=1 origin "${{ inputs.app-ref }}"
           git checkout -f FETCH_HEAD
           head -1 pubspec.yaml
+      - name: Add slow motion to a build that predates it
+        # The transition is the same; ?slow= only stretches it so a still can
+        # land inside, which is how the "before" clip shows the overlap.
+        if: inputs.app-ref != ''
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('lib/main.dart')
+          code = path.read_text()
+          if "previewParam('slow')" in code:
+              raise SystemExit(0)
+          code = code.replace(
+              "import 'package:flutter/widgets.dart';",
+              "import 'package:flutter/scheduler.dart';\nimport 'package:flutter/widgets.dart';",
+              1,
+          )
+          code = code.replace(
+              "  await AppInfo.load();",
+              "  final slow = double.tryParse(previewParam('slow') ?? '');\n"
+              "  if (slow != null && slow > 0) timeDilation = slow;\n"
+              "  await AppInfo.load();",
+              1,
+          )
+          path.write_text(code)
+          print('added ?slow= to lib/main.dart')
+          PY
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
