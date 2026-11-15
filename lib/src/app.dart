@@ -106,6 +106,7 @@ class _TaildeckAppState extends State<TaildeckApp> with WidgetsBindingObserver {
           );
         },
         home: SplashGate(
+          until: backend.sessionReady,
           child: BackendScope(
             backend: backend,
             child: ServicesScope(
