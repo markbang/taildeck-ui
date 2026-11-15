@@ -136,9 +136,6 @@ jobs:
           cp build/app/outputs/flutter-apk/app-x86_64-release.apk build/smoke.apk
           "$(ls -d "${ANDROID_SDK_ROOT:-$ANDROID_HOME}"/build-tools/*/ | sort -V | tail -1)/aapt2" \
             dump badging build/smoke.apk | head -1
-      - name: The release APK carries no demo data
-        if: ${{ env.APK != '' }}
-        run: tool/check_demo_free.sh "$APK"
       - name: Build the debug APK for the node page gate
         run: |
           flutter pub get
@@ -183,6 +180,9 @@ jobs:
           "$aapt2" dump badging "$apk" | grep -E "^(package|application-label:|launchable-activity)" \
             | tee smoke/badging.txt
           echo "smoking $apk ($(stat -c%s "$apk") bytes)"
+      - name: The release APK carries no demo data
+        if: ${{ env.APK != '' }}
+        run: tool/check_demo_free.sh "$APK"
 
       - name: Install the recording tools
         run: |
@@ -210,7 +210,10 @@ jobs:
           # One line: the runner hands each line to sh separately. The splash
           # recording runs before the back and ping cases so its stills exist
           # even when one of those fails; it reinstalls this APK at the end.
-          script: bash tool/smoke_android.sh "$APK" "$APP_ID" smoke && bash tool/splash_shots.sh "$APK" "$APP_ID" smoke-splash && bash tool/back_android.sh "$APK" "$APP_ID" smoke-back && bash tool/ping_android.sh "$APK" "$APP_ID" smoke-ping && bash tool/nodepage_android.sh build/nodepage.apk "$APP_ID" smoke-node
+          # The release APK gets the cold-start and splash gates; the preview
+          # routes (sheets, ping, node page) need the demo dataset a debug
+          # build carries, since a release build has no nodes without a tailnet.
+          script: bash tool/smoke_android.sh "$APK" "$APP_ID" smoke && bash tool/splash_shots.sh "$APK" "$APP_ID" smoke-splash && bash tool/back_android.sh build/nodepage.apk "$APP_ID" smoke-back && bash tool/ping_android.sh build/nodepage.apk "$APP_ID" smoke-ping && bash tool/nodepage_android.sh build/nodepage.apk "$APP_ID" smoke-node
 
       - name: Job summary
         if: always()
