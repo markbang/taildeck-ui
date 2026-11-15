@@ -158,6 +158,9 @@ jobs:
           cp "$out/flutter-apk/app-release.apk" "build/taildeck-android-universal-${VERSION}.apk"
           cp "$out/bundle/release/app-release.aab" "build/taildeck-android-${VERSION}.aab"
 
+          # A shipped APK must not carry the preview dataset.
+          tool/check_demo_free.sh "build/taildeck-android-x64-${VERSION}.apk"
+
           # apksigner words the digest line differently across build-tools
           # versions (and may wrap the value onto the next line); take the last
           # field of the SHA-256 line and keep only hex digits.

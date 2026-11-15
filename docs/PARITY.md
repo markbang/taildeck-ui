@@ -17,6 +17,13 @@ The build machine has no Tailscale control-plane access and no auth key, so anyt
 **Unverified**: real login, peer lists, SSH, herdr and port scans. The Web preview at
 https://markbang.github.io/taildeck-ui/ runs on mock data; no row below counts the preview as verification.
 
+## Demo data
+
+The web preview and debug builds run on a fixed dataset (`lib/src/demo/`); release builds compile it out through
+`demoData`, so a phone or desktop APK only ever shows what the node reports. Missing data reads as an empty state
+("no agents on this node", "no nodes yet", "not connected"), never as a sample card. `tool/check_demo_free.sh`
+fails a release snapshot that still carries a demo string.
+
 ## Features
 
 | Feature | Kotlin app | Flutter client | Status | Why |

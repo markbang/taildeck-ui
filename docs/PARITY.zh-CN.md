@@ -16,6 +16,12 @@ Flutter 客户端对 [markbang/taildeck](https://github.com/markbang/taildeck)�
 真实登录、对端列表、SSH、herdr 和端口扫描。https://markbang.github.io/taildeck-ui/ 的网页预览跑在模拟数据上，
 下表不把预览算作验证。
 
+## 演示数据
+
+网页预览和调试构建跑一份固定数据（`lib/src/demo/`）；release 构建通过 `demoData` 把它编译掉，手机或桌面
+包只会显示节点上报的内容。缺数据时是空状态（「该节点上没有代理」「还没有节点」「未连接」），绝不是示例卡片。
+`tool/check_demo_free.sh` 会让仍带演示字符串的 release 快照失败。
+
 ## 功能
 
 | 功能 | Kotlin 版 | Flutter 版 | 状态 | 说明 |

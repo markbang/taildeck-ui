@@ -63,6 +63,20 @@ Android 11+ 屏蔽 Go 的 `net.Interfaces` 所用的 netlink，应用也没有 `
 `native/bridge/cmd/cshared/platform_jni.c` 把它们交给 `td_set_platform_cb`，并把默认网络变化转发给
 `td_network_changed`。其他平台继续用 Go 标准库实现。
 
+### 演示数据
+
+预览数据（节点、代理、服务、固定的终端会话及其图标）都在 `lib/src/demo/`，只能经由 `demoData` 进入，它是
+`const bool.fromEnvironment('TAILDECK_DEMO', defaultValue: kIsWeb)`。Web 和调试构建保留它；Android、iOS、
+Windows、Linux、macOS 的 release 构建会把它编译掉，页面只能显示节点上报的内容——空节点列表、「该节点上没有
+代理」或「未连接」，而不是示例。`--dart-define=TAILDECK_DEMO=true` 可在真机上把它调回来调试。
+
+`tool/check_demo_free.sh` 读取 release 的 `libapp.so`（或 APK），发现任何演示字符串就失败。`ci.yml` 检查
+Linux release 快照，`android-smoke.yml` 检查 release APK，所以一旦演示数据不再是死代码，PR 就会挂。
+
+构建报错不再画成灰块：`installErrorHandlers()`（lib/src/diagnostics.dart）把未捕获的 `FlutterError` 和
+`PlatformDispatcher` 错误记进环形缓冲并在日志页显示，保持应用存活；`ErrorWidget.builder` 在失败的子树上画
+一张可读的错误卡片。
+
 ## 终端
 
 复用 `libghostty-vt`，外面套一层很薄的纯 C ABI 转接，通过 `dart:ffi` 调用：

@@ -248,20 +248,7 @@ class _NodeDetailPageState extends State<NodeDetailPage> {
           const SizedBox(height: 12),
           InlineNotice(text: _notice, tint: scheme.onSurfaceVariant),
         ],
-        Builder(
-          builder: (context) {
-            final herdr = BackendScope.of(context).herdr;
-            if (herdr == null) return const SizedBox.shrink();
-            return ListenableBuilder(
-              listenable: herdr,
-              builder: (context, _) => _HerdrSummary(
-                herdr: herdr,
-                node: node.name,
-                onOpen: widget.onOpenAgents,
-              ),
-            );
-          },
-        ),
+        _AgentsSection(node: node.name, onOpen: widget.onOpenAgents),
         ExpandVisibility(
           visible: _pinging || _ping != null,
           child: Padding(
@@ -310,80 +297,27 @@ class _NodeDetailPageState extends State<NodeDetailPage> {
           ),
         ],
         const SizedBox(height: 14),
-        TapFeedback(
-          onTap: widget.onOpenAgents,
-          shape: AppShape.all(AppCorner.xxl),
-          child: Card(
-            radius: AppCorner.xxl,
-            onPressed: widget.onOpenAgents,
-            child: Padding(
-              padding: const EdgeInsets.all(14),
-              child: Row(
-                children: [
-                  Container(
-                    width: 44,
-                    height: 44,
-                    alignment: Alignment.center,
-                    decoration: ShapeDecoration(
-                      color: scheme.primary.withValues(alpha: 0.16),
-                      shape: AppShape.all(14),
-                    ),
-                    child: GlyphIcon(
-                      Glyphs2.agents,
-                      size: 22,
-                      color: scheme.primary,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          l10n.agentsTitle,
-                          style: AppTextStyle.body.of(
-                            context,
-                            emphasized: true,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          l10n.agentsSummary(4, 2),
-                          style: context.listCaptionStyle,
-                        ),
-                      ],
-                    ),
-                  ),
-                  GlyphIcon(
-                    Glyphs.chevronForward,
-                    size: 16,
-                    color: scheme.onSurfaceVariant.opacity50,
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(height: 22),
         SectionLabel(l10n.details),
         GroupCard(
           dividerInset: 0,
           children: [
             _DetailRow(
               label: l10n.addresses,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (node.dns.isNotEmpty) ...[
-                    Text(node.dns, style: mono),
-                    const SizedBox(height: 2),
-                  ],
-                  for (final ip in node.addresses) ...[
-                    Text(ip, style: mono),
-                    const SizedBox(height: 2),
-                  ],
-                ],
-              ),
+              child: node.dns.isEmpty && node.addresses.isEmpty
+                  ? Text('—', style: mono)
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (node.dns.isNotEmpty) ...[
+                          Text(node.dns, style: mono),
+                          const SizedBox(height: 2),
+                        ],
+                        for (final ip in node.addresses) ...[
+                          Text(ip, style: mono),
+                          const SizedBox(height: 2),
+                        ],
+                      ],
+                    ),
             ),
             _DetailRow(
               label: l10n.owner,
@@ -669,100 +603,137 @@ class _DetailRow extends StatelessWidget {
   }
 }
 
-/// The herdr card on the node page: how many agents are out, who is blocked,
-/// and a badge that spins while one of them works (Kotlin's `HerdrSummary`).
-class _HerdrSummary extends StatelessWidget {
-  const _HerdrSummary({
-    required this.herdr,
-    required this.node,
-    required this.onOpen,
-  });
+/// The agents card on the node page: how many agents herdr reports on this
+/// node, who is blocked, and a badge that spins while one of them works
+/// (Kotlin's `HerdrSummary`). Without herdr, or without agents, it says so
+/// instead of showing sample data.
+class _AgentsSection extends StatelessWidget {
+  const _AgentsSection({required this.node, required this.onOpen});
 
-  final HerdrController herdr;
   final String node;
   final VoidCallback onOpen;
 
   @override
   Widget build(BuildContext context) {
-    final agents = herdr.ready && herdr.node == node
-        ? herdr.agents
-        : const <HerdrAgent>[];
-    final blocked = agents.where((a) => a.status == HerdrStatus.blocked).length;
-    final working = agents.where((a) => a.status == HerdrStatus.working).length;
+    final l10n = AppLocalizations.of(context);
+    final herdr = BackendScope.of(context).herdr;
+    if (herdr == null) {
+      return _AgentsCard(summary: l10n.herdrNotConnected, onOpen: onOpen);
+    }
+    return ListenableBuilder(
+      listenable: herdr,
+      builder: (context, _) {
+        final agents = herdr.ready && herdr.node == node
+            ? herdr.agents
+            : const <HerdrAgent>[];
+        final blocked = agents
+            .where((a) => a.status == HerdrStatus.blocked)
+            .length;
+        final working = agents
+            .where((a) => a.status == HerdrStatus.working)
+            .length;
+        if (agents.isEmpty) {
+          return _AgentsCard(
+            summary: herdr.ready ? l10n.herdrNoAgents : l10n.herdrNotConnected,
+            onOpen: onOpen,
+          );
+        }
+        return _AgentsCard(
+          summary: [
+            l10n.agentsCount(agents.length),
+            if (working > 0) l10n.agentsWorkingCount(working),
+            if (blocked > 0) l10n.agentsBlockedCount(blocked),
+          ].join(' · '),
+          blocked: blocked > 0,
+          working: working > 0,
+          onOpen: onOpen,
+        );
+      },
+    );
+  }
+}
+
+class _AgentsCard extends StatelessWidget {
+  const _AgentsCard({
+    required this.summary,
+    required this.onOpen,
+    this.blocked = false,
+    this.working = false,
+  });
+
+  final String summary;
+  final VoidCallback onOpen;
+  final bool blocked;
+  final bool working;
+
+  @override
+  Widget build(BuildContext context) {
     final scheme = context.colorScheme;
     final l10n = AppLocalizations.of(context);
-    final tint = blocked > 0 ? scheme.tertiary : scheme.secondary;
-    return MotionVisibility(
-      visible: agents.isNotEmpty,
-      expand: true,
-      child: Padding(
-        padding: const EdgeInsets.only(top: 12),
-        child: TapFeedback(
-          onTap: onOpen,
-          shape: AppShape.all(AppCorner.xl),
-          child: Container(
-            padding: const EdgeInsets.all(16),
-            decoration: ShapeDecoration(
-              color: blocked > 0
-                  ? scheme.tertiaryContainer
-                  : scheme.secondaryContainer,
-              shape: AppShape.all(AppCorner.xl),
-            ),
-            child: Row(
-              children: [
-                ShapeBadge(
-                  shape: blocked > 0 ? BlobShape.softBurst : BlobShape.cookie9,
-                  color: tint.withValues(alpha: 0.18),
-                  size: 44,
-                  spin: working > 0,
-                  child: GlyphIcon(
-                    Glyphs2.agents,
-                    size: 20,
-                    color: blocked > 0
-                        ? scheme.onTertiaryContainer
-                        : scheme.onSecondaryContainer,
-                  ),
+    final tint = blocked ? scheme.tertiary : scheme.secondary;
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: TapFeedback(
+        onTap: onOpen,
+        shape: AppShape.all(AppCorner.xl),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: ShapeDecoration(
+            color: blocked
+                ? scheme.tertiaryContainer
+                : scheme.secondaryContainer,
+            shape: AppShape.all(AppCorner.xl),
+          ),
+          child: Row(
+            children: [
+              ShapeBadge(
+                shape: blocked ? BlobShape.softBurst : BlobShape.cookie9,
+                color: tint.withValues(alpha: 0.18),
+                size: 44,
+                spin: working,
+                child: GlyphIcon(
+                  Glyphs2.agents,
+                  size: 20,
+                  color: blocked
+                      ? scheme.onTertiaryContainer
+                      : scheme.onSecondaryContainer,
                 ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        l10n.agentsTitle,
-                        style: AppTextStyle.body
-                            .of(context, emphasized: true)
-                            .copyWith(
-                              color: blocked > 0
-                                  ? scheme.onTertiaryContainer
-                                  : scheme.onSecondaryContainer,
-                            ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        [
-                          l10n.agentsCount(agents.length),
-                          if (working > 0) l10n.agentsWorkingCount(working),
-                          if (blocked > 0) l10n.agentsBlockedCount(blocked),
-                        ].join(' · '),
-                        style: AppTextStyle.caption1
-                            .of(context)
-                            .copyWith(
-                              color: blocked > 0
-                                  ? scheme.onTertiaryContainer
-                                  : scheme.onSecondaryContainer,
-                            ),
-                      ),
-                    ],
-                  ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      l10n.agentsTitle,
+                      style: AppTextStyle.body
+                          .of(context, emphasized: true)
+                          .copyWith(
+                            color: blocked
+                                ? scheme.onTertiaryContainer
+                                : scheme.onSecondaryContainer,
+                          ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      summary,
+                      style: AppTextStyle.caption1
+                          .of(context)
+                          .copyWith(
+                            color: blocked
+                                ? scheme.onTertiaryContainer
+                                : scheme.onSecondaryContainer,
+                          ),
+                    ),
+                  ],
                 ),
-                GlyphIcon(
-                  Glyphs.chevronForward,
-                  size: 16,
-                  color: scheme.onSurfaceVariant,
-                ),
-              ],
-            ),
+              ),
+              GlyphIcon(
+                Glyphs.chevronForward,
+                size: 16,
+                color: scheme.onSurfaceVariant,
+              ),
+            ],
           ),
         ),
       ),

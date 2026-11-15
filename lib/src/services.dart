@@ -3,6 +3,7 @@ import 'dart:math';
 
 import 'package:flutter/widgets.dart';
 
+import 'demo/demo.dart';
 import 'native/storage.dart';
 
 /// Ports that answer TLS, used for both the scan and the gateway label.
@@ -106,7 +107,10 @@ class ServiceStore extends ChangeNotifier {
 
   factory ServiceStore.open() {
     final storage = openBackendStorage();
-    return ServiceStore._(storage, storage == null ? demoServices : const []);
+    return ServiceStore._(
+      storage,
+      demoData && storage == null ? demoServices : const [],
+    );
   }
 
   final BackendStorage? _storage;
@@ -241,37 +245,3 @@ String serviceUrl({
       : '/$trimmed';
   return '$scheme://$node:$port$resolved';
 }
-
-/// Shown in the web preview, which has no persistence.
-const demoServices = <Service>[
-  Service(
-    id: 'demo-grafana',
-    node: 'devbox',
-    name: 'Grafana',
-    url: 'http://devbox:3000/',
-  ),
-  Service(
-    id: 'demo-code',
-    node: 'devbox',
-    name: 'code-server',
-    url: 'http://devbox:8080/',
-  ),
-  Service(
-    id: 'demo-dsm',
-    node: 'nas',
-    name: 'Synology DSM',
-    url: 'https://nas:5001/',
-  ),
-  Service(
-    id: 'demo-jellyfin',
-    node: 'nas',
-    name: 'Jellyfin',
-    url: 'http://nas:8096/',
-  ),
-  Service(
-    id: 'demo-hass',
-    node: 'pi-k3s',
-    name: 'Home Assistant',
-    url: 'http://pi-k3s:8123/',
-  ),
-];
