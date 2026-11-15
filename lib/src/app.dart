@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:prism_ui/prism_ui.dart';
 
@@ -87,9 +88,13 @@ class _TaildeckAppState extends State<TaildeckApp> with WidgetsBindingObserver {
         textScale: double.tryParse(previewParam('scale') ?? ''),
         builder: (context, child) {
           final media = MediaQuery.of(context);
-          // '?motion=off' previews the platform's reduce-motion setting.
+          // '?motion=off' previews the platform's reduce-motion setting;
+          // '?slow=' asks for animatable frames, so it outranks the platform's
+          // animation scale (which a CI emulator turns off).
+          final slow = !kReleaseMode && previewParam('slow') != null;
           final still =
-              media.disableAnimations || previewParam('motion') == 'off';
+              previewParam('motion') == 'off' ||
+              (media.disableAnimations && !slow);
           final size = media.size;
           return MediaQuery(
             data: media.copyWith(disableAnimations: still),

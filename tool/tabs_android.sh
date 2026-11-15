@@ -169,7 +169,8 @@ grep "taildeck tabprobe:" "$out/logcat.txt" 2> /dev/null | tail -40 >> "$summary
 if [ "$require_probe" = 1 ]; then
   [ "${probes:-0}" -ge 4 ] || fail "no tab probe samples: the build does not log its painted pages"
   [ "${blended:-0}" -eq 0 ] || fail "$blended probe samples painted two pages at once"
-  [ "${mid:-0}" -ge 1 ] || fail "no sample caught a switch between two painted pages"
+  [ "${mid:-0}" -ge 1 ] ||
+    fail "no switch was sampled mid-flight: the app ran with reduced motion"
 else
   note "probe not required: recording only"
 fi
