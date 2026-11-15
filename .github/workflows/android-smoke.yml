@@ -141,13 +141,14 @@ jobs:
           cp build/app/outputs/flutter-apk/app-x86_64-release.apk build/smoke.apk
           "$(ls -d "${ANDROID_SDK_ROOT:-$ANDROID_HOME}"/build-tools/*/ | sort -V | tail -1)/aapt2" \
             dump badging build/smoke.apk | head -1
-      - name: Build the debug APK for the node page gate
+      - name: Build the debug APK for the preview gates
         if: inputs.build
         run: |
           flutter pub get
-          # A debug build keeps the demo dataset, so the preview route has a
-          # node to open without a tailnet.
-          flutter build apk --debug --target-platform android-x64
+          # The preview routes need the demo dataset, which a debug build no
+          # longer carries by default; the release snapshot stays demo-free.
+          flutter build apk --debug --target-platform android-x64 \
+            --dart-define=TAILDECK_DEMO=true
           cp build/app/outputs/flutter-apk/app-debug.apk build/nodepage.apk
           ls -l build/nodepage.apk
       - name: Drop the signing material
