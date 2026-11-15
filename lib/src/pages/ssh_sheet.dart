@@ -17,7 +17,15 @@ import '../widgets/entry_row.dart';
 import '../widgets/select_row.dart';
 import '../widgets/bottom_sheet.dart';
 
-typedef SshChoice = ({String user, int port, SshSession? session});
+/// What the sheet hands back. The password and the key id stay in memory so a
+/// reconnect after a drop can dial again without asking.
+typedef SshChoice = ({
+  String user,
+  int port,
+  String password,
+  String identityId,
+  SshSession? session,
+});
 
 /// [service] scopes the remembered login to one service on [node], so both
 /// targets keep their own user and port.
@@ -169,7 +177,13 @@ class _SshSheetState extends State<_SshSheet> {
     final port = portValue(_port.text)!;
     final backend = widget.backend;
     if (!backend.available) {
-      Navigator.of(context).pop((user: user, port: port, session: null));
+      Navigator.of(context).pop((
+        user: user,
+        port: port,
+        password: _password.text,
+        identityId: _identityId,
+        session: null,
+      ));
       return;
     }
     FocusScope.of(context).unfocus();
@@ -190,7 +204,13 @@ class _SshSheetState extends State<_SshSheet> {
         session.close();
         return;
       }
-      Navigator.of(context).pop((user: user, port: port, session: session));
+      Navigator.of(context).pop((
+        user: user,
+        port: port,
+        password: _password.text,
+        identityId: _identityId,
+        session: session,
+      ));
     } on Object catch (error) {
       if (mounted) {
         setState(() {

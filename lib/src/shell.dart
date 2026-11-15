@@ -28,6 +28,7 @@ import 'pages/ssh_sheet.dart';
 import 'pages/login.dart';
 import 'pages/settings.dart';
 import 'pages/terminal.dart';
+import 'terminal_appearance.dart';
 import 'terminal_store.dart';
 import 'theme.dart';
 
@@ -43,7 +44,7 @@ class TaildeckShell extends StatefulWidget {
 }
 
 class _TaildeckShellState extends State<TaildeckShell>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   static const _tabs = 4;
 
   int _tab = (int.tryParse(previewParam('tab') ?? '') ?? 0).clamp(0, _tabs - 1);
@@ -111,11 +112,28 @@ class _TaildeckShellState extends State<TaildeckShell>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _terminals.addListener(_onTerminalsChanged);
     final node = _querySsh();
     if (node != null) {
-      _attached = _terminals.open(node: node, user: 'root', port: 22);
+      _attached = _terminals.open(
+        node: node,
+        credentials: const SshCredentials(user: 'root', port: 22),
+      );
     }
+  }
+
+  /// Background keep-alive off: the app leaves the foreground and its SSH
+  /// sessions end with it, as the setting says they will.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed || state == AppLifecycleState.inactive) {
+      return;
+    }
+    if (BackendScope.of(context).terminalKeepAlive) return;
+    if (_terminals.isEmpty) return;
+    setState(() => _attached = null);
+    _terminals.closeAll();
   }
 
   void _onTerminalsChanged() {
@@ -139,6 +157,7 @@ class _TaildeckShellState extends State<TaildeckShell>
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _alerts?.removeListener(_openTappedPane);
     _terminals
       ..removeListener(_onTerminalsChanged)
@@ -257,12 +276,57 @@ class _TaildeckShellState extends State<TaildeckShell>
     _terminals.disconnect(terminal);
   }
 
-  /// The session dropped: forget it and dial the same node again, with the
-  /// credentials the SSH sheet remembers.
+  /// The session dropped: dial the same node again with the login and secret
+  /// this session already used, without showing the sheet. The old session
+  /// stays on screen (and in the strip) if the retry fails, so the next tap
+  /// can try again.
   Future<void> _reconnectTerminal(SshTerminal terminal) async {
-    if (_attached == terminal) setState(() => _attached = null);
-    _terminals.disconnect(terminal);
-    await _openSsh(terminal.node);
+    final backend = BackendScope.of(context);
+    final retried = await _dial(terminal.node, terminal.credentials);
+    if (!mounted || retried == null) return;
+    if (_attached == terminal) _leaveTerminal();
+    _attach(retried);
+    if (backend.available && terminal.live) {
+      _terminals.disconnect(terminal);
+    }
+  }
+
+  /// Opens a session for [node] with [credentials]; null when the dial failed.
+  Future<SshTerminal?> _dial(
+    NodeItem node,
+    SshCredentials credentials,
+  ) async {
+    final backend = BackendScope.of(context);
+    final palette = terminalPaletteOf(
+      backend.terminalTheme,
+      Theme.of(context).brightness,
+    );
+    if (!backend.available) {
+      return _terminals.open(
+        node: node,
+        credentials: credentials,
+        palette: palette,
+      );
+    }
+    try {
+      final session = await backend.openSshSession(
+        host: node.name,
+        user: credentials.user,
+        port: credentials.port,
+        password: credentials.password,
+        identityId: credentials.identityId,
+      );
+      return _terminals.open(
+        node: node,
+        credentials: credentials,
+        session: session,
+        palette: palette,
+      );
+    } on Object {
+      // The header keeps the dropped session and its Retry button, so the
+      // user can try again without leaving the page.
+      return null;
+    }
   }
 
   /// The agents action in the terminal bar, as in the Kotlin app.
@@ -282,9 +346,17 @@ class _TaildeckShellState extends State<TaildeckShell>
     _attach(
       _terminals.open(
         node: node,
-        user: choice.user,
-        port: choice.port,
+        credentials: SshCredentials(
+          user: choice.user,
+          port: choice.port,
+          password: choice.password,
+          identityId: choice.identityId,
+        ),
         session: choice.session,
+        palette: terminalPaletteOf(
+          BackendScope.of(context).terminalTheme,
+          Theme.of(context).brightness,
+        ),
       ),
     );
   }
@@ -418,6 +490,7 @@ class _TaildeckShellState extends State<TaildeckShell>
             const SingleActivator(LogicalKeyboardKey.escape): _handleEscape,
           },
           child: TerminalPage(
+            key: ValueKey(terminal),
             node: terminal.node,
             user: terminal.user,
             port: terminal.port,
@@ -431,6 +504,8 @@ class _TaildeckShellState extends State<TaildeckShell>
                 ? () => unawaited(_reconnectTerminal(terminal))
                 : null,
             onAgents: () => _openAgents(terminal),
+            sessions: _terminals.all.toList(),
+            onSwitch: _attach,
           ),
         ),
       );
