@@ -251,9 +251,6 @@ class AppLocalizations implements UiLocalizations {
       : 'The node and its apps load as soon as it is up.';
   String herdrConnecting(String node) =>
       _zh ? '正在连接 herdr · $node' : 'Connecting to herdr · $node';
-  String herdrRetryAttempt(int attempt, int attempts) => _zh
-      ? '第 $attempt/$attempts 次尝试'
-      : 'Attempt $attempt of $attempts';
   String get herdrRetry => _zh ? '重试' : 'Retry';
   String get herdrConnectionSettings =>
       _zh ? '连接设置' : 'Connection settings';

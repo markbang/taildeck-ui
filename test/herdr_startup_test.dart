@@ -17,6 +17,9 @@ class _FakeBridge implements NativeBridge {
   int herdrDials = 0;
   String herdrError = '';
 
+  /// Holds a dial open so a test can see the loading state.
+  Completer<void>? herdrGate;
+
   @override
   Stream<BridgeEvent> get events => _events.stream;
 
@@ -44,6 +47,7 @@ class _FakeBridge implements NativeBridge {
     String certPath = '',
   }) async {
     herdrDials++;
+    await herdrGate?.future;
     if (herdrError.isNotEmpty) throw BridgeException(herdrError);
     return {'id': 1};
   }
@@ -248,13 +252,6 @@ void main() {
       );
     });
 
-    test('only transient failures are retried', () {
-      expect(HerdrFailure.unknownHost.retryable, isTrue);
-      expect(HerdrFailure.timeout.retryable, isTrue);
-      expect(HerdrFailure.auth.retryable, isFalse);
-      expect(HerdrFailure.notInstalled.retryable, isFalse);
-    });
-
     test('the UI sentence never repeats the Go error', () {
       for (final locale in const [Locale('en'), Locale('zh')]) {
         final l10n = AppLocalizations(locale);
@@ -266,38 +263,32 @@ void main() {
   });
 
   group('HerdrController', () {
-    testWidgets('three tries with backoff, then one human failure', (
-      tester,
-    ) async {
+    testWidgets('one dial, then the human failure', (tester) async {
       final bridge = _FakeBridge()
         ..herdrError = 'connect bangwu:22: lookup bangwu: no such host';
       final herdr = HerdrController(bridge);
-      HerdrLink? midLink;
-      unawaited(
-        herdr.connect(node: 'bangwu', attempts: herdrStartupAttempts).then((_) {
-          midLink = herdr.link;
-        }),
-      );
-      await tester.pump(const Duration(seconds: 1));
-      await tester.pump(const Duration(seconds: 2));
-      await tester.pump(const Duration(seconds: 1));
-      expect(bridge.herdrDials, herdrStartupAttempts);
+      final done = herdr.connect(node: 'bangwu');
+      expect(herdr.link, HerdrLink.connecting);
+      expect(herdr.waking, isTrue);
+      await done;
+      expect(bridge.herdrDials, 1);
       expect(herdr.link, HerdrLink.failed);
       expect(herdr.failure, HerdrFailure.unknownHost);
       expect(herdr.waking, isFalse);
-      expect(midLink, HerdrLink.failed);
       expect(herdr.detail, contains('no such host'));
     });
 
-    testWidgets('a retry that lands leaves the list ready', (tester) async {
+    testWidgets('a manual retry dials once more and can land', (tester) async {
       final bridge = _FakeBridge()
         ..herdrError = 'connect bangwu:22: lookup bangwu: no such host';
       final herdr = HerdrController(bridge);
-      final done = herdr.connect(node: 'bangwu', attempts: 2);
-      await tester.pump();
+      await herdr.connect(node: 'bangwu');
+      expect(bridge.herdrDials, 1);
       bridge.herdrError = '';
-      await tester.pump(const Duration(seconds: 1));
-      await done;
+      final retry = herdr.connect(node: 'bangwu');
+      await tester.pump();
+      await retry;
+      expect(bridge.herdrDials, 2);
       expect(herdr.link, HerdrLink.ready);
       expect(herdr.agents, hasLength(1));
       expect(herdr.failure, HerdrFailure.none);
@@ -321,7 +312,7 @@ void main() {
     expect(find.text('Retry'), findsNothing);
   });
 
-  testWidgets('a saved target auto-connects and reports a human error', (
+  testWidgets('a saved target auto-connects once and reports a human error', (
     tester,
   ) async {
     final bridge = _FakeBridge()
@@ -332,17 +323,9 @@ void main() {
     await backend.init();
     await tester.pumpWidget(_app(backend));
     await tester.pump();
-
-    // Still retrying: the page says so instead of showing the failure.
-    expect(find.text('Connecting to herdr · bangwu'), findsOneWidget);
-    expect(find.text('Retry'), findsNothing);
-
-    await tester.pump(const Duration(seconds: 1));
-    await tester.pump(const Duration(seconds: 2));
-    await tester.pump(const Duration(seconds: 2));
     await tester.pump();
 
-    expect(bridge.herdrDials, herdrStartupAttempts);
+    expect(bridge.herdrDials, 1);
     expect(
       find.text("Can't find node bangwu — is it online and is MagicDNS on?"),
       findsOneWidget,
@@ -356,6 +339,45 @@ void main() {
     expect(find.text('Connect herdr'), findsOneWidget);
 
     // Drop the backend so its status poll does not outlive the test.
+    await tester.pumpWidget(const SizedBox());
+    backend.dispose();
+    await tester.pump();
+  });
+
+  testWidgets('Retry makes one manual dial with the same loading and error', (
+    tester,
+  ) async {
+    final bridge = _FakeBridge()
+      ..herdrError = 'connect bangwu:22: lookup bangwu: no such host';
+    final storage = _MemoryStorage()
+      ..config = const StoredConfig(signedIn: true, herdrNode: 'bangwu');
+    final backend = TaildeckBackend(bridge: bridge, storage: storage);
+    await backend.init();
+    await tester.pumpWidget(_app(backend));
+    await tester.pump();
+    await tester.pump();
+    expect(bridge.herdrDials, 1);
+    expect(find.text('Retry'), findsOneWidget);
+
+    bridge.herdrGate = Completer<void>();
+    await tester.tap(find.text('Retry'));
+    await tester.pump();
+    // Let the swap animation finish so only the new phase is on screen.
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(bridge.herdrDials, 2);
+    expect(find.text('Connecting to herdr · bangwu'), findsOneWidget);
+    expect(find.text('Retry'), findsNothing);
+
+    bridge.herdrGate!.complete();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(bridge.herdrDials, 2);
+    expect(
+      find.text("Can't find node bangwu — is it online and is MagicDNS on?"),
+      findsOneWidget,
+    );
+    expect(find.text('Retry'), findsOneWidget);
+
     await tester.pumpWidget(const SizedBox());
     backend.dispose();
     await tester.pump();

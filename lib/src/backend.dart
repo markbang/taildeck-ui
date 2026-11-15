@@ -210,7 +210,7 @@ class TaildeckBackend extends ChangeNotifier {
   /// herdr link, agent list and pane calls; null without a native backend.
   HerdrController? get herdr => _herdr;
 
-  /// An automatic herdr connect (with its retries) is in flight.
+  /// An automatic or manual herdr connect is in flight.
   bool get herdrWaking => _herdrWaking;
 
   /// Last SSH user dialed for [target] (`sshLoginKey`), or '' when none was
@@ -580,7 +580,6 @@ class TaildeckBackend extends ChangeNotifier {
     String auth = 'tailscale',
     String identityId = builtinKeyId,
     String password = '',
-    int attempts = 1,
   }) async {
     final herdr = _herdr;
     if (herdr == null) {
@@ -603,7 +602,6 @@ class TaildeckBackend extends ChangeNotifier {
       password: auth == 'password' ? password : '',
       keyPath: keyPath,
       passphrase: passphrase,
-      attempts: attempts,
     );
     if (herdr.ready) {
       _herdrNode = node;
@@ -617,8 +615,8 @@ class TaildeckBackend extends ChangeNotifier {
     }
   }
 
-  /// Reconnects to the saved herdr target after a startup failure, with the
-  /// same retry budget as launch.
+  /// The user's Retry: one more dial of the saved herdr target after a
+  /// failure, with the same loading and error states as launch.
   Future<void> retryHerdr() async {
     if (_herdrNode.isEmpty || !tailnetReady) return;
     _herdrAutoTried = true;
@@ -1011,8 +1009,9 @@ class TaildeckBackend extends ChangeNotifier {
     );
   }
 
-  /// Reconnects to the herdr target of the last session, once per launch and
-  /// only once the node is Running with its peer table read.
+  /// Dials the herdr target of the last session once per launch, and only once
+  /// the node is Running with its peer table read. A failure is left to the
+  /// page, which offers Retry.
   void _autoConnectHerdr() {
     final herdr = _herdr;
     if (herdr == null || _herdrAutoTried || _herdrNode.isEmpty) return;
@@ -1034,7 +1033,6 @@ class TaildeckBackend extends ChangeNotifier {
         port: _herdrPort,
         auth: _herdrAuth,
         identityId: _herdrIdentity.isEmpty ? builtinKeyId : _herdrIdentity,
-        attempts: herdrStartupAttempts,
       );
     } on Object {
       // The Agents page turns the failure into a sentence and offers Retry.
