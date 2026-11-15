@@ -213,7 +213,9 @@ jobs:
           # The release APK gets the cold-start and splash gates; the preview
           # routes (sheets, ping, node page) need the demo dataset a debug
           # build carries, since a release build has no nodes without a tailnet.
-          script: bash tool/smoke_android.sh "$APK" "$APP_ID" smoke && bash tool/splash_shots.sh "$APK" "$APP_ID" smoke-splash && bash tool/back_android.sh build/nodepage.apk "$APP_ID" smoke-back && bash tool/ping_android.sh build/nodepage.apk "$APP_ID" smoke-ping && bash tool/nodepage_android.sh build/nodepage.apk "$APP_ID" smoke-node
+          # The settings stills come last because they reinstall this APK
+          # themselves.
+          script: bash tool/smoke_android.sh "$APK" "$APP_ID" smoke && bash tool/splash_shots.sh "$APK" "$APP_ID" smoke-splash && bash tool/back_android.sh build/nodepage.apk "$APP_ID" smoke-back && bash tool/ping_android.sh build/nodepage.apk "$APP_ID" smoke-ping && bash tool/nodepage_android.sh build/nodepage.apk "$APP_ID" smoke-node && bash tool/screenshots_android.sh "$APK" "$APP_ID" smoke-shots
 
       - name: Job summary
         if: always()
@@ -248,6 +250,12 @@ jobs:
             echo '```'
             cat smoke-node/summary.txt 2>/dev/null || echo 'no summary'
             echo '```'
+            echo
+            echo "### Settings stills"
+            echo
+            echo '```'
+            cat smoke-shots/summary.txt 2>/dev/null || echo 'no summary'
+            echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         if: always()
@@ -259,6 +267,7 @@ jobs:
             smoke-ping/
             smoke-splash/
             smoke-node/
+            smoke-shots/
           if-no-files-found: warn
       - uses: actions/upload-artifact@v4
         if: always()
