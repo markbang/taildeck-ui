@@ -16,10 +16,14 @@ class TerminalKeyBar extends StatefulWidget {
     required this.mods,
     required this.onKey,
     required this.onModifier,
+    this.active = const {},
   });
 
   final List<List<String>> pages;
   final TerminalMods mods;
+
+  /// Toggle keys currently on, drawn like an armed modifier.
+  final Set<String> active;
   final ValueChanged<TerminalKey> onKey;
   final ValueChanged<TerminalMod> onModifier;
 
@@ -104,6 +108,7 @@ class _TerminalKeyBarState extends State<TerminalKeyBar> {
                                   mods: widget.mods,
                                   onKey: widget.onKey,
                                   onModifier: widget.onModifier,
+                                  active: widget.active.contains(key.id),
                                 ),
                               ),
                             ),
@@ -143,10 +148,14 @@ class _KeyButton extends StatefulWidget {
     required this.mods,
     required this.onKey,
     required this.onModifier,
+    this.active = false,
   });
 
   final TerminalKey terminalKey;
   final TerminalMods mods;
+
+  /// A toggle key's state, shown like an armed modifier.
+  final bool active;
   final ValueChanged<TerminalKey> onKey;
   final ValueChanged<TerminalMod> onModifier;
 
@@ -202,7 +211,7 @@ class _KeyButtonState extends State<_KeyButton> {
     final mod = terminalKey.modifier;
     final armed = mod != null && widget.mods.isArmed(mod);
     final locked = mod != null && widget.mods.isLocked(mod);
-    final active = armed || locked;
+    final active = armed || locked || widget.active;
     final radius = BorderRadius.circular(7);
     void onTap() {
       // A hold already sent its keys; the release must not send one more.
@@ -229,6 +238,8 @@ class _KeyButtonState extends State<_KeyButton> {
             ? l10n.terminalKeyLocked
             : armed
             ? l10n.terminalKeyArmed
+            : widget.active
+            ? l10n.terminalKeyOn
             : null,
         onTap: onTap,
         excludeSemantics: true,

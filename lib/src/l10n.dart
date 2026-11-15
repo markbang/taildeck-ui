@@ -456,12 +456,21 @@ class AppLocalizations implements UiLocalizations {
       _zh ? '第 $page 页，共 $total 页' : 'Key row page $page of $total';
   String get a11yTerminalKeyPageNext => _zh ? '切到下一页' : 'Show the next page';
   String get terminalKeyArmed => _zh ? '已激活，作用于下一个键' : 'armed';
+  String get terminalKeyOn => _zh ? '已开启' : 'on';
   String get terminalKeyLocked => _zh ? '已锁定' : 'locked';
 
   // Gestures, zoom and the keyboard-aware layout.
   String get terminalInput => _zh ? '命令输入' : 'Command input';
   String get terminalPasteButton =>
       _zh ? '从剪贴板插入' : 'Insert from clipboard';
+  String get terminalSend => _zh ? '发送' : 'Send';
+  String get terminalSendHint => _zh
+      ? '发送这一行并回车；长按改成只插入'
+      : 'Sends the line and presses Enter; long-press to insert only';
+  String get terminalSendInsertOnly => _zh
+      ? '只插入文本，不回车'
+      : 'Send inserts the text without Enter';
+  String get terminalSendEnterOn => _zh ? '发送会回车' : 'Send presses Enter';
   String get terminalSelection => _zh ? '选区操作' : 'Selection actions';
   String get terminalOpenLink => _zh ? '打开链接' : 'Open link';
   String get terminalCopied => _zh ? '已复制' : 'Copied';
@@ -512,6 +521,7 @@ class AppLocalizations implements UiLocalizations {
     'question' => _zh ? '问号' : 'Question mark',
     'quote' => _zh ? '单引号' : 'Apostrophe',
     'backslash' => _zh ? '反斜杠' : 'Backslash',
+    'insert' => _zh ? '只插入不回车' : 'Insert without Enter',
     _ => id,
   };
 

@@ -16,7 +16,9 @@ abstract final class GhosttyMods {
 /// Key codes the on-screen key row sends directly.
 abstract final class GhosttyKeys {
   static const enter = 58;
+  static const backspace = 53;
   static const tab = 64;
+  static const deleteKey = 68;
   static const end = 69;
   static const home = 71;
   static const pageDown = 73;
