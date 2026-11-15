@@ -20,6 +20,7 @@
 | 键行位置 | Termius 把 add-on 贴在系统键盘上方，输入时保留 | 固定在终端页底部，输入行之下、软键盘之上。页面统一按 `MediaQuery.viewInsets` 垫高（它上面没有会自行缩放的 `Scaffold`），终端网格随键行一起缩小，光标不会被挡住。桌面窗口接的是硬件键盘，键行不显示 | 已实现 |
 | 按键 | Termius：修饰键、方向键、功能键、符号。Termux：固定的两行默认值 | 第 1 页：Esc、Tab、Ctrl、Alt、←、↑、↓、→。第 2 页：Home、End、PgUp、PgDn、`\|`、`~`、`/`、`-`。第 3 页：`_`、`:`、`*`、`&`、`=`、`?`、`'`、`\` | 已实现 |
 | 编码 | — | 所有按键都走 libghostty-vt 的编码器（`td_term_encode_key`），带上已激活的修饰键，Alt 和 Ctrl 发出去的就是程序期望的字节 | 已实现 |
+| 发送 | Termius、Blink 直接用键盘自己的回车；JuiceSSH 没有可发送的输入行 | 输入行就是缓冲区：点发送，或按软键盘的发送/完成键，先写出文字，再逐行各补一个 CR，于是三行粘贴会隔 20 毫秒依次执行三条命令。长按发送，或键行上的 `Ins` 键，改为只插入不回车，选择记在应用配置里。选区工具条的 bracketed paste 仍是原样粘贴 | 已实现 |
 | 粘滞修饰键 | Blink：按住修饰键连发组合。Termux：CTRL/ALT 是特殊键 | 单击激活 Ctrl/Alt 并高亮；下一个键（键行按键或键盘输入的字符）带上修饰键，随后自动取消高亮 | 已实现 |
 | 修饰键锁定 | JuiceSSH：Alt 可设为一直发 Esc | 双击锁定（高亮更实，保持激活）；再点一次清除 | 已实现 |
 | 翻页 | Termux：`extra-keys` 多行，滑到其余。JuiceSSH：弹出键盘左右滑 | 横向滑动翻页，另有可点的页码圆点，方便外接键盘和读屏 | 已实现 |
@@ -39,6 +40,8 @@
 `tool/termgestures_record.sh`（工作流 `termgestures-record`）在 Android 模拟器上录下手势层：两个方向的滑动方向键、按住方向键连发、选词与两端把手、复制（工具条显示已复制，`term-copy.png`）、打开选区里的链接（Chrome 切到前台，`term-open-link.png`）、横屏（`term-landscape.png`，网格重排成 105×12）、软键盘压缩网格而光标仍在键行之上（`term-keyboard.png`，以及 `-keyboard-hidden.png`）、在设置里加字号并重启后保持（`term-font.png`）。
 
 `term-hardware.png`（Esc、Tab、Ctrl+C、方向键分别编码成 `^[`、`^I`、`^C`、`^[[D`、`^[[A`）和 `term-paste.png` 来自 Linux 桌面版，因为模拟器把注入的按键事件交给了 Gboard。旁边的录屏是 `docs/screenshots/term-*.mp4`。
+
+`tool/termsend_record.sh`（工作流 `termsend-record`）录制发送写出的字节。演示会话把每个字节按插入符记法回显，所以 CR 在网格上显示成 `^M`：`term-send-button.png` 是输入行的发送（`echo send^M`），`term-send-ime.png` 是软键盘的回车（`echo enter^M`），`term-send-ime-action.png` 是 Gboard 自己的发送键（`echo action^M`，键盘不把按键放进无障碍树，所以按颜色找触点），`term-send-insert.png` 与 `-insert-cr.png` 是长按发送改成只插入：先插入 `echo ins` 不回车，再单独发一个 CR。旁边的录屏是同名的 `term-send-*.mp4`。模拟器连不上 tailnet，这些命令没有真实 shell 执行，因此 `echo` 的实际输出、历史调用与补全未实机验证。
 
 模拟器无法验证的：捏合本身。它的触摸输入是一组 `virtio_input_multi_touch_*` 设备，没有 `INPUT_PROP_DIRECT`，注入的双指触点会被当成鼠标拖动；`adb shell input` 也没有多点命令。缩放的计算（步长、上下限）由 `test/terminal_gestures_test.dart` 覆盖，设置里的 A± 走的是同一个 setter、同样会触发网格重排。另外这里连不上任何 tailnet，所以没有对真实 shell（vim、htop、tmux）验证过。
 

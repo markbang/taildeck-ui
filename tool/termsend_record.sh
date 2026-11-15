@@ -305,10 +305,15 @@ keyrow_step() { # page 2 holds the row's own insert-only key
   start_fresh
   # With the keyboard up the row sits above the gesture bar, out of the way.
   focus_input
-  local x1 y1 x2 y2 mid point x y
-  read -r x1 y1 x2 y2 <<< "$(ui bounds 'Extra key row')" || return 0
-  mid=$(((y1 + y2) / 2))
-  adb shell input swipe "$((x2 - 30))" "$mid" "$((x1 + 20))" "$mid" 220 > /dev/null 2>&1 || true
+  local point x y
+  # The page dots are a11y buttons, so the page turns without a swipe.
+  point=$(point_in 'Key row page 2' "$app") || point=""
+  if [ -z "$point" ]; then
+    note "keyrow: no page 2 dot"
+    return 0
+  fi
+  read -r x y <<< "$point"
+  adb shell input tap "$x" "$y" > /dev/null 2>&1 || true
   sleep 1.4
   shot keyrow-page2
   point=$(point_in 'Insert without Enter' "$app") || point=""
