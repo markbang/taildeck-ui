@@ -303,6 +303,8 @@ hold_step() {
 
 keyrow_step() { # page 2 holds the row's own insert-only key
   start_fresh
+  # With the keyboard up the row sits above the gesture bar, out of the way.
+  focus_input
   local x1 y1 x2 y2 mid point x y
   read -r x1 y1 x2 y2 <<< "$(ui bounds 'Extra key row')" || return 0
   mid=$(((y1 + y2) / 2))

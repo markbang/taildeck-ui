@@ -239,6 +239,8 @@ class _TerminalPageState extends State<TerminalPage>
     }
     final key = ghosttyKeyOf(event);
     if (key == GhosttyKeys.enter && mods == 0) {
+      // An IME composition still owes the field its commit.
+      if (_input.value.composing.isValid) return KeyEventResult.ignored;
       // The line lives in the input, so Enter sends it rather than a bare CR.
       unawaited(_submit());
       return KeyEventResult.handled;
