@@ -188,18 +188,54 @@ ime_shown() {
   adb shell dumpsys input_method 2> /dev/null | grep -q 'mInputShown=true'
 }
 
-tap_ime_action() { # the soft keyboard's own send key; Gboard keeps it out of the tree
-  local w h x y
+# Gboard keeps its keys out of the a11y tree, so its send arrow is found by
+# colour: the accent blue sits in the bottom strip of the screen.
+find_send_key() {
+  adb exec-out screencap -p > "$out/ime-screen.png" 2> /dev/null || return 1
+  [ -s "$out/ime-screen.png" ] || return 1
+  ffmpeg -loglevel error -y -i "$out/ime-screen.png" -f rawvideo -pix_fmt rgb24 \
+    "$out/ime-screen.rgb" 2> /dev/null || return 1
+  python3 - "$out/ime-screen.rgb" <<'COLOUR_EOF'
+import sys
+
+raw = open(sys.argv[1], "rb").read()
+width, height = 1080, len(raw) // (1080 * 3)
+top = int(height * 0.72)
+xs, ys = [], []
+for y in range(top, height, 2):
+    row = y * width * 3
+    for x in range(0, width, 2):
+        i = row + x * 3
+        r, g, b = raw[i], raw[i + 1], raw[i + 2]
+        if b > 200 and 120 < g < 210 and r < 130:
+            xs.append(x)
+            ys.append(y)
+if not xs:
+    sys.exit(1)
+print(sum(xs) // len(xs), sum(ys) // len(ys))
+COLOUR_EOF
+}
+
+tap_ime_action() { # the soft keyboard's own send key
+  local point x y
   if ! ime_shown; then
     note "ime-action: no soft keyboard up"
     return 0
   fi
-  read -r w h <<< "$(screen_size)"
-  x=$((w * 906 / 1000))
-  y=$((h * 731 / 1000))
+  point=$(find_send_key) || point=""
+  if [ -z "$point" ]; then
+    note "ime-action: no blue send key on screen"
+    return 0
+  fi
+  read -r x y <<< "$point"
   adb shell input tap "$x" "$y" > /dev/null 2>&1 || true
   note "ime-action: tapped the keyboard's send key at $x,$y"
-  sleep 1.4
+  sleep 1.6
+  if ui has 'echo action' > /dev/null 2>&1; then
+    note "ime-action: the line did not leave the input bar"
+  else
+    note "ime-action: the line left the input bar"
+  fi
 }
 
 # ---- the steps -----------------------------------------------------------
@@ -251,6 +287,37 @@ hold_step() {
   shot insert-only-cr
 }
 
+keyrow_step() { # page 2 holds the row's own insert-only key
+  start_fresh
+  local x1 y1 x2 y2 mid point x y
+  read -r x1 y1 x2 y2 <<< "$(ui bounds 'Extra key row')" || return 0
+  mid=$(((y1 + y2) / 2))
+  adb shell input swipe "$((x2 - 30))" "$mid" "$((x1 + 20))" "$mid" 220 > /dev/null 2>&1 || true
+  sleep 1.4
+  shot keyrow-page2
+  point=$(point_in 'Insert without Enter' "$app") || point=""
+  if [ -z "$point" ]; then
+    note "keyrow: no Ins key on page 2"
+    return 0
+  fi
+  read -r x y <<< "$point"
+  adb shell input tap "$x" "$y" > /dev/null 2>&1 || true
+  sleep 1.2
+  shot keyrow-ins
+  if ui has 'Send inserts the text without Enter' > /dev/null 2>&1; then
+    note "keyrow: the Ins key turned Enter off"
+  else
+    note "keyrow: no insert-only notice from the Ins key"
+  fi
+  adb shell input tap "$x" "$y" > /dev/null 2>&1 || true
+  sleep 1.2
+  if ui has 'Send presses Enter' > /dev/null 2>&1; then
+    note "keyrow: a second tap turned Enter back on"
+  else
+    note "keyrow: no notice on the second tap"
+  fi
+}
+
 # ---- run ----------------------------------------------------------------
 install_app "$apk" || exit 0
 launch "$demo_url" || exit 0
@@ -272,3 +339,5 @@ record ime-action 12 ime_action_step
 shot ime-action
 record insert-only 16 hold_step
 shot insert-only
+record keyrow 14 keyrow_step
+shot keyrow
