@@ -1,11 +1,16 @@
 # Cold-start smoke test: installs a release APK on an emulator, launches it
 # fresh and fails when our process dies, crashes or ANRs (system apps ignored).
-# Then the back key: a sheet, the page under it, a tab and the exit hint.
+# A build=true run also builds a debug APK and runs the back key, ping and node
+# page gates, which need its demo dataset.
 name: android-smoke
 
 on:
   workflow_call:
     inputs:
+      build:
+        description: Build the APKs from this ref instead of smoking the caller's artifact
+        type: boolean
+        default: false
       apk-artifact:
         description: Artifact holding a taildeck-android-x64-*.apk (empty to skip)
         type: string
@@ -137,6 +142,7 @@ jobs:
           "$(ls -d "${ANDROID_SDK_ROOT:-$ANDROID_HOME}"/build-tools/*/ | sort -V | tail -1)/aapt2" \
             dump badging build/smoke.apk | head -1
       - name: Build the debug APK for the node page gate
+        if: inputs.build
         run: |
           flutter pub get
           # A debug build keeps the demo dataset, so the preview route has a
@@ -175,6 +181,11 @@ jobs:
           fi
           test -s "$apk" || { echo "::error::no APK to smoke"; exit 1; }
           echo "APK=$PWD/$apk" >> "$GITHUB_ENV"
+          # The preview gates need the debug build's demo dataset; without it
+          # (release path) only the cold start and splash gates run.
+          if [ -s build/nodepage.apk ]; then
+            echo "NODEPAGE=$PWD/build/nodepage.apk" >> "$GITHUB_ENV"
+          fi
           mkdir -p smoke
           aapt2="$(ls -d "${ANDROID_SDK_ROOT:-$ANDROID_HOME}"/build-tools/*/ | sort -V | tail -1)/aapt2"
           "$aapt2" dump badging "$apk" | grep -E "^(package|application-label:|launchable-activity)" \
@@ -213,8 +224,9 @@ jobs:
           # the back and ping cases for the same reason. The release APK gets
           # the cold-start and splash gates; the preview routes (sheets, ping,
           # node page) need the demo dataset a debug build carries, since a
-          # release build has no nodes without a tailnet.
-          script: bash tool/screenshots_android.sh "$APK" "$APP_ID" smoke-shots && bash tool/smoke_android.sh "$APK" "$APP_ID" smoke && bash tool/splash_shots.sh "$APK" "$APP_ID" smoke-splash && bash tool/back_android.sh build/nodepage.apk "$APP_ID" smoke-back && bash tool/ping_android.sh build/nodepage.apk "$APP_ID" smoke-ping && bash tool/nodepage_android.sh build/nodepage.apk "$APP_ID" smoke-node
+          # release build has no nodes without a tailnet, so NODEPAGE is set
+          # only when that debug APK was built.
+          script: bash tool/screenshots_android.sh "$APK" "$APP_ID" smoke-shots && bash tool/smoke_android.sh "$APK" "$APP_ID" smoke && bash tool/splash_shots.sh "$APK" "$APP_ID" smoke-splash && if [ -n "${NODEPAGE:-}" ]; then bash tool/back_android.sh "$NODEPAGE" "$APP_ID" smoke-back && bash tool/ping_android.sh "$NODEPAGE" "$APP_ID" smoke-ping && bash tool/nodepage_android.sh "$NODEPAGE" "$APP_ID" smoke-node; fi
 
       - name: Job summary
         if: always()
@@ -226,30 +238,34 @@ jobs:
             cat smoke/summary.txt 2>/dev/null || echo 'no summary'
             echo '```'
             echo
-            echo "### Android back key"
-            echo
-            echo '```'
-            cat smoke-back/summary.txt 2>/dev/null || echo 'no summary'
-            echo '```'
-            echo
-            echo "### Android ping"
-            echo
-            echo '```'
-            cat smoke-ping/summary.txt 2>/dev/null || echo 'no summary'
-            echo '```'
-            echo
+            if [ -n "${NODEPAGE:-}" ]; then
+              echo "### Android back key"
+              echo
+              echo '```'
+              cat smoke-back/summary.txt 2>/dev/null || echo 'no summary'
+              echo '```'
+              echo
+              echo "### Android ping"
+              echo
+              echo '```'
+              cat smoke-ping/summary.txt 2>/dev/null || echo 'no summary'
+              echo '```'
+              echo
+            fi
             echo "### Android cold start: splash and first frame"
             echo
             echo '```'
             cat smoke-splash/summary.txt 2>/dev/null || echo 'no summary'
             echo '```'
             echo
-            echo "### Android node page (grey ErrorWidget gate)"
-            echo
-            echo '```'
-            cat smoke-node/summary.txt 2>/dev/null || echo 'no summary'
-            echo '```'
-            echo
+            if [ -n "${NODEPAGE:-}" ]; then
+              echo "### Android node page (grey ErrorWidget gate)"
+              echo
+              echo '```'
+              cat smoke-node/summary.txt 2>/dev/null || echo 'no summary'
+              echo '```'
+              echo
+            fi
             echo "### Settings stills"
             echo
             echo '```'
