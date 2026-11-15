@@ -4,6 +4,7 @@ import 'package:flutter/widgets.dart';
 import 'package:prism_ui/icons/icons.dart';
 import 'package:prism_ui/prism_ui.dart';
 
+import '../agents_phase.dart';
 import '../backend.dart';
 import '../data.dart';
 import '../demo/demo.dart';
@@ -17,8 +18,9 @@ import '../ssh_identities.dart';
 import '../widgets/controls.dart';
 import '../widgets/entry_row.dart';
 import '../widgets/foundation.dart';
-import '../widgets/shape_badge.dart';
+import '../widgets/net_loading.dart';
 import '../widgets/select_row.dart';
+import '../widgets/shape_badge.dart';
 import 'agent_chat.dart';
 import 'new_agent_sheet.dart';
 
@@ -30,6 +32,8 @@ class AgentsPage extends StatefulWidget {
 }
 
 class _AgentsPageState extends State<AgentsPage> {
+  /// The last phase logged, so the smoke test can follow the page in logcat.
+  AgentsPhase? _loggedPhase;
   /// Demo list: the web preview and hosts without the shared library.
   late final List<({String section, List<DemoAgent> items})> _demo = [
     for (final group in demoAgents)
@@ -100,161 +104,213 @@ class _AgentsPageState extends State<AgentsPage> {
     }
     return ListenableBuilder(
       listenable: herdr,
-      builder: (context, _) => Stack(
-        children: [
-          PageBody(
-            title: l10n.agentsTitle,
-            subtitle: herdr.node.isEmpty ? 'herdr' : 'herdr · ${herdr.node}',
-            onRefresh: herdr.ready ? herdr.refresh : null,
-            // The new-agent button floats at the foot; its rows stop above it.
-            bottomExtra: 64,
-            children: [
-              if (!backend.signedIn) ...[
-                InlineNotice(
-                  text: l10n.herdrNeedsNode,
-                  tint: context.colorScheme.onSurfaceVariant,
-                ),
-                const SizedBox(height: 14),
-              ],
-              if (_notice.isNotEmpty) ...[
-                InlineNotice(
-                  text: _notice,
-                  tint: context.colorScheme.onSurfaceVariant,
-                ),
-                const SizedBox(height: 14),
-              ],
-              ScaleFadeSwitcher(
-                child: KeyedSubtree(
-                  key: ValueKey(_herdrState(herdr)),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      if (!herdr.ready) ...[
-                        _linkNotice(context, l10n, herdr),
-                        _HerdrConnectCard(backend: backend),
-                      ] else if (herdr.agents.isEmpty)
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(6, 24, 6, 8),
-                          child: Text(
-                            l10n.herdrNoAgents,
-                            style: AppTextStyle.subheadline
-                                .of(context)
-                                .copyWith(
-                                  color: context.colorScheme.onSurfaceVariant,
-                                ),
-                          ),
-                        )
-                      else
-                        for (final (index, group) in _groups(
-                          herdr.agents,
-                        ).indexed) ...[
-                          Reveal(
-                            key: ValueKey('agents-heading-${group.section}'),
-                            index: index,
-                            child: SectionLabel(
-                              group.section == 'Needs you'
-                                  ? l10n.needsYou
-                                  : group.section,
-                            ),
-                          ),
-                          Reveal(
-                            key: ValueKey('agents-card-${group.section}'),
-                            index: index,
-                            child: AnimatedGroupCard(
-                              dividerInset: 56,
-                              children: [
-                                for (final agent in group.items)
-                                  RowSemantics(
-                                    key: ValueKey(agent.paneId),
-                                    label: _liveAgentLabel(
-                                      context,
-                                      l10n,
-                                      agent,
-                                    ),
-                                    onTap: () => _openAgent(herdr, agent),
-                                    child: _LiveAgentRow(
-                                      agent: agent,
-                                      onTap: () => _openAgent(herdr, agent),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                        ],
-                    ],
+      builder: (context, _) {
+        final phase = _phaseOf(backend, herdr);
+        if (phase != _loggedPhase) {
+          _loggedPhase = phase;
+          debugPrint('taildeck agents: ${phase.name}');
+        }
+        return Stack(
+          children: [
+            PageBody(
+              title: l10n.agentsTitle,
+              subtitle: herdr.node.isEmpty ? 'herdr' : 'herdr · ${herdr.node}',
+              onRefresh: herdr.ready ? herdr.refresh : null,
+              // The new-agent button floats at the foot; its rows stop above it.
+              bottomExtra: 64,
+              children: [
+                if (_notice.isNotEmpty) ...[
+                  InlineNotice(
+                    text: _notice,
+                    tint: context.colorScheme.onSurfaceVariant,
+                  ),
+                  const SizedBox(height: 14),
+                ],
+                ScaleFadeSwitcher(
+                  child: KeyedSubtree(
+                    key: ValueKey(_phaseKey(phase, herdr)),
+                    child: _body(context, l10n, backend, herdr, phase),
                   ),
                 ),
-              ),
-            ],
-          ),
-          PositionedDirectional(
-            end: 20,
-            bottom: context.bottomInset + 20,
-            child: _NewAgentFab(
-              visible: herdr.ready,
-              label: l10n.newAgent,
-              onPressed: () => unawaited(_addAgent(herdr)),
+              ],
             ),
-          ),
-        ],
-      ),
+            PositionedDirectional(
+              end: 20,
+              bottom: context.bottomInset + 20,
+              child: _NewAgentFab(
+                visible: phase == AgentsPhase.ready,
+                label: l10n.newAgent,
+                onPressed: () => unawaited(_addAgent(herdr)),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
+
+  /// What the page shows: the node comes up first, then herdr, and only a
+  /// real failure gets an error.
+  static AgentsPhase _phaseOf(TaildeckBackend backend, HerdrController herdr) =>
+      agentsPhaseOf(
+        herdrReady: herdr.ready,
+        waking: backend.herdrWaking,
+        link: herdr.link,
+        tailnetReady: backend.tailnetReady,
+        hasTarget: backend.herdrTarget.node.isNotEmpty,
+      );
 
   /// Which of herdr's states the page is drawing, so the swap animates only
   /// when that changes (Kotlin's `AnimatedContent(state?.javaClass)`).
-  static String _herdrState(HerdrController herdr) {
-    if (!herdr.ready) return 'link:${herdr.link.name}';
-    if (herdr.agents.isEmpty) return 'empty';
-    return 'agents:${_groups(herdr.agents).map((g) => g.section).join('|')}';
+  static String _phaseKey(AgentsPhase phase, HerdrController herdr) {
+    return switch (phase) {
+      AgentsPhase.ready when herdr.agents.isEmpty => 'empty',
+      AgentsPhase.ready =>
+        'agents:${_groups(herdr.agents).map((g) => g.section).join('|')}',
+      AgentsPhase.connecting => 'connecting:${herdr.attempt}',
+      AgentsPhase.failed => 'failed:${herdr.failure.name}',
+      _ => phase.name,
+    };
   }
 
-  Widget _linkNotice(
+  Widget _body(
     BuildContext context,
     AppLocalizations l10n,
+    TaildeckBackend backend,
     HerdrController herdr,
+    AgentsPhase phase,
   ) {
-    final scheme = context.colorScheme;
-    final text = switch (herdr.link) {
-      HerdrLink.notInstalled => l10n.herdrNotInstalled,
-      HerdrLink.notRunning => l10n.herdrNotRunning,
-      HerdrLink.failed => herdr.detail,
-      HerdrLink.idle when herdr.detail.isNotEmpty => l10n.herdrDropped,
-      _ => '',
-    };
-    if (text.isEmpty) return const SizedBox.shrink();
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          InlineNotice(
-            text: text,
-            tint: herdr.link == HerdrLink.failed
-                ? scheme.error
-                : scheme.onSurfaceVariant,
-          ),
-          if (herdr.link == HerdrLink.notInstalled ||
-              herdr.link == HerdrLink.notRunning)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(6, 6, 6, 0),
-              child: Text(
-                herdr.detail,
-                style: AppTextStyle.caption1
-                    .of(context)
-                    .copyWith(color: scheme.onSurfaceVariant),
-              ),
+    final node = herdr.node.isEmpty ? backend.herdrTarget.node : herdr.node;
+    switch (phase) {
+      case AgentsPhase.tailnet:
+        return NetLoading(
+          title: l10n.tailnetWaiting,
+          caption: l10n.tailnetWaitingBody,
+        );
+      case AgentsPhase.connecting:
+        return NetLoading(
+          title: l10n.herdrConnecting(node),
+          caption: herdr.attempt > 1
+              ? l10n.herdrRetryAttempt(herdr.attempt, herdr.attempts)
+              : null,
+        );
+      case AgentsPhase.failed:
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _HerdrMessageCard(
+              message: l10n.herdrFailure(node, herdr.failure),
+              actionLabel: l10n.herdrRetry,
+              onAction: () => unawaited(backend.retryHerdr()),
             ),
-        ],
-      ),
-    );
+            const SizedBox(height: 12),
+            _HerdrSettingsSection(backend: backend),
+          ],
+        );
+      case AgentsPhase.idle:
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _HerdrMessageCard(
+              message: l10n.herdrIdle,
+              actionLabel: l10n.reconnect,
+              onAction: () => unawaited(backend.retryHerdr()),
+            ),
+            const SizedBox(height: 12),
+            _HerdrSettingsSection(backend: backend),
+          ],
+        );
+      case AgentsPhase.setup:
+        return _HerdrSettingsSection(
+          backend: backend,
+          initiallyOpen: true,
+          showToggle: false,
+        );
+      case AgentsPhase.ready:
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (herdr.agents.isEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(6, 24, 6, 8),
+                child: Text(
+                  l10n.herdrNoAgents,
+                  style: AppTextStyle.subheadline
+                      .of(context)
+                      .copyWith(color: context.colorScheme.onSurfaceVariant),
+                ),
+              )
+            else
+              for (final (index, group) in _groups(herdr.agents).indexed) ...[
+                Reveal(
+                  key: ValueKey('agents-heading-${group.section}'),
+                  index: index,
+                  child: SectionLabel(
+                    group.section == 'Needs you'
+                        ? l10n.needsYou
+                        : group.section,
+                  ),
+                ),
+                Reveal(
+                  key: ValueKey('agents-card-${group.section}'),
+                  index: index,
+                  child: AnimatedGroupCard(
+                    dividerInset: 56,
+                    children: [
+                      for (final agent in group.items)
+                        RowSemantics(
+                          key: ValueKey(agent.paneId),
+                          label: _liveAgentLabel(context, l10n, agent),
+                          onTap: () => _openAgent(herdr, agent),
+                          child: _LiveAgentRow(
+                            agent: agent,
+                            onTap: () => _openAgent(herdr, agent),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
+          ],
+        );
+    }
   }
 
   Widget _demoPage(AppLocalizations l10n, TaildeckBackend backend) {
     final scheme = context.colorScheme;
-    // `?tab=2&herdr=connect` opens the connect form on the web preview.
-    final connect = previewParam('herdr') == 'connect';
+    // `?tab=2&herdr=tailnet|connecting|error|connect` previews the startup
+    // states on the web build, which has no node behind it.
+    final preview = previewParam('herdr') ?? '';
+    if (preview == 'tailnet' || preview == 'connecting' || preview == 'error') {
+      return PageBody(
+        title: l10n.agentsTitle,
+        subtitle: preview == 'error' ? 'herdr · bangwu' : 'herdr · devbox',
+        bottomExtra: 64,
+        children: [
+          if (preview == 'tailnet')
+            NetLoading(
+              title: l10n.tailnetWaiting,
+              caption: l10n.tailnetWaitingBody,
+            )
+          else if (preview == 'connecting')
+            NetLoading(
+              title: l10n.herdrConnecting('devbox'),
+              caption: l10n.herdrRetryAttempt(2, 3),
+            )
+          else ...[
+            _HerdrMessageCard(
+              message: l10n.herdrErrorNoHost('bangwu'),
+              actionLabel: l10n.herdrRetry,
+              onAction: () {},
+            ),
+            const SizedBox(height: 12),
+            _HerdrSettingsSection(backend: backend, preview: true),
+          ],
+        ],
+      );
+    }
+    final connect = preview == 'connect';
     return Stack(
       children: [
         PageBody(
@@ -647,6 +703,130 @@ class _DemoAgentRow extends StatelessWidget {
   }
 }
 
+/// One sentence about the connection and the action that helps, with no Go
+/// error in sight.
+class _HerdrMessageCard extends StatelessWidget {
+  const _HerdrMessageCard({
+    required this.message,
+    required this.actionLabel,
+    required this.onAction,
+  });
+
+  final String message;
+  final String actionLabel;
+  final VoidCallback onAction;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      radius: AppCorner.xl,
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Semantics(
+            liveRegion: true,
+            child: Text(message, style: AppTextStyle.subheadline.of(context)),
+          ),
+          const SizedBox(height: 12),
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: LoadingButton(
+              label: actionLabel,
+              glyph: Glyphs2.refresh,
+              onPressed: onAction,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The connection form stays folded behind one row except on first setup.
+class _HerdrSettingsSection extends StatefulWidget {
+  const _HerdrSettingsSection({
+    required this.backend,
+    this.initiallyOpen = false,
+    this.showToggle = true,
+    this.preview = false,
+  });
+
+  final TaildeckBackend backend;
+  final bool initiallyOpen;
+
+  /// First setup: there is nothing else on the page, so the form is the page.
+  final bool showToggle;
+  final bool preview;
+
+  @override
+  State<_HerdrSettingsSection> createState() => _HerdrSettingsSectionState();
+}
+
+class _HerdrSettingsSectionState extends State<_HerdrSettingsSection> {
+  late bool _open = widget.initiallyOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final target = widget.backend.herdrTarget;
+    final label = _open
+        ? l10n.herdrHideConnectionSettings
+        : l10n.herdrConnectionSettings;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (widget.showToggle)
+          RowSemantics(
+            label: label,
+            onTap: () => setState(() => _open = !_open),
+            child: TapFeedback(
+              onTap: () => setState(() => _open = !_open),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 6,
+                  vertical: 10,
+                ),
+                child: Row(
+                  children: [
+                    GlyphIcon(
+                      Glyphs2.sliders,
+                      size: 16,
+                      color: context.colorScheme.onSurfaceVariant,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        label,
+                        style: AppTextStyle.footnote
+                            .of(context)
+                            .copyWith(
+                              color: context.colorScheme.onSurfaceVariant,
+                            ),
+                      ),
+                    ),
+                    if (target.node.isNotEmpty && !_open)
+                      Text(target.node, style: context.listCaptionStyle),
+                    const SizedBox(width: 6),
+                    GlyphIcon(
+                      _open ? Glyphs2.arrowUp : Glyphs2.arrowDown,
+                      size: 12,
+                      color: context.colorScheme.onSurfaceVariant,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        if (_open) ...[
+          if (widget.showToggle) const SizedBox(height: 6),
+          _HerdrConnectCard(backend: widget.backend, preview: widget.preview),
+        ],
+      ],
+    );
+  }
+}
+
 /// Node, user and credentials for the herdr connection, prefilled from the
 /// last successful one.
 class _HerdrConnectCard extends StatefulWidget {
@@ -799,11 +979,14 @@ class _HerdrConnectCardState extends State<_HerdrConnectCard> {
         password: _password.text,
       );
     } on Object catch (error) {
-      if (mounted) {
-        setState(
-          () => _error = error is BridgeException ? error.message : '$error',
-        );
-      }
+      if (!mounted) return;
+      final message = error is BridgeException ? error.message : '$error';
+      final failure = HerdrFailure.of(message);
+      setState(() {
+        _error = failure == HerdrFailure.other
+            ? message
+            : l10n.herdrFailure(node, failure);
+      });
     } finally {
       if (mounted) setState(() => _busy = false);
     }

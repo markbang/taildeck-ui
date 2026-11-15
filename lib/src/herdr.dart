@@ -34,6 +34,64 @@ enum HerdrLink {
   failed,
 }
 
+/// Why a herdr connection did not come up, so the page can say it in words a
+/// person can act on instead of the Go error.
+enum HerdrFailure {
+  none,
+  unknownHost,
+  timeout,
+  unreachable,
+  auth,
+  passphrase,
+
+  /// herdr itself is missing on the node; retrying does not help.
+  notInstalled,
+  notRunning,
+  other;
+
+  /// A retry can succeed: the tailnet or the node may still be coming up.
+  bool get retryable => switch (this) {
+    unknownHost || timeout || unreachable || other => true,
+    _ => false,
+  };
+
+  static HerdrFailure of(String message) {
+    final text = message.toLowerCase();
+    if (text.startsWith('herdr_not_installed')) return notInstalled;
+    if (text.startsWith('herdr_not_running')) return notRunning;
+    if (text.contains('passphrase_required')) return passphrase;
+    if (text.contains('no such host') ||
+        text.contains('no addresses') ||
+        text.contains('server misbehaving')) {
+      return unknownHost;
+    }
+    if (text.contains('timed out') ||
+        text.contains('timeout') ||
+        text.contains('deadline exceeded')) {
+      return timeout;
+    }
+    if (text.contains('unable to authenticate') ||
+        text.contains('permission denied') ||
+        text.contains('no supported methods')) {
+      return auth;
+    }
+    if (text.contains('connection refused') ||
+        text.contains('unreachable') ||
+        text.contains('no route to host') ||
+        text.contains('connection reset') ||
+        text.contains('broken pipe')) {
+      return unreachable;
+    }
+    return other;
+  }
+}
+
+/// Startup retry budget: three dials of at most four seconds plus 1 s and 2 s
+/// of backoff stay inside 15 s before the page reports a failure.
+const herdrStartupAttempts = 3;
+const herdrAttemptTimeout = Duration(seconds: 4);
+const herdrRetryBackoff = [Duration(seconds: 1), Duration(seconds: 2)];
+
 /// One agent pane as herdr reports it.
 class HerdrAgent {
   const HerdrAgent({
@@ -331,6 +389,10 @@ class HerdrController extends ChangeNotifier {
   int _connId = 0;
   bool _refreshing = false;
   Timer? _debounce;
+  HerdrFailure _failure = HerdrFailure.none;
+  bool _waking = false;
+  int _attempt = 0;
+  int _attempts = 1;
 
   final Map<String, List<HerdrCommand>> _commands = {};
   final Map<String, DateTime> _commandsAt = {};
@@ -341,7 +403,19 @@ class HerdrController extends ChangeNotifier {
   String _queueError = '';
 
   HerdrLink get link => _link;
+
+  /// The Go message behind [link]; never shown as-is, [failure] is what the
+  /// pages translate.
   String get detail => _detail;
+  HerdrFailure get failure => _failure;
+
+  /// A startup connect or retry run is in flight, including the backoff
+  /// between attempts.
+  bool get waking => _waking;
+
+  /// Dial in progress and how many the current run makes.
+  int get attempt => _attempt;
+  int get attempts => _attempts;
   String get node => _node;
   List<HerdrAgent> get agents => List.unmodifiable(_agents);
   bool get available => _bridge != null;
@@ -354,6 +428,8 @@ class HerdrController extends ChangeNotifier {
   List<QueuedPrompt> queued(String pane) =>
       List.unmodifiable(_queues[pane] ?? const <QueuedPrompt>[]);
 
+  /// Connects to [node] with up to [attempts] dials. Retries keep the page on
+  /// "connecting" and only the last failure is reported.
   Future<void> connect({
     required String node,
     int port = 22,
@@ -361,6 +437,7 @@ class HerdrController extends ChangeNotifier {
     String password = '',
     String keyPath = '',
     String passphrase = '',
+    int attempts = 1,
   }) async {
     final bridge = _bridge;
     if (bridge == null) {
@@ -368,28 +445,59 @@ class HerdrController extends ChangeNotifier {
       notifyListeners();
       return;
     }
-    _link = HerdrLink.connecting;
-    _detail = '';
     _node = node;
-    notifyListeners();
-    try {
-      final reply = await bridge.herdrConnect(
-        host: node,
-        port: port,
-        user: user,
-        password: password,
-        keyPath: keyPath,
-        passphrase: passphrase,
-      );
-      _connId = (reply['id'] as num?)?.toInt() ?? 0;
-      _link = HerdrLink.ready;
+    _attempts = attempts < 1 ? 1 : attempts;
+    _waking = true;
+    _failure = HerdrFailure.none;
+    for (var attempt = 1; attempt <= _attempts; attempt++) {
+      _attempt = attempt;
+      _link = HerdrLink.connecting;
       _detail = '';
-      await refresh();
-    } on Object catch (error) {
-      _agents = const [];
-      _detail = _message(error);
-      _link = _classify(_detail);
       notifyListeners();
+      try {
+        final reply = await bridge
+            .herdrConnect(
+              host: node,
+              port: port,
+              user: user,
+              password: password,
+              keyPath: keyPath,
+              passphrase: passphrase,
+            )
+            .timeout(herdrAttemptTimeout);
+        _connId = (reply['id'] as num?)?.toInt() ?? 0;
+        _link = HerdrLink.ready;
+        _detail = '';
+        _failure = HerdrFailure.none;
+        await refresh();
+        _waking = false;
+        notifyListeners();
+        return;
+      } on Object catch (error) {
+        _agents = const [];
+        _detail = error is TimeoutException
+            ? 'connect timed out'
+            : _message(error);
+        _failure = HerdrFailure.of(_detail);
+        _link = _classify(_detail);
+        if (attempt < _attempts && _failure.retryable) {
+          await Future<void>.delayed(herdrRetryBackoff[attempt - 1]);
+          continue;
+        }
+        break;
+      }
+    }
+    // A dial that timed out may still land after the page gave up.
+    if (_failure == HerdrFailure.timeout) unawaited(_closeQuietly());
+    _waking = false;
+    notifyListeners();
+  }
+
+  Future<void> _closeQuietly() async {
+    try {
+      await _bridge?.herdrClose();
+    } on Object {
+      // No connection to close.
     }
   }
 
@@ -405,6 +513,9 @@ class HerdrController extends ChangeNotifier {
     _images.clear();
     _commands.clear();
     _commandsAt.clear();
+    _failure = HerdrFailure.none;
+    _waking = false;
+    _attempt = 0;
     notifyListeners();
     await _bridge?.herdrClose();
   }

@@ -141,13 +141,14 @@ jobs:
           cp build/app/outputs/flutter-apk/app-x86_64-release.apk build/smoke.apk
           "$(ls -d "${ANDROID_SDK_ROOT:-$ANDROID_HOME}"/build-tools/*/ | sort -V | tail -1)/aapt2" \
             dump badging build/smoke.apk | head -1
-      - name: Build the debug APK for the node page gate
+      - name: Build the debug APK for the preview gates
         if: inputs.build
         run: |
           flutter pub get
-          # A debug build keeps the demo dataset, so the preview route has a
-          # node to open without a tailnet.
-          flutter build apk --debug --target-platform android-x64
+          # The preview routes need the demo dataset, which a debug build no
+          # longer carries by default; the release snapshot stays demo-free.
+          flutter build apk --debug --target-platform android-x64 \
+            --dart-define=TAILDECK_DEMO=true
           cp build/app/outputs/flutter-apk/app-debug.apk build/nodepage.apk
           ls -l build/nodepage.apk
       - name: Drop the signing material
@@ -226,7 +227,7 @@ jobs:
           # node page) need the demo dataset a debug build carries, since a
           # release build has no nodes without a tailnet, so NODEPAGE is set
           # only when that debug APK was built.
-          script: bash tool/screenshots_android.sh "$APK" "$APP_ID" smoke-shots && bash tool/smoke_android.sh "$APK" "$APP_ID" smoke && bash tool/splash_shots.sh "$APK" "$APP_ID" smoke-splash && if [ -n "${NODEPAGE:-}" ]; then bash tool/tabs_android.sh "$NODEPAGE" "$APP_ID" smoke-tabs && bash tool/back_android.sh "$NODEPAGE" "$APP_ID" smoke-back && bash tool/ping_android.sh "$NODEPAGE" "$APP_ID" smoke-ping && bash tool/nodepage_android.sh "$NODEPAGE" "$APP_ID" smoke-node; fi
+          script: bash tool/screenshots_android.sh "$APK" "$APP_ID" smoke-shots && bash tool/smoke_android.sh "$APK" "$APP_ID" smoke && bash tool/splash_shots.sh "$APK" "$APP_ID" smoke-splash && if [ -n "${NODEPAGE:-}" ]; then bash tool/tabs_android.sh "$NODEPAGE" "$APP_ID" smoke-tabs && bash tool/back_android.sh "$NODEPAGE" "$APP_ID" smoke-back && bash tool/ping_android.sh "$NODEPAGE" "$APP_ID" smoke-ping && bash tool/nodepage_android.sh "$NODEPAGE" "$APP_ID" smoke-node && bash tool/agents_android.sh "$NODEPAGE" "$APP_ID" smoke-agents; fi
 
       - name: Job summary
         if: always()
@@ -271,6 +272,12 @@ jobs:
               cat smoke-node/summary.txt 2>/dev/null || echo 'no summary'
               echo '```'
               echo
+              echo "### Android Agents cold start (no error before Running)"
+              echo
+              echo '```'
+              cat smoke-agents/summary.txt 2>/dev/null || echo 'no summary'
+              echo '```'
+              echo
             fi
             echo "### Settings stills"
             echo
@@ -289,6 +296,7 @@ jobs:
             smoke-ping/
             smoke-splash/
             smoke-node/
+            smoke-agents/
             smoke-shots/
           if-no-files-found: warn
       - uses: actions/upload-artifact@v4
