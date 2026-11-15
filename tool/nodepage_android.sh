@@ -21,9 +21,9 @@ adb wait-for-device
 activity=$(adb shell cmd package resolve-activity --brief "$app" 2>/dev/null | tail -n 1 | tr -d '\r')
 [ -n "$activity" ] || fail "no launcher activity for $app"
 
-if ! adb shell pm path "$app" > /dev/null 2>&1; then
-  adb install -g "$apk" > "$out/install.txt" 2>&1 || fail "adb install failed, see install.txt"
-fi
+# Always replace: the gates run different builds of the same package id in
+# one job, and a stale install would answer for the wrong one.
+adb install -g -r "$apk" > "$out/install.txt" 2>&1 || fail "adb install failed, see install.txt"
 
 shot() { adb exec-out screencap -p > "$out/$1.png" || true; }
 
