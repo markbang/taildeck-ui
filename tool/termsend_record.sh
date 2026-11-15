@@ -178,40 +178,56 @@ ime_enter() {
   sleep 1.2
 }
 
-tap_ime_action() { # the soft keyboard's own send/done key
-  local point x y
-  point=$(point_in 'Send' inputmethod) || point=$(point_in 'Enter' inputmethod) || point=""
-  if [ -z "$point" ]; then
-    note "ime-action: the keyboard has no Send key in its tree"
+screen_size() { # prints "W H"
+  local size
+  size=$(adb shell wm size 2> /dev/null | sed -n 's/.*: \([0-9]*\)x\([0-9]*\).*/\1 \2/p' | tr -d '\r')
+  echo "${size:-1080 2400}"
+}
+
+ime_shown() {
+  adb shell dumpsys input_method 2> /dev/null | grep -q 'mInputShown=true'
+}
+
+tap_ime_action() { # the soft keyboard's own send key; Gboard keeps it out of the tree
+  local w h x y
+  if ! ime_shown; then
+    note "ime-action: no soft keyboard up"
     return 0
   fi
-  read -r x y <<< "$point"
+  read -r w h <<< "$(screen_size)"
+  x=$((w * 906 / 1000))
+  y=$((h * 731 / 1000))
   adb shell input tap "$x" "$y" > /dev/null 2>&1 || true
-  note "ime-action: tapped the keyboard's key at $x,$y"
-  sleep 1.2
+  note "ime-action: tapped the keyboard's send key at $x,$y"
+  sleep 1.4
 }
 
 # ---- the steps -----------------------------------------------------------
-send_step() {
+start_fresh() { # each clip opens the demo page itself
+  launch "$demo_url" || return 0
   focus_input
+}
+
+send_step() {
+  start_fresh
   type_line 'echo send'
   tap_send
 }
 
 ime_step() {
-  focus_input
+  start_fresh
   type_line 'echo enter'
   ime_enter
 }
 
 ime_action_step() {
-  focus_input
+  start_fresh
   type_line 'echo action'
   tap_ime_action
 }
 
 hold_step() {
-  focus_input
+  start_fresh
   hold_send
   if ui has 'Send inserts the text without Enter' > /dev/null 2>&1; then
     note "hold-send: insert-only reported"
@@ -223,14 +239,16 @@ hold_step() {
   type_line 'echo ins'
   tap_send
   shot insert-only-typed
-  # With the line empty, a second Send presses Enter alone.
-  tap_send
+  # Enter back on: the empty line then sends its CR alone.
   hold_send
   if ui has 'Send presses Enter' > /dev/null 2>&1; then
     note "hold-send again: Enter back on"
   else
     note "hold-send again: no notice"
   fi
+  sleep 1.5
+  tap_send
+  shot insert-only-cr
 }
 
 # ---- run ----------------------------------------------------------------
