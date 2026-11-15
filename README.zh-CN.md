@@ -19,6 +19,7 @@
 | ![登录](docs/screenshots/login.png) | ![SSH 终端](docs/screenshots/terminal.png) |
 | ![最后在线与密钥到期](docs/screenshots/nodes-last-seen-zh.png) | ![添加服务](docs/screenshots/m3-add-service.png) |
 | ![端口扫描](docs/screenshots/m3-scan.png) | ![原生终端](docs/screenshots/m2-terminal.png) |
+| ![设置](docs/screenshots/settings.png) | ![设置分组](docs/screenshots/settings-tailnet.png) |
 
 ## 平台
 

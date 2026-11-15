@@ -207,13 +207,14 @@ jobs:
           profile: pixel_6
           disable-animations: true
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          # One line: the runner hands each line to sh separately. The splash
-          # recording runs before the back and ping cases so its stills exist
-          # even when one of those fails; it reinstalls this APK at the end.
-          # The release APK gets the cold-start and splash gates; the preview
-          # routes (sheets, ping, node page) need the demo dataset a debug
-          # build carries, since a release build has no nodes without a tailnet.
-          script: bash tool/smoke_android.sh "$APK" "$APP_ID" smoke && bash tool/splash_shots.sh "$APK" "$APP_ID" smoke-splash && bash tool/back_android.sh build/nodepage.apk "$APP_ID" smoke-back && bash tool/ping_android.sh build/nodepage.apk "$APP_ID" smoke-ping && bash tool/nodepage_android.sh build/nodepage.apk "$APP_ID" smoke-node
+          # One line: the runner hands each line to sh separately. The stills
+          # come first, each case installing its own copy, so a failure later in
+          # the chain cannot cost the evidence; the splash recording runs before
+          # the back and ping cases for the same reason. The release APK gets
+          # the cold-start and splash gates; the preview routes (sheets, ping,
+          # node page) need the demo dataset a debug build carries, since a
+          # release build has no nodes without a tailnet.
+          script: bash tool/screenshots_android.sh "$APK" "$APP_ID" smoke-shots && bash tool/smoke_android.sh "$APK" "$APP_ID" smoke && bash tool/splash_shots.sh "$APK" "$APP_ID" smoke-splash && bash tool/back_android.sh build/nodepage.apk "$APP_ID" smoke-back && bash tool/ping_android.sh build/nodepage.apk "$APP_ID" smoke-ping && bash tool/nodepage_android.sh build/nodepage.apk "$APP_ID" smoke-node
 
       - name: Job summary
         if: always()
@@ -248,6 +249,12 @@ jobs:
             echo '```'
             cat smoke-node/summary.txt 2>/dev/null || echo 'no summary'
             echo '```'
+            echo
+            echo "### Settings stills"
+            echo
+            echo '```'
+            cat smoke-shots/summary.txt 2>/dev/null || echo 'no summary'
+            echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         if: always()
@@ -259,6 +266,7 @@ jobs:
             smoke-ping/
             smoke-splash/
             smoke-node/
+            smoke-shots/
           if-no-files-found: warn
       - uses: actions/upload-artifact@v4
         if: always()

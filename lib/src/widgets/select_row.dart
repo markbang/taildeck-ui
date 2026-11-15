@@ -3,6 +3,7 @@ import 'package:prism_ui/icons/icons.dart';
 import 'package:prism_ui/prism_ui.dart';
 
 import '../l10n.dart';
+import 'foundation.dart';
 
 /// A card row that opens a popup menu of choices: the one select used for
 /// every form value in the app.
@@ -55,15 +56,16 @@ class SelectRow<T> extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 12),
-          Text(
+          // The current value, as FlClash's option rows show it: one line at
+          // the row's end, never wide enough to squeeze the label.
+          RowValue(
             shown,
-            style: AppTextStyle.body
-                .of(context)
-                .copyWith(color: scheme.onSurfaceVariant),
+            maxWidth: 160,
+            tint: scheme.onSurfaceVariant,
           ),
-          const SizedBox(width: 4),
+          const SizedBox(width: 6),
           GlyphIcon(
-            Glyphs.chevronDown,
+            Glyphs.picker,
             size: 14,
             color: scheme.onSurfaceVariant.opacity50,
           ),

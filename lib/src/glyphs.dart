@@ -330,6 +330,17 @@ abstract final class Glyphs2 {
     ], role: GlyphRole.line),
   ]);
 
+  static const bell = Glyph([
+    GlyphArc(12, 14.6, 7.2, 3.1416, 3.1416, role: GlyphRole.line),
+    GlyphPolyline([
+      GlyphVertex(4.8, 14.6),
+      GlyphVertex(4.8, 17.6),
+      GlyphVertex(19.2, 17.6),
+      GlyphVertex(19.2, 14.6),
+    ], role: GlyphRole.line),
+    GlyphCircle(12, 20.2, 1.2, role: GlyphRole.line, solid: true),
+  ]);
+
   static const doc = Glyph([
     GlyphPolyline([
       GlyphVertex(6, 3.8),

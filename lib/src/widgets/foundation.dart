@@ -12,6 +12,45 @@ import 'pull_to_refresh.dart';
 import 'service_avatar.dart';
 import 'loading.dart';
 
+/// Room a page leaves at its foot: what floats over it (the navigation dock)
+/// plus the system gesture area, and a gap. Every scrollable page ends with
+/// this, so no row can sit under the dock.
+double pageBottomPadding(BuildContext context) => 40 + context.bottomInset;
+
+/// The value at the end of a row: one line, [maxWidth] at most, so a long
+/// value (a control server URL) ellipsizes instead of wrapping into two
+/// centred lines.
+class RowValue extends StatelessWidget {
+  const RowValue(
+    this.text, {
+    super.key,
+    this.maxWidth = 160,
+    this.style,
+    this.tint,
+  });
+
+  final String text;
+  final double maxWidth;
+  final TextStyle? style;
+  final Color? tint;
+
+  @override
+  Widget build(BuildContext context) {
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxWidth: maxWidth),
+      child: Text(
+        text,
+        textAlign: TextAlign.end,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: (style ?? AppTextStyle.body.of(context)).copyWith(
+          color: tint ?? context.colorScheme.onSurfaceVariant,
+        ),
+      ),
+    );
+  }
+}
+
 class PageBody extends StatelessWidget {
   const PageBody({
     super.key,
@@ -24,6 +63,8 @@ class PageBody extends StatelessWidget {
     this.padding,
     this.onRefresh,
     this.animateSize = false,
+    this.titleMaxLines = 1,
+    this.bottomExtra = 0,
   });
 
   final String title;
@@ -36,6 +77,12 @@ class PageBody extends StatelessWidget {
 
   /// Pull to refresh, as the Kotlin app's `RefreshBox` offers on lists.
   final Future<void> Function()? onRefresh;
+
+  /// A section page names itself in full rather than ending in an ellipsis.
+  final int titleMaxLines;
+
+  /// More room at the foot, for a button floating above the dock.
+  final double bottomExtra;
 
   /// Resizes the page's sections with `animateContentSize(Motion.slow())`, as
   /// the Kotlin settings page does.
@@ -50,66 +97,72 @@ class PageBody extends StatelessWidget {
         constraints: BoxConstraints(maxWidth: maxWidth),
         child: _refreshable(
           context,
-          ListView(
-            physics: onRefresh == null
-                ? null
-                : const AlwaysScrollableScrollPhysics(),
-            padding:
-                padding ??
-                EdgeInsets.fromLTRB(
-                  20,
-                  context.contentTopPadding,
-                  20,
-                  40 + context.bottomInset,
+          _statusBarScrim(
+            context,
+            ListView(
+              physics: onRefresh == null
+                  ? null
+                  : const AlwaysScrollableScrollPhysics(),
+              padding:
+                  padding ??
+                  EdgeInsets.fromLTRB(
+                    20,
+                    context.contentTopPadding,
+                    20,
+                    pageBottomPadding(context) + bottomExtra,
+                  ),
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (leading != null) ...[
+                      leading!,
+                      const SizedBox(width: 4),
+                    ],
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Semantics(
+                            header: true,
+                            child: Text(
+                              title,
+                              maxLines: titleMaxLines,
+                              overflow: TextOverflow.ellipsis,
+                              style: AppTextStyle.largeTitle.of(
+                                context,
+                                emphasized: true,
+                              ),
+                            ),
+                          ),
+                          if (subtitle != null)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 2),
+                              child: Text(
+                                subtitle!,
+                                style: AppTextStyle.subheadline
+                                    .of(context)
+                                    .copyWith(color: scheme.onSurfaceVariant),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                    ?trailing,
+                  ],
                 ),
-            children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (leading != null) ...[leading!, const SizedBox(width: 4)],
-                  Expanded(
+                const SizedBox(height: 16),
+                if (animateSize)
+                  AnimatedContentSize(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Semantics(
-                          header: true,
-                          child: Text(
-                            title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: AppTextStyle.largeTitle.of(
-                              context,
-                              emphasized: true,
-                            ),
-                          ),
-                        ),
-                        if (subtitle != null)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 2),
-                            child: Text(
-                              subtitle!,
-                              style: AppTextStyle.subheadline
-                                  .of(context)
-                                  .copyWith(color: scheme.onSurfaceVariant),
-                            ),
-                          ),
-                      ],
+                      children: [...?children],
                     ),
-                  ),
-                  ?trailing,
-                ],
-              ),
-              const SizedBox(height: 16),
-              if (animateSize)
-                AnimatedContentSize(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [...?children],
-                  ),
-                )
-              else
-                ...?children,
-            ],
+                  )
+                else
+                  ...?children,
+              ],
+            ),
           ),
         ),
       ),
@@ -120,6 +173,42 @@ class PageBody extends StatelessWidget {
     final onRefresh = this.onRefresh;
     if (onRefresh == null) return list;
     return PullToRefresh(onRefresh: onRefresh, child: list);
+  }
+
+  /// Opaque at the top and fading out below the status bar, so a title
+  /// scrolling under the system icons stays readable; light and dark follow
+  /// the page colour.
+  Widget _statusBarScrim(BuildContext context, Widget list) {
+    final top = MediaQuery.paddingOf(context).top;
+    if (top <= 0 || context.isInCompactSheet) return list;
+    final color = SurfaceLevel.page.colorOf(context.colorScheme);
+    return Stack(
+      children: [
+        list,
+        PositionedDirectional(
+          start: 0,
+          end: 0,
+          top: 0,
+          child: IgnorePointer(
+            child: Container(
+              height: top + 12,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    color,
+                    color,
+                    color.withValues(alpha: 0),
+                  ],
+                  stops: const [0, 0.7, 1],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
   }
 }
 
@@ -232,11 +321,13 @@ class RowSemantics extends StatelessWidget {
   const RowSemantics({
     super.key,
     required this.label,
+    this.hint,
     this.onTap,
     required this.child,
   });
 
   final String label;
+  final String? hint;
   final VoidCallback? onTap;
   final Widget child;
 
@@ -246,6 +337,7 @@ class RowSemantics extends StatelessWidget {
       container: true,
       button: onTap != null,
       label: label,
+      hint: hint,
       onTap: onTap,
       excludeSemantics: true,
       child: child,
