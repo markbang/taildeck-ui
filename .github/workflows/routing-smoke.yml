@@ -71,11 +71,12 @@ jobs:
           set -o pipefail
           tool/build_native.sh android-x86_64 | tee /tmp/build_native.log
           tool/build_term.sh android-x86_64 | tee /tmp/build_term.log
-      - name: Build a debug APK (x86_64)
-        # Debug signs itself, so this gate needs no release keystore.
+      - name: Build a profile APK (x86_64)
+        # Profile signs itself and starts like the release app; a debug cold
+        # start on this emulator can take longer than a 14 s recording.
         run: |
-          flutter build apk --debug --target-platform android-x64
-          cp build/app/outputs/flutter-apk/app-debug.apk build/routing.apk
+          flutter build apk --profile --target-platform android-x64
+          cp build/app/outputs/flutter-apk/app-profile.apk build/routing.apk
           ls -l build/routing.apk
       - name: Build and start a test control server
         # testcontrol accepts any auth key and runs a relay on one port; the
