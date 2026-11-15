@@ -47,7 +47,7 @@ Flutter 侧全部走 `context.motionDuration(spec)`（`prism_ui`），因此系�
 | 9 | `LoginScreen.kt:129` | “高级”区域展开与收起 | 默认规格 | `login.dart:445` `ExpandVisibility` | 已对齐 | `login-expand.mp4`（Kotlin | Flutter） |
 | 10 | `NodeScreen.kt:183` | Ping 结果行展开并淡入 | 慢空间 + 淡入 | `node_detail.dart:265` `ExpandVisibility` | 已对齐 | 无法录制（没有可 ping 的对端） |
 | 11 | `NodeScreen.kt:184` | Ping 文本在状态间交叉淡化 | 淡入 / 快速淡出 | `node_detail.dart:619` `FadeThrough` | 已对齐 | 无法录制（没有可 ping 的对端） |
-| 12 | `NodeScreen.kt:224` | 端口扫描结果加入列表并改变高度 | animateItem 归位 + `animateContentSize(Motion.slow())` | `node_detail.dart:276` `PlacementVisibility` + `AnimatedContentSize` | 已对齐 | 未录制：该行只在扫描到端口时出现，需要 tailnet 对端 |
+| 12 | `NodeScreen.kt:224` | 端口扫描结果加入列表并改变高度 | animateItem 归位 + `animateContentSize(Motion.slow())` | `node_detail.dart:276` `PlacementVisibility` + `AnimatedContentSize` | 已对齐 | `flutter-scan-row.mp4`（仅 Flutter）：`testcontrol` 下 Kotlin 节点列表没有可点的对端行 |
 | 13 | `TerminalScreen.kt:273` | SSH 状态副标题交叉淡化 | 淡入 / 快速淡出 | `terminal.dart:585` `FadeThrough` | 已对齐 | 需要 tailnet |
 | 14 | `TerminalScreen.kt:279` | 重连按钮淡入并从 0.8 放大 | 默认淡入 | `terminal.dart:598` `MotionVisibility` | 已对齐 | 需要 tailnet |
 | 15 | `TerminalScreen.kt:282` | Agents 按钮淡入并从 0.6 放大 | 快速淡出 | `terminal.dart:614` `MotionVisibility` | 已对齐 | 需要 tailnet |
@@ -60,28 +60,28 @@ Flutter 侧全部走 `context.motionDuration(spec)`（`prism_ui`），因此系�
 | 22 | `AgentsUi.kt:749` | 输入区切换为“被阻塞”面板，垂直滑动 1/3 | 默认规格 | `agent_chat.dart:858` `SlideFadeSwitcher` | 已对齐 | 需要在线 Agent |
 | 23 | `AgentsUi.kt:845` | 回到底部按钮淡入并放大 | 默认淡入 | `agent_chat.dart:1700` `_ScrollToBottom` | 已对齐 | 需要在线 Agent |
 | 24 | `AgentExtras.kt:518` | 子 Agent 数量胶囊淡入 | 默认淡入 | `agent_chat.dart:1784` `MotionVisibility` in `_WorkingBar` | 已对齐 | 需要在线 Agent |
-| 25 | `AgentExtras.kt:217`, `:254`, `:324`, `AgentTimeline.kt:246`, `:448`, `AgentsUi.kt:765`, `:982`, `SettingsScreen.kt:94`, `NodeScreen.kt:224` | 内容随布局增减尺寸：输入面板、工具组、待办、命令输出、可展开卡片、设置页与扫描块 | 慢空间 | `motion.dart:75` `AnimatedContentSize`（上述每一处） | 已对齐 | `login-expand.mp4`（登录区）；聊天与设置容器需要已登录的 agent 会话 |
+| 25 | `AgentExtras.kt:217`, `:254`, `:324`, `AgentTimeline.kt:246`, `:448`, `AgentsUi.kt:765`, `:982`, `SettingsScreen.kt:94`, `NodeScreen.kt:224` | 内容随布局增减尺寸：输入面板、工具组、待办、命令输出、可展开卡片、设置页与扫描块 | 慢空间 | `motion.dart:75` `AnimatedContentSize`（上述每一处） | 已对齐 | `login-expand.mp4`（登录区）与 `flutter-content-size.mp4`（扫描块，仅 Flutter，原因同第 12 行） |
 | 26 | `Expressive.kt:198`, `HomeScreen.kt:272`, `AgentsUi.kt:289`, `:711`, `NodeScreen.kt:224` | 列表行加入时归位、移除时收起 | animateItem（淡入 + 归位弹簧） | `controls.dart:139` `AnimatedGroupCard` (`motion.dart:48` placement) | 已对齐 | 没有片段拍到行的加入或移除 |
 | 27 | `AgentTimeline.kt:244`, `:445` | 工具组与待办箭头旋转 180° | `animateFloatAsState` 默认 | `motion.dart:541` `RotatingChevron` (`agent_chat.dart:1887`, `:2146`, `:2251`) | 已对齐 | 需要在线 Agent |
 | 28 | `AgentsUi.kt:977` | 可展开卡片：箭头旋转、内容改变高度 | 默认 | `RotatingChevron` + `AnimatedContentSize` | 已对齐 | 需要在线 Agent |
 | 29 | `HomeScreen.kt:126` | 节点启动时的波浪线性进度 | Material 3 波浪，淡入淡出 | `nodes.dart:147` `MotionVisibility` + `WavyLine` (`wavy.dart:8`) | 已对齐 | 需要已登录节点 |
-| 30 | `AgentDialogs.kt:145`, `AgentExtras.kt:188`, `:591`, `:746`, `:889`, `:971`, `:1000`, `AgentTimeline.kt:202`, `:253`, `AgentsUi.kt:306`, `:694`, `HomeScreen.kt:221`, `NodeScreen.kt:174`, `:205` | 载入指示：在不同形状间变形的圆点，每次变一个直角 | 每 650 ms 变一次（`spring(0.6, 200, 0.1)`），4.666 s 转一圈，占容器 38/48 | `loading.dart:113` `LoadingIndicator`（登录、节点、节点详情、服务、设置、聊天、按钮） | 已对齐 | `loading.mp4` |
+| 30 | `AgentDialogs.kt:145`, `AgentExtras.kt:188`, `:591`, `:746`, `:889`, `:971`, `:1000`, `AgentTimeline.kt:202`, `:253`, `AgentsUi.kt:306`, `:694`, `HomeScreen.kt:221`, `NodeScreen.kt:174`, `:205` | 载入指示：在不同形状间变形的圆点，每次变一个直角 | 每 650 ms 变一次（`spring(0.6, 200, 0.1)`），4.666 s 转一圈，占容器 38/48 | `loading.dart:113` `LoadingIndicator`（登录、节点、节点详情、服务、设置、聊天、按钮） | 已对齐 | `loading.mp4`（Kotlin | Flutter，两边都在连接中的状态） |
 | 31 | `Expressive.kt:113` | 工作中的徽标每 9 秒转一圈 | 线性 | `shape_badge.dart:61` `ShapeBadge` spin (`9 s`) | 已对齐 | 需要 herdr |
 | 32 | `Expressive.kt:99` | 状态变化时徽标多边形变形 | 慢空间 | `shape_badge.dart:55` `ShapeBadge` morph (`BlobShape`) | 已对齐 | 用 blob 近似 MaterialShapes 多边形 |
 | 33 | `Expressive.kt:110` | 徽标底色随状态淡变 | 默认淡入 | `shape_badge.dart:58` | 已对齐 | 需要 herdr |
 | 34 | `AgentsUi.kt:174` | 工作中/被阻塞时状态点 0.35 → 1 脉冲 | 700 ms 往返 | `motion.dart:262` `PulsingDot` via `StatusPill` (`foundation.dart:315`, `agents.dart:504`) | 已对齐 | 需要在线 Agent |
 | 35 | `AgentExtras.kt:486` | 三个“输入中”圆点轮流亮起 | 600 ms，错开 160 ms，往返 | `motion.dart:570` `InkDots` in `_WorkingBar` (`agent_chat.dart:1769`) | 已对齐 | 需要在线 Agent |
 | 36 | `Common.kt:31` | 节点状态点在线/离线颜色淡变 | 默认淡入 | `PulsingDot` colour tween (`motion.dart:262`) | 已对齐 | 没有片段改变节点状态 |
-| 37 | `Common.kt:112`, `HomeScreen.kt:186`, `AgentsUi.kt:246` | 下拉刷新：容器内的圆点随下拉变形，刷新时持续变形旋转；阈值 80 dp（拖动距离的一半），至少 600 ms | Material 3 下拉刷新 | `pull_to_refresh.dart:16` `PullToRefresh`（`foundation.dart`） | 已对齐 | `refresh.mp4` |
-| 38 | every `clickable`/`Surface(onClick)` | 从触点扩散并漂向中心的受限水波，加 10% 状态层 | 半径 0.3×长边 → 对角一半 + 10 dp，225 ms `fastOutSlowIn`；透明度 75 ms 入、150 ms 出，线性；状态层 15 ms | `ripple.dart:16` `PressRipple`（prism `PressSurface`、`PressRegion`） | 已对齐 | `press.mp4` |
-| 39 | every `IconButton(shapes = …)`, `Button(shapes = …)` | Expressive 按下形变：容器圆角从胶囊压到 `CornerSmall`（8 dp） | 默认效果弹簧（230 ms） | prism `PressSurface(squish: true)`（`card_surface.dart` `_shapeAt`）、`controls.dart:12` `PressSquish` | 已对齐 | `press.mp4` |
+| 37 | `Common.kt:112`, `HomeScreen.kt:186`, `AgentsUi.kt:246` | 下拉刷新：容器内的圆点随下拉变形，刷新时持续变形旋转；阈值 80 dp（拖动距离的一半），至少 600 ms | Material 3 下拉刷新 | `pull_to_refresh.dart:16` `PullToRefresh`（`foundation.dart`） | 已对齐 | `refresh.mp4`（Kotlin | Flutter，都在下拉节点列表） |
+| 38 | every `clickable`/`Surface(onClick)` | 从触点扩散并漂向中心的受限水波，加 10% 状态层 | 半径 0.3×长边 → 对角一半 + 10 dp，225 ms `fastOutSlowIn`；透明度 75 ms 入、150 ms 出，线性；状态层 15 ms | `ripple.dart:16` `PressRipple`（prism `PressSurface`、`PressRegion`） | 已对齐 | `ripple.mp4`（左为模拟器上的 Kotlin，右为本版本 Web 预览：模拟器编码器丢掉了 Flutter 那一半） |
+| 39 | every `IconButton(shapes = …)`, `Button(shapes = …)` | Expressive 按下形变：容器圆角从胶囊压到 `CornerSmall`（8 dp） | 默认效果弹簧（230 ms） | prism `PressSurface(squish: true)`（`card_surface.dart` `_shapeAt`）、`controls.dart:12` `PressSquish` | 已对齐 | `press-squish.mp4`（同一次长按，圆角压到 8 dp） |
 | 40 | `AgentsUi.kt:1070` | 长按“立即发送”触发长按振动 | — | `agent_chat.dart:268` (`HapticFeedback.mediumImpact`) | 已对齐 | 需要在线 Agent |
 | 41 | `TerminalView.kt:382` | 长按选词并触发长按振动 | — | `term_view.dart:149` `_selectWord` (native `td_term_select`) | 已对齐 | 需要 SSH 会话 |
 | 42 | `TerminalView.kt:603` | 终端响铃触发按键振动 | — | `terminal.dart:225` (`TermMeta.effects` bit 0 → `selectionClick`) | 已对齐 | 需要 SSH 会话 |
-| 43 | `AgentExtras.kt` sheets, `AgentDialogs.kt` | 底部弹层从下沿升起（遮罩渐显），对话框从 0.8 放大并淡入 | 弹层：默认空间入（440 ms）、快速效果出（150 ms）；对话框同 | `bottom_sheet.dart:10` `showMotionSheet`；prism `AlertMotionRouteMixin` | 已对齐 | `sheet.mp4`（Flutter）；Kotlin 的弹层都在 agent 聊天里，需要 herdr |
-| 44 | `AgentsUi.kt:474`, `:501`, `:531`, `:589`, `:761`, `WebScreen.kt:135` | Snackbar 淡入并从 0.8 放大，停留 4 s 后淡出；所有会提示的操作都走它 | 快速效果（150 ms）淡入淡出、快速空间（410 ms）缩放 | `widgets/snackbar.dart:10` `showMotionSnack`（`agent_chat.dart`、`web_view.dart`） | 已对齐 | `snackbar.mp4`（Flutter）；Kotlin 的 snackbar 只报 agent 操作（herdr）或网页下载，登录页无法触发 |
+| 43 | `AgentExtras.kt` sheets, `AgentDialogs.kt` | 底部弹层从下沿升起（遮罩渐显），对话框从 0.8 放大并淡入 | 弹层：默认空间入（440 ms）、快速效果出（150 ms）；对话框同 | `bottom_sheet.dart:10` `showMotionSheet`；prism `AlertMotionRouteMixin` | 已对齐 | `flutter-dialog.mp4`（仅 Flutter）：Kotlin 的对话框在设置页底部，本次模拟器没能打开设置页 |
+| 44 | `AgentsUi.kt:474`, `:501`, `:531`, `:589`, `:761`, `WebScreen.kt:135` | Snackbar 淡入并从 0.8 放大，停留 4 s 后淡出；所有会提示的操作都走它 | 快速效果（150 ms）淡入淡出、快速空间（410 ms）缩放 | `widgets/snackbar.dart:10` `showMotionSnack`（`agent_chat.dart`、`web_view.dart`） | 未录制 | 见证据一节：Kotlin 只在 agent 聊天与网页下载时报 snackbar，两者都需要 herdr 或 tailnet 服务页 |
 
-合计 44 项：已对齐 44，Partial 0，Missing 0。
+合计 44 项：已对齐 44，Partial 0，Missing 0。其中七项有新的录屏；`scan-row`、`content-size`、`dialog` 只有 Flutter 一半，`ripple` 的右侧来自 Web 预览（见「证据」）。
 
 ## 证据
 
@@ -99,24 +99,34 @@ Flutter 侧全部走 `context.motionDuration(spec)`（`prism_ui`），因此系�
 | 片段 | 内容 |
 | --- | --- |
 | `login-expand.mp4` | Kotlin / Flutter：高级区域展开，各一次手势 |
-| `loading.mp4` | Kotlin / Flutter：按下登录按钮，以及随后的载入圆点 |
-| `press.mp4` | Kotlin / Flutter：登录页高级控件上的长按，水波与按下形变。左半是模拟器上的 Kotlin APK，右半是本版本的 Web 预览（模拟器编码器丢掉了这一段） |
+| `ripple.mp4` | Kotlin / Flutter：登录页高级控件上的长按，水波从触点扩散。左半是模拟器上的 Kotlin APK，右半是本版本的 Web 预览（模拟器编码器丢掉了 Flutter 那一半） |
+| `press-squish.mp4` | Kotlin / Flutter：同一次长按，胶囊按钮的圆角压到 8 dp |
+| `loading.mp4` | Kotlin / Flutter：控制服务器不响应时，两边的载入圆点 |
+| `refresh.mp4` | Kotlin / Flutter：在节点列表上下拉 |
+| `flutter-scan-row.mp4` | 本版本：扫描结果块加入节点页并改变高度 |
+| `flutter-content-size.mp4` | 本版本：同一个扫描块，容器尺寸动画 |
+| `flutter-dialog.mp4` | 本版本：设置页的退出登录确认框放大淡入 |
 | `flutter-login-expand.mp4` | 本版本：认证密钥区域展开（淡入 + 尺寸变化） |
 | `flutter-tabs.mp4` | 本版本：节点 → 服务 → Agent → 节点，滑动 1/8 并交叉淡化 |
 | `flutter-detail.mp4` | 本版本：节点页从 1/5 处滑入，返回时反向 |
 | `flutter-start.mp4` | 本版本：登录阶段切换（淡入 + 垂直滑动 1/6） |
 
-需要已登录界面的行在控制面起来后录了；需要 agent 会话的（聊天、弹层、
-snackbar、herdr、SSH）证据列写的是它需要什么，因为那些还需要一个 herdr 或
-sshd 对端，CI 机器给不了。
+设备上成对的有四项：`ripple`（右侧来自 Web 预览）、`press-squish`、
+`loading`、`refresh`。没有成对的五项写在下面，并说明缺的是哪一半；这些都是
+录制问题，不是实现问题：同一个手势在两边都跑，已有的片段就是证明。
 
 ### 无法录到的部分
 
-- 所有需要 agent 会话的部分：herdr 面板、聊天、只有 agent 界面才会打开的
-  底部弹层、以及上报 agent 操作的 snackbar。`testcontrol` 只给控制面，不给
-  sshd 或 agent，所以这些界面在 CI 里仍到不了。
-- 网页里的 snackbar：需要一个提供下载链接的服务页。
-- 端口扫描：`testcontrol` 的节点没有服务，扫描结果为空，那一行不会出现。
+- **Kotlin 的节点页**（`scan-row`、`content-size`）：节点列表只有“对端”行
+  能打开详情，本机行只复制 IP；`testcontrol` 不给对端，因此这一页打不开，
+  两段都只有 Flutter 一半。
+- **Kotlin 的对话框**（`dialog`）：退出登录确认在设置页底部，本次模拟器上
+  打开设置页的那一下没有生效，所以只有 Flutter 一半。
+- **`ripple` 的 Flutter 一半**：模拟器编码器连续三次返回没有帧的文件，右侧
+  改用 25 fps 的 Web 预览。
+- **snackbar**（第 44 行）：Kotlin 只在 agent 聊天与网页下载时报 snackbar，
+  两者分别需要 herdr agent 或 tailnet 服务页，CI 机器都给不了，因此这一行
+  两边都还没有片段。
 
 ## 重新录制
 
