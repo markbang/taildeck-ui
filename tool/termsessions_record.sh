@@ -83,6 +83,35 @@ find_or_scroll() { # <text> [tries]
   return 1
 }
 
+# The floating dock sits over the bottom of a long page, so a row that came
+# into view there cannot be tapped; keep scrolling until it is above the dock.
+scroll_clear() { # <text> [tries]
+  local needle=$1 tries=${2:-24} point x y
+  for _ in $(seq 1 "$tries"); do
+    if point=$(ui tap "$needle"); then
+      y=${point#* }
+      if [ "$y" -lt $((SH - 170)) ]; then
+        echo "$point"
+        return 0
+      fi
+    fi
+    adb shell input swipe "$((W / 2))" "$((SH * 5 / 8))" "$((W / 2))" "$((SH / 2))" 200 > /dev/null 2>&1 || true
+    sleep 0.8
+  done
+  return 1
+}
+
+# Back to the tab shell from wherever a step left off.
+to_tabs() {
+  local attempt
+  for attempt in 1 2 3 4 5; do
+    ui has "Nodes" > /dev/null 2>&1 && return 0
+    adb shell input keyevent 4 > /dev/null 2>&1 || true
+    sleep 1
+  done
+  return 1
+}
+
 type_text() {
   adb shell input text "$(printf '%s' "$1" | sed 's/ /%s/g')" > /dev/null 2>&1 || true
   sleep 0.4
@@ -262,7 +291,7 @@ run_snippet() {
 
 # ---- sessions ------------------------------------------------------------
 sessions_step() {
-  adb shell input keyevent 4 > /dev/null 2>&1 || true
+  to_tabs || true
   sleep 1
   if ! open_peer "$peer_b"; then
     shot term-sessions-missing
@@ -307,12 +336,12 @@ tap_reconnect() {
 # ---- appearance and safe areas ------------------------------------------
 appearance_step() {
   local point
-  adb shell input keyevent 4 > /dev/null 2>&1 || true
+  to_tabs || true
   sleep 1.5
   point=$(ui tap "Settings") || { note "appearance: no Settings tab"; return 0; }
   tap_xy "$point"
   sleep 1.5
-  point=$(find_or_scroll "Color theme") || { note "appearance: no theme row"; return 0; }
+  point=$(scroll_clear "Color theme") || { note "appearance: no theme row"; return 0; }
   shot term-settings-appearance
   record term-theme 12 theme_step
   check term-theme "Paper light"
@@ -320,7 +349,7 @@ appearance_step() {
   check term-cursor-font "Bar"
   shot term-settings-applied
   # Back into the terminal: the theme and font are live on the real session.
-  adb shell input keyevent 4 > /dev/null 2>&1 || true
+  to_tabs || true
   sleep 1
   point=$(find_or_scroll "$peer") || return 0
   tap_xy "$point"
@@ -336,7 +365,7 @@ appearance_step() {
 
 theme_step() {
   local point
-  point=$(ui tap "Color theme") || return 1
+  point=$(scroll_clear "Color theme") || return 1
   tap_xy "$point"
   sleep 1
   point=$(find_or_scroll "Paper light") || return 1
@@ -346,13 +375,13 @@ theme_step() {
 
 cursor_font_step() {
   local point
-  point=$(ui tap "Cursor") || return 1
+  point=$(scroll_clear "Cursor") || return 1
   tap_xy "$point"
   sleep 1
   point=$(find_or_scroll "Bar") || return 1
   tap_xy "$point"
   sleep 1
-  point=$(ui tap "Font family") || return 1
+  point=$(scroll_clear "Font family") || return 1
   tap_xy "$point"
   sleep 1
   point=$(find_or_scroll "Sans") || return 1
