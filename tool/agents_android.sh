@@ -35,21 +35,24 @@ shot() { adb exec-out screencap -p > "$out/$1.png" || true; }
 # The page under test must be our process, in front: a dismissed app would
 # make every "no error on screen" check true for the wrong reason.
 alive() { # $1: step
-  local pid focus tries=10
+  local pid front tries=10
   pid=$(adb shell pidof "$app" 2>/dev/null | tr -d '\r' || true)
   [ -n "$pid" ] || fail "$1: $app is not running (crashed or was killed)"
-  focus=$(adb shell dumpsys window 2>/dev/null | grep -m1 mCurrentFocus | tr -d '\r' || true)
-  # The window manager can still name the previous front window while the
-  # launch transition runs, so give it a few seconds before failing.
+  # uiautomator dumps the window that is on screen, so its package is the
+  # front window the checks below see. mCurrentFocus can name the launcher
+  # while our window is already drawn on this emulator.
   while [ "$tries" -gt 0 ]; do
-    case "$focus" in
-      *"$app/"*) echo "$focus" >> "$out/focus.txt"; return 0 ;;
-    esac
+    adb shell uiautomator dump /sdcard/ui.xml > /dev/null 2>&1 || true
+    adb pull /sdcard/ui.xml "$out/ui.xml" > /dev/null 2>&1 || true
+    front=$(sed -n 's/.*package="\([^"]*\)".*/\1/p' "$out/ui.xml" 2>/dev/null | head -n 1)
+    if [ "$front" = "$app" ]; then
+      echo "front: $front" >> "$out/focus.txt"
+      return 0
+    fi
     sleep 1
     tries=$((tries - 1))
-    focus=$(adb shell dumpsys window 2>/dev/null | grep -m1 mCurrentFocus | tr -d '\r' || true)
   done
-  fail "$1: $app is not in front ($focus)"
+  fail "$1: $app is not in front (front package: ${front:-none})"
 }
 
 ui() {
