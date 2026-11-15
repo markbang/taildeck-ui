@@ -2,7 +2,7 @@
 
 软键盘没有 Esc、Ctrl、Alt、Tab 和方向键，所以每个手机终端都会自带一条扩展键，也都会在网格上放手势。本文记录参考应用的做法、Taildeck 在 libghostty-vt 之上的实现，以及还没做的部分。
 
-来源读取于 2026-11-14。下文里的**键行**指终端与软键盘之间那一条，**页**指键行里的一屏按键。
+来源读取于 2026-11-14 与 2026-11-15。下文里的**键行**指终端与软键盘之间那一条，**页**指键行里的一屏按键。
 
 ## 参考应用的做法
 
@@ -12,6 +12,18 @@
 | Blink Shell（iOS） | Smart Keys，只在软键盘弹出时显示，接硬件键盘时隐藏 | Ctrl、Alt、Esc；按住修饰键可以连续组合（C-x C-c） | 键行中间是滚动区域，放更多键 | `config` → Keyboard：左右修饰键可分别重映射，单击也可改成序列 |
 | JuiceSSH（Android，已停止维护） | 覆盖在终端上的弹出键盘：Ctrl、Alt、Tab、方向键和难打的字符 | Ctrl、Alt 是开关；Alt 可以改成发 Esc | 向右滑打开自动补全，向左滑返回；"Popup keyboard position" 可挪位置 | 按键震动、弹出位置、Alt 模式 |
 | Termux（Android） | Extra keys view，从抽屉或音量上+Q/K 打开；默认两行 | CTRL、ALT、FN、SHIFT 作为特殊键；音量下相当于 Ctrl | `extra-keys` 是一组行；长按/上滑某个键出弹出键（如 `{key: LEFT, popup: HOME}`）；键行左滑进入文本输入视图 | `~/.termux/termux.properties`：`extra-keys`、`extra-keys-style`，`termux-reload-settings` 生效 |
+
+### herdr：焦点、点击与鼠标上报
+
+herdr 是桌面终端复用器，没有触摸层：`herdrdev/herdr-core` 与 `herdrdev/herdr-app` 里都没有“点一下聚焦/弹出软键盘”的规则。它的指针路径仍是“一次点击该发什么”的参考，键盘规则则来自 Termius 与 Blink。
+
+- `herdr-app` 的终端视图在鼠标左键按下时先给自己聚焦，然后才把核心调整到即将绘制的网格大小。
+- 同一次点击再交给程序：模拟器报告鼠标跟踪（且没有按 Shift，按 Shift 时鼠标留给应用）就带上按键与修饰键发一次按下，并清掉本地选区；程序不跟踪鼠标就开始本地选区（按下、拖动、松开、选中即复制）。
+- 只有按着键时才发移动；松开只发给记录为按下的键，整个拖动期间 `any_button_pressed` 为真。滚轮一格是屏幕中央的 4/5 号键，程序不跟踪鼠标时返回空。
+- `herdr-core` 的编码器是 `ghostty_mouse_encoder_setopt_from_terminal`，所以格式完全取决于远端请求的是哪一种——X10、UTF-8、SGR 1006、URxvt 或 SGR-Pixels；坐标是界面像素加单元格尺寸，由编码器换算成从 1 开始的单元格。
+- 获得焦点的终端也是系统输入法（拼音、日文、死键）的输入去处，和我们的输入行拥有 IME 是同一种关系。
+
+手机上的键盘规则改看参考应用：Termius 写的是“终端输入获得焦点时软键盘出现”，接硬件键盘时隐藏，隐藏键盘的按钮在键盘 add-on 上而不是靠点一下终端；Blink 的 Smart Keys 只在软键盘弹出时显示。所以这里点一下总是把键盘叫出来，从不把它收起来。
 
 ## Taildeck 现在的实现
 
@@ -27,15 +39,21 @@
 | 自定义 | Termius：排序与自定义组。Termux：`extra-keys` 配置文件。Blink：`config` → Keyboard | 设置 → 终端 → 扩展键行：逐页勾选显示哪些键（同一个键只属于一页），可恢复默认，写入应用配置持久保存 | 已实现 |
 | 震动反馈 | JuiceSSH："Vibrate Device" | 每次按键触发 `HapticFeedback.lightImpact`，开关在 设置 → 终端 → "终端按键震动" | 已实现 |
 | 长按连发 | 硬件方向键按住会自动重复 | 按住键行上的 ←、↑、↓、→ 会连发：380 毫秒后开始，之后每 70 毫秒一次；松手不再补发 | 已实现 |
+| 点击聚焦 | Termius：终端输入获得焦点时键盘出现，只有 add-on 的隐藏键盘按钮或系统能收起它。herdr：点击先聚焦视图，再把点击发出去 | 每次点网格都会让输入行获得焦点并弹出软键盘，绝不收起。再点一次、点空白处、长按、双击都保持键盘。Android 已收起 IME 但输入框仍保有焦点时，点一下会重新走一次聚焦（一帧失焦、下一帧聚焦），因为焦点没变时 `TextInput.show` 会被忽略。只有键行上的键盘按钮和系统返回键能收起；按钮调 `TextInput.hide` 并保留焦点，硬件键盘仍能输入 | 已实现 |
+| 鼠标上报 | herdr：在跟踪鼠标的程序里，一次点击是先按下再松开，带按键与修饰键；Shift 留给本地；长按是本地选区 | 程序启用鼠标跟踪时，点一下会通过 `td_term_encode_mouse` 发一次左键按下和松开：点击像素与当前单元格尺寸算出单元格，键行上已激活的 Ctrl/Alt 作为 GhosttyMods 位一起发出，点击后清除。协议由模拟器按远端启用的模式选择（vim、htop、tmux 要的是 SGR 1006）；没开鼠标跟踪的终端不会收到任何字节。长按与双击是本地选区，从不发点击 | 已实现 |
+| 滚轮与拖动 | herdr：跟踪鼠标时滚轮变成 4/5 号键上报；拖动发移动 | 上下拖动翻看回滚、滚轮也翻回滚，都是本地的。把滚轮上报给跟踪鼠标的程序还没做 | 待做 |
 | 网格手势 | Termius 把手势放在网格上；Termux 靠在键行上滑 | 单指滑动发方向键：轴向由第一段位移决定，每 26 dp 一个键，每帧最多 3 个。设置 → 终端 → "滑动发送方向键" 可关闭，关闭后上下拖动改为翻看回滚 | 已实现 |
-| 选词 | Kotlin 的 `TerminalView` 长按选词；iOS 终端用双击 | 双击或长按选中手指下的词（走 `td_term_select`），两端各有一个可拖动的把手；在网格上拖动可移动远端，单击清除 | 已实现 |
+| 选词 | Kotlin 的 `TerminalView` 长按选词；iOS 终端用双击 | 长按进入选区并选中手指下的词，双击同样（走 `td_term_select`），两端各有一个可拖动的把手；在网格上拖动可移动远端，单击清除选区并保持键盘 | 已实现 |
 | 复制、粘贴与链接 | Kotlin 的 action mode 有复制和粘贴；Termius 与 Blink 都放在选区上 | 选区上方的工具条：复制（`td_term_selection_text` → 系统剪贴板）、整段选区是一个 http(s) 链接时出现"打开链接"、粘贴（`td_term_encode_paste`，尊重 bracketed paste）。输入行右侧另有粘贴按钮 | 已实现 |
 | 缩放 | Blink：在网格上捏合 | 捏合改变网格字号（8–24 pt）并持久保存；设置 → 终端 显示同一数值，可点 A− / A+ | 已实现 |
-| 键盘与旋转 | — | 软键盘弹出/收起、旋转都会改变网格大小，从而同时调整模拟器（`td_term_resize`）和 SSH PTY；行列跟着单元格算，光标始终在键行之上。高度不足 420 dp 的横屏会收起快捷命令条 | 已实现 |
+| 键盘与旋转 | — | 软键盘弹出/收起、旋转都会改变网格大小，从而同时调整模拟器（`td_term_resize`）和 SSH PTY（`td_ssh_resize`）；行列跟着单元格算。调整之后视口回到实时屏幕，即使用户正在翻回滚，光标也仍在键行之上。高度不足 420 dp 的横屏会收起快捷命令条 | 已实现 |
 | 硬件键盘 | Blink 接了键盘就隐藏 Smart Keys | Ctrl、Alt、Meta 组合键和方向键、Esc、Tab 都从输入行的焦点节点走 `td_term_encode_key`。Android 报告接了物理键盘（`Configuration.keyboard`）时键行隐藏，除非在 设置 → 终端 里强制保留，或软键盘正在弹出。iOS 与桌面维持现状：桌面一直隐藏，iOS 无法探测 | 已实现 |
 | 片段、会话、自定义按键序列 | Termius snippets、Blink Snips | 不在本次改动 | 后续 |
 
 ## 验证
+
+`tool/termtap_record.sh`（工作流 `termtap-record`）就是点击门禁：安装 APK，登录录制机的测试控制面，在对等节点的 sshd 上打开真实会话，收起键盘后点网格——只要 `dumpsys input_method` 不是 `mInputShown=true`、终端窗口不是当前焦点、再点一次或点空白处把 IME 收起来了、点击之后输入的命令没有在 shell 上执行、键行键盘按钮没有收起 IME、或者收起后点一下没有重新弹出，这次运行就失败。同一次运行还在对等节点上启动一个小 Python 程序，打开鼠标跟踪（1000 + SGR 1006）并记录收到的字节；一次点击必须是 `<0;Cx;CyM` 再 `<0;Cx;Cym` 且两次单元格相同，按住 Ctrl 的点击必须是 `<16;`，否则失败。录屏：`tap-focus.mp4`（收起键盘、点击、键盘弹出、再点一次）、`tap-mouse.mp4` 与 `tap-mouse-ctrl.mp4`（探针收到的上报）、`tap-vim.mp4` 与 `tap-vim-before.png` / `tap-vim-after.png`（vim 以 `set mouse=a` 启动，键盘已弹出时再点另一格，光标移到那里）、`tap-htop.mp4` 与 `tap-htop-before.png` / `tap-htop-after.png`（先点一行进程，再点另一行）。静帧：`tap-keyboard.png`。
+
 
 `tool/termgestures_record.sh`（工作流 `termgestures-record`）在 Android 模拟器上录下手势层：两个方向的滑动方向键、按住方向键连发、选词与两端把手、复制（工具条显示已复制，`term-copy.png`）、打开选区里的链接（Chrome 切到前台，`term-open-link.png`）、横屏（`term-landscape.png`，网格重排成 105×12）、软键盘压缩网格而光标仍在键行之上（`term-keyboard.png`，以及 `-keyboard-hidden.png`）、在设置里加字号并重启后保持（`term-font.png`）。
 
@@ -55,6 +73,8 @@ Android 的静帧和片段来自 `termsessions-record` 那次运行：跑在对�
 
 ## 来源
 
+- Herdr，`herdrdev/herdr-core` — ghostty-vt 的鼠标编码器、滚轮上报与输入闸门：<https://github.com/herdrdev/herdr-core>（2026-11-15 读取，`crates/ghostty-vt/src/lib.rs`、`crates/herdr-core/src/input.rs`）
+- Herdr，`herdrdev/herdr-app` — 终端视图的聚焦、点击、选区与移动路径：<https://github.com/herdrdev/herdr-app>（2026-11-15 读取，`src/terminal.rs`）
 - Termius，*Mobile terminal* — keyboard add-on、扩展键盘、按键分组、音量键、手势：<https://docs.termius.com/terminal/mobile-terminal>
 - Blink Shell，*Quick Start*（文档首页）— Smart Keys、修饰键连发、中间滚动区：<https://docs.blink.sh/>
 - Blink Shell，*Customizing Blink Shell* — 修饰键、custom presses、键盘设置：<https://docs.blink.sh/basics/customize>

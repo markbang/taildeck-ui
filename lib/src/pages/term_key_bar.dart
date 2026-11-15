@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/widgets.dart';
+import 'package:prism_ui/icons/icons.dart';
 import 'package:prism_ui/prism_ui.dart';
 
 import '../l10n.dart';
@@ -17,6 +18,7 @@ class TerminalKeyBar extends StatefulWidget {
     required this.mods,
     required this.onKey,
     required this.onModifier,
+    this.onHideKeyboard,
     this.active = const {},
     this.palette = defaultTerminalPalette,
     this.bottomInset = 0,
@@ -29,6 +31,9 @@ class TerminalKeyBar extends StatefulWidget {
   final Set<String> active;
   final ValueChanged<TerminalKey> onKey;
   final ValueChanged<TerminalMod> onModifier;
+
+  /// The keyboard button that puts the soft keyboard away; null hides it.
+  final VoidCallback? onHideKeyboard;
   final TerminalPalette palette;
 
   /// Gesture bar or cutout below the row: the row's own background covers it,
@@ -136,6 +141,12 @@ class _TerminalKeyBarState extends State<TerminalKeyBar> {
                   hint: l10n.a11yTerminalKeyPageNext,
                   palette: widget.palette,
                   onTap: () => _step(index, total),
+                ),
+              if (widget.onHideKeyboard case final hide?)
+                _KeyboardButton(
+                  label: l10n.terminalHideKeyboard,
+                  palette: widget.palette,
+                  onTap: hide,
                 ),
             ],
           ),
@@ -343,6 +354,41 @@ class _PageDots extends StatelessWidget {
                   ),
                 ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Puts the soft keyboard away without leaving the terminal page; the grid
+/// brings it back with a tap.
+class _KeyboardButton extends StatelessWidget {
+  const _KeyboardButton({
+    required this.label,
+    required this.palette,
+    required this.onTap,
+  });
+
+  final String label;
+  final TerminalPalette palette;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: label,
+      onTap: onTap,
+      excludeSemantics: true,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: SizedBox(
+          width: 30,
+          height: 32,
+          child: Center(
+            child: GlyphIcon(Glyphs.chevronDown, size: 14, color: palette.dim),
           ),
         ),
       ),

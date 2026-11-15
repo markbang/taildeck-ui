@@ -157,6 +157,24 @@ void main(List<String> args) {
   term.write(ansi('\x1b[?1004h'));
   checkBytes(term.encodeFocus(true), ansi('\x1b[I'), 'focus report after 1004h');
 
+  // Mouse reports: only when the program asked, in the SGR 1006 form, with
+  // the click's modifiers and 1-based cell coordinates.
+  check(term.encodeMouse(action: 0, button: 1, pressed: true, x: 100, y: 50,
+      width: 800, height: 480, cellWidth: 10, cellHeight: 20) == null,
+      'no mouse report unless the program asks');
+  term.write(ansi('\x1b[?1000h\x1b[?1006h'));
+  check(term.snapshot().mouseTracking, 'mouse tracking reported');
+  checkBytes(term.encodeMouse(action: 0, button: 1, pressed: true, x: 100, y: 50,
+      width: 800, height: 480, cellWidth: 10, cellHeight: 20),
+      ansi('\x1b[<0;11;3M'), 'left press at cell 11,3');
+  checkBytes(term.encodeMouse(action: 1, button: 1, pressed: false, x: 100, y: 50,
+      width: 800, height: 480, cellWidth: 10, cellHeight: 20),
+      ansi('\x1b[<0;11;3m'), 'left release at cell 11,3');
+  checkBytes(term.encodeMouse(action: 0, button: 1, pressed: true, x: 100, y: 50,
+      width: 800, height: 480, cellWidth: 10, cellHeight: 20, mods: 2),
+      ansi('\x1b[<16;11;3M'), 'ctrl+left press carries the modifier');
+  term.write(ansi('\x1b[?1006l\x1b[?1000l'));
+
   // Input encoding honors cursor-key mode.
   term.write(ansi('\x1b[?1h'));
   checkBytes(term.encodeKey(0x41, 0, text: 'a', unshifted: 0x61), ansi('a'), 'plain key encoding');

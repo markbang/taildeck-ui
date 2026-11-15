@@ -26,6 +26,15 @@ abstract final class TermFlags {
   static const multi = 1 << 12;
 }
 
+/// `GhosttyMouseButton` values a mouse report can carry.
+abstract final class TerminalMouseButton {
+  static const left = 1;
+  static const right = 2;
+  static const middle = 3;
+  static const wheelUp = 4;
+  static const wheelDown = 5;
+}
+
 /// `GhosttyRenderStateCursorVisualStyle`.
 abstract final class CursorStyle {
   static const bar = 0;
@@ -122,6 +131,9 @@ abstract class NativeTerm {
     required int height,
     required int cellWidth,
     required int cellHeight,
+
+    /// GhosttyMods bits held during the click (shift 1, ctrl 2, alt 4).
+    int mods = 0,
   });
   TermReply? encodeFocus(bool gained);
   TermReply? encodePaste(Uint8List data);
