@@ -31,10 +31,11 @@ fail() {
   exit 1
 }
 
-# The four page headers, in dock order. A build with the demo data titles the
-# node list after the demo tailnet; a debug build without it falls back to the
-# tab name, so both count as the node page.
+# The four page headers, in dock order. With the demo data the node list is
+# titled after the demo tailnet; without it it falls back to the tab name, so
+# both count as the node page.
 titles=(Nodes Services Agents Settings)
+node_title=markbang.github
 names=(Nodes Services Agents Settings)
 sequence=(1 2 1 0 3 1 2 1 0 3)
 
@@ -108,7 +109,7 @@ header_count() { # <space-separated headers>
 # The tab's own header, or the demo tailnet name on the node list.
 expect_header() { # <seen> <tab index> <what>
   if [ "$1" = "${titles[$2]}" ] ||
-    { [ "$2" = 0 ] && [ "$1" = markbang.github ]; }; then
+    { [ "$2" = 0 ] && [ "$1" = "$node_title" ]; }; then
     return 0
   fi
   fail "$3 left [$1] instead of only '${titles[$2]}'"
@@ -117,9 +118,12 @@ expect_header() { # <seen> <tab index> <what>
 # One label per page header still on screen: the dock sits below the band, so a
 # dump above it holds the headers and nothing that merely repeats their names.
 headers() { # <texts-file>
-  awk -v titles="${titles[*]}" '
+  awk -v titles="${titles[*]}" -v node="$node_title" '
     BEGIN { n = split(titles, t, " ") }
-    { for (i = 1; i <= n; i++) if (index($0, t[i]) > 0) { print t[i]; break } }
+    {
+      if (index($0, node) > 0) { print node; next }
+      for (i = 1; i <= n; i++) if (index($0, t[i]) > 0) { print t[i]; break }
+    }
   ' "$1" | sort -u | tr '\n' ' ' | sed 's/ *$//'
 }
 
