@@ -63,7 +63,8 @@ start() { # $1: preview query
     > "$out/launch.txt" 2>&1 || return 1
   grep -q "Activity: $app/" "$out/launch.txt" || return 1
   wait_first_frame
-  wait_home "$app" "$out" "$here" Services 30 \
+  # The link may open a sheet, which hides the dock's semantics.
+  wait_home "$app" "$out" "$here" "" 30 \
     || fail "the shell did not settle for $1; see launch.txt"
 }
 

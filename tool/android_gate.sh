@@ -38,6 +38,9 @@ wait_home() { # <app> <out-dir> <tool-dir> [marker] [seconds]
       adb logcat -d 2>/dev/null | grep -q 'taildeck route: shell'; then
       # The launch screen fades over 340 ms after the route is decided.
       sleep 0.8
+      # A modal sheet hides the page's semantics, so a caller that opens one
+      # passes an empty marker and trusts the route and focus.
+      [ -n "$marker" ] || { gate_in_front "$app" && return 0; }
       for attempt in 1 2 3; do
         gate_in_front "$app" || return 1
         gate_ui "$out" "$tools" has "$marker" > /dev/null 2>&1 && return 0
