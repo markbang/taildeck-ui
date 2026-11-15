@@ -44,6 +44,8 @@
 
 桌面版在这台机器上对同一张 tailnet 跑过这些流程，`docs/screenshots/term-*` 里的静帧就来自那里：真实提示符、备用屏上的 `htop`（`term-htop.png`）、插入模式下的 vim 与中文（`term-vim.png`）、一条在远端执行 `df -h /autodl-fs` 的命令片段（`term-snippet-sent.png`）、会话条里的两条会话切换后第一条回滚仍在（`term-sessions.png`）、红色“已断开”与“重连”（`term-reconnect.png`）以及一点之后恢复的同一会话（`term-reconnect-restored.png`）。主题、字体、光标的静帧同样出自原生渲染器（`term-theme-*.png`、`term-font-sans.png`、`term-cursor-*.png`），设置页的截图是 `term-settings-appearance.png` 与 `term-settings-applied.png`。
 
+Android 的静帧和片段来自 `termsessions-record` 那次运行：跑在对等节点真实会话上的画面（`term-android-session.png`）、一条在远端执行 `df -h /` 的命令片段（`term-android-snippet.png`、`term-snippets.mp4`）、会话条里的两条会话（`term-android-sessions.png`、`term-sessions-switch.mp4`），以及经设置切换的主题（`term-theme.mp4`、`term-android-settings.png`）。
+
 有两项没有在这里验证：Android 构建、前台服务以及屏幕缺口要靠模拟器那一次录制——桌面窗口没有刘海、没有手势条，也没有 `dataSync` 服务，所以安全区域和“后台保持”只能看脚本自己产出的静帧。另外桌面版在输入行快速打字时偶尔会重复一个字符（GTK 在缓冲区被清空的同一刻把同一次按键送了两遍），问题在输入行而不在会话，按每 400 ms 一个字符输入则不会出现。
 
 模拟器无法验证的：捏合本身。它的触摸输入是一组 `virtio_input_multi_touch_*` 设备，没有 `INPUT_PROP_DIRECT`，注入的双指触点会被当成鼠标拖动；`adb shell input` 也没有多点命令。缩放的计算（步长、上下限）由 `test/terminal_gestures_test.dart` 覆盖，设置里的 A± 走的是同一个 setter、同样会触发网格重排。另外这里连不上任何 tailnet，所以没有对真实 shell（vim、htop、tmux）验证过。
