@@ -125,12 +125,28 @@ class TaildeckBackend extends ChangeNotifier {
   Map<String, int> _sshPorts = const {};
   bool _foreground = true;
   bool _refreshing = false;
+  bool _statusApplied = false;
+  bool _herdrWaking = false;
   bool _cancelStart = false;
   String _pingIp = '';
   bool _serviceRunning = false;
 
   bool get available => _bridge != null && _storage != null;
   BackendState get state => _state;
+
+  /// The node is still coming up: pages show progress, not an error or an
+  /// empty list. `?tailnet=starting` previews that state on the web build.
+  bool get tailnetStarting =>
+      previewParam('tailnet') == 'starting' ||
+      (available &&
+          !_statusApplied &&
+          _state != BackendState.error &&
+          _state != BackendState.needsLogin);
+
+  /// The node is Running and its first status (self and peers) has been read,
+  /// so peer names can resolve.
+  bool get tailnetReady =>
+      _state == BackendState.running && _statusApplied;
   String get error => _error;
   String get authUrl => _authUrl;
   String get hostname => _hostname;
@@ -193,6 +209,9 @@ class TaildeckBackend extends ChangeNotifier {
 
   /// herdr link, agent list and pane calls; null without a native backend.
   HerdrController? get herdr => _herdr;
+
+  /// An automatic herdr connect (with its retries) is in flight.
+  bool get herdrWaking => _herdrWaking;
 
   /// Last SSH user dialed for [target] (`sshLoginKey`), or '' when none was
   /// saved yet.
@@ -561,6 +580,7 @@ class TaildeckBackend extends ChangeNotifier {
     String auth = 'tailscale',
     String identityId = builtinKeyId,
     String password = '',
+    int attempts = 1,
   }) async {
     final herdr = _herdr;
     if (herdr == null) {
@@ -583,6 +603,7 @@ class TaildeckBackend extends ChangeNotifier {
       password: auth == 'password' ? password : '',
       keyPath: keyPath,
       passphrase: passphrase,
+      attempts: attempts,
     );
     if (herdr.ready) {
       _herdrNode = node;
@@ -594,6 +615,14 @@ class TaildeckBackend extends ChangeNotifier {
       _sshPorts = {..._sshPorts, node: port};
       await _persist();
     }
+  }
+
+  /// Reconnects to the saved herdr target after a startup failure, with the
+  /// same retry budget as launch.
+  Future<void> retryHerdr() async {
+    if (_herdrNode.isEmpty || !tailnetReady) return;
+    _herdrAutoTried = true;
+    await _connectHerdrStartup();
   }
 
   /// Forgets trusted host keys, so the next connection trusts them again.
@@ -801,6 +830,7 @@ class TaildeckBackend extends ChangeNotifier {
     _self = null;
     _peers = const [];
     _tailnet = '';
+    _statusApplied = false;
     _herdrAutoTried = false;
     unawaited(_herdr?.disconnect() ?? Future<void>.value());
     await _persist(signedIn: false);
@@ -887,6 +917,7 @@ class TaildeckBackend extends ChangeNotifier {
     _started = false;
     _gatewayPort = 0;
     _rawState = '';
+    _statusApplied = false;
     _state = BackendState.stopped;
     _authUrl = '';
     _waitingForLogin = false;
@@ -934,6 +965,9 @@ class TaildeckBackend extends ChangeNotifier {
       for (final peer in status['peers'] as List? ?? const [])
         if (peer is Map<String, dynamic>) nodeFromJson(peer),
     ];
+    _statusApplied = true;
+    // herdr needs the peer table, which only this reply brings.
+    if (_state == BackendState.running) _autoConnectHerdr();
     notifyListeners();
   }
 
@@ -950,7 +984,6 @@ class TaildeckBackend extends ChangeNotifier {
     if (_state == BackendState.running) {
       _waitingForLogin = false;
       if (!_persistedSignIn) _persist(signedIn: true);
-      _autoConnectHerdr();
     }
     _syncService();
   }
@@ -978,25 +1011,37 @@ class TaildeckBackend extends ChangeNotifier {
     );
   }
 
-  /// Reconnects to the herdr target of the last session, once per launch.
+  /// Reconnects to the herdr target of the last session, once per launch and
+  /// only once the node is Running with its peer table read.
   void _autoConnectHerdr() {
     final herdr = _herdr;
     if (herdr == null || _herdrAutoTried || _herdrNode.isEmpty) return;
     if (herdr.ready || herdr.link == HerdrLink.connecting) return;
+    if (!tailnetReady) return;
     _herdrAutoTried = true;
-    unawaited(() async {
-      try {
-        await connectHerdr(
-          node: _herdrNode,
-          user: _herdrUser,
-          port: _herdrPort,
-          auth: _herdrAuth,
-          identityId: _herdrIdentity.isEmpty ? builtinKeyId : _herdrIdentity,
-        );
-      } on Object {
-        // The Agents page shows the link state and the reason.
-      }
-    }());
+    unawaited(_connectHerdrStartup());
+  }
+
+  Future<void> _connectHerdrStartup() async {
+    final herdr = _herdr;
+    if (herdr == null || _herdrWaking || !tailnetReady) return;
+    _herdrWaking = true;
+    notifyListeners();
+    try {
+      await connectHerdr(
+        node: _herdrNode,
+        user: _herdrUser,
+        port: _herdrPort,
+        auth: _herdrAuth,
+        identityId: _herdrIdentity.isEmpty ? builtinKeyId : _herdrIdentity,
+        attempts: herdrStartupAttempts,
+      );
+    } on Object {
+      // The Agents page turns the failure into a sentence and offers Retry.
+    } finally {
+      _herdrWaking = false;
+      notifyListeners();
+    }
   }
 
   Future<void> _persist({bool? signedIn}) async {

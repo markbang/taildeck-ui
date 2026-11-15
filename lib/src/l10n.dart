@@ -2,6 +2,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:prism_ui/prism_ui.dart';
 
+import 'herdr.dart';
+
 class AppLocalizations implements UiLocalizations {
   const AppLocalizations(this.locale);
 
@@ -240,6 +242,58 @@ class AppLocalizations implements UiLocalizations {
       : 'The node is not running; sign in to the tailnet before connecting to herdr.';
   String get reconnect => _zh ? '重新连接' : 'Reconnect';
   String get disconnect => _zh ? '断开连接' : 'Disconnect';
+
+  // Startup: the node comes up first, then herdr, and only a real failure is
+  // reported.
+  String get tailnetWaiting => _zh ? '正在连接 tailnet…' : 'Connecting to the tailnet…';
+  String get tailnetWaitingBody => _zh
+      ? '节点启动后会自动读取节点与应用。'
+      : 'The node and its apps load as soon as it is up.';
+  String herdrConnecting(String node) =>
+      _zh ? '正在连接 herdr · $node' : 'Connecting to herdr · $node';
+  String herdrRetryAttempt(int attempt, int attempts) => _zh
+      ? '第 $attempt/$attempts 次尝试'
+      : 'Attempt $attempt of $attempts';
+  String get herdrRetry => _zh ? '重试' : 'Retry';
+  String get herdrConnectionSettings =>
+      _zh ? '连接设置' : 'Connection settings';
+  String get herdrHideConnectionSettings =>
+      _zh ? '收起连接设置' : 'Hide connection settings';
+  String get herdrIdle => _zh ? '未连接 herdr。' : 'Not connected to herdr.';
+  String herdrErrorNoHost(String node) => _zh
+      ? '找不到节点 $node —— 它在线吗？MagicDNS 开了吗？'
+      : "Can't find node $node — is it online and is MagicDNS on?";
+  String get herdrErrorTimeout => _zh
+      ? '节点没有响应，检查它是否在线。'
+      : 'The node did not answer; check that it is online.';
+  String get herdrErrorUnreachable => _zh
+      ? '连不上节点的 SSH，检查它是否在线。'
+      : 'Could not reach the node over SSH; check that it is online.';
+  String get herdrErrorAuth => _zh
+      ? 'SSH 登录被拒绝，检查用户名、密钥或密码。'
+      : 'The SSH login was refused; check the user, key or password.';
+  String get herdrErrorPassphrase =>
+      _zh ? '这把密钥需要口令。' : 'That key needs its passphrase.';
+  String get herdrErrorGeneric =>
+      _zh ? '连接 herdr 失败。' : 'Could not connect to herdr.';
+
+  /// One herdr failure in words a person can act on; the Go message stays out
+  /// of the UI.
+  String herdrFailure(String node, HerdrFailure failure) => switch (failure) {
+    HerdrFailure.unknownHost => herdrErrorNoHost(node),
+    HerdrFailure.timeout => herdrErrorTimeout,
+    HerdrFailure.unreachable => herdrErrorUnreachable,
+    HerdrFailure.auth => herdrErrorAuth,
+    HerdrFailure.passphrase => herdrErrorPassphrase,
+    HerdrFailure.notInstalled => herdrNotInstalled,
+    HerdrFailure.notRunning => herdrNotRunning,
+    _ => herdrErrorGeneric,
+  };
+  String get herdrSignInFirst =>
+      _zh ? '先登录 tailnet，再连接 herdr。' : 'Sign in to the tailnet to use herdr.';
+  String get logsWaitingNode => _zh
+      ? '节点启动后这里显示日志。'
+      : 'Logs appear here once the node is running.';
 
   String get agentAddress => _zh ? '会话' : 'Session';
   String get agentDir => _zh ? '目录' : 'Directory';

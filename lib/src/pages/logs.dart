@@ -8,6 +8,7 @@ import '../diagnostics.dart';
 import '../glyphs.dart';
 import '../l10n.dart';
 import '../widgets/foundation.dart';
+import '../widgets/net_loading.dart';
 
 /// `td_logs()` as a monospace, scrollable page.
 class LogsPage extends StatefulWidget {
@@ -96,31 +97,38 @@ class _LogsPageState extends State<LogsPage> {
           InlineNotice(text: _notice, tint: scheme.onSurfaceVariant),
           const SizedBox(height: 14),
         ],
-        Card(
-          radius: AppCorner.xl,
-          padding: EdgeInsets.zero,
-          child: Container(
-            constraints: const BoxConstraints(minHeight: 200),
-            padding: const EdgeInsets.all(14),
-            child: _logs.isEmpty
-                ? Text(
-                    l10n.logsEmpty,
-                    style: AppTextStyle.footnote
-                        .of(context)
-                        .copyWith(color: scheme.onSurfaceVariant),
-                  )
-                : SelectableText(
-                    _logs,
-                    style: AppTextStyle.footnote
-                        .of(context)
-                        .copyWith(
-                          fontFamily: 'DejaVuSansMono',
-                          fontSize: 11,
-                          height: 1.5,
-                        ),
-                  ),
+        if (BackendScope.of(context).tailnetStarting && _logs.isEmpty)
+          NetLoading(
+            title: l10n.tailnetWaiting,
+            caption: l10n.logsWaitingNode,
+            rows: 0,
+          )
+        else
+          Card(
+            radius: AppCorner.xl,
+            padding: EdgeInsets.zero,
+            child: Container(
+              constraints: const BoxConstraints(minHeight: 200),
+              padding: const EdgeInsets.all(14),
+              child: _logs.isEmpty
+                  ? Text(
+                      l10n.logsEmpty,
+                      style: AppTextStyle.footnote
+                          .of(context)
+                          .copyWith(color: scheme.onSurfaceVariant),
+                    )
+                  : SelectableText(
+                      _logs,
+                      style: AppTextStyle.footnote
+                          .of(context)
+                          .copyWith(
+                            fontFamily: 'DejaVuSansMono',
+                            fontSize: 11,
+                            height: 1.5,
+                          ),
+                    ),
+            ),
           ),
-        ),
       ],
     );
   }

@@ -145,8 +145,14 @@ class _AgentChatPageState extends State<AgentChatPage> {
       });
     } on Object catch (error) {
       if (!mounted) return;
+      final message = _message(error);
+      final failure = HerdrFailure.of(message);
       setState(() {
-        _error = _message(error);
+        _error = failure == HerdrFailure.other
+            ? message
+            : AppLocalizations.of(
+                context,
+              ).herdrFailure(widget.herdr.node, failure);
         _loading = false;
       });
     }

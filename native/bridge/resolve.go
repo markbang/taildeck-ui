@@ -3,6 +3,7 @@ package tsbridge
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net"
 	"net/netip"
 	"sort"
@@ -10,6 +11,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/sagernet/tailscale/ipn"
+	"github.com/sagernet/tailscale/ipn/ipnstate"
 )
 
 type peerNames struct {
@@ -19,68 +23,115 @@ type peerNames struct {
 	prefixes []netip.Prefix // peer addresses and approved subnet routes
 }
 
+// normalizeName compares peer names and MagicDNS names without their case,
+// trailing dot or IPv6 brackets.
+func normalizeName(host string) string {
+	return strings.ToLower(strings.TrimSuffix(strings.Trim(host, "[]"), "."))
+}
+
 // resolveHost maps a bare peer name ("nas") or MagicDNS name to its tailnet
 // IP so users can type short names regardless of the tailnet's search domain.
 func (e *engine) resolveHost(host string) string {
-	key := strings.ToLower(strings.TrimSuffix(host, "."))
-	if _, err := netip.ParseAddr(strings.Trim(key, "[]")); err == nil {
-		return host
-	}
-	e.names.mu.Lock()
-	defer e.names.mu.Unlock()
-	e.refreshNamesLocked()
-	if ip, ok := e.names.byName[key]; ok {
+	if ip, ok := e.peerIP(host); ok {
 		return ip
 	}
 	return host
 }
 
-func (e *engine) refreshNamesLocked() {
-	if time.Since(e.names.updated) > 10*time.Second || e.names.byName == nil {
-		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-		st, err := e.lc.Status(ctx)
-		cancel()
-		if err == nil {
-			m := map[string]string{}
-			var prefixes []netip.Prefix
-			for _, p := range st.Peer {
-				if p.AllowedIPs != nil {
-					for _, pfx := range p.AllowedIPs.All() {
-						// Skip exit-node default routes; only tailnet-specific space counts.
-						if pfx.Bits() > 0 {
-							prefixes = append(prefixes, pfx)
-						}
-					}
-				}
-				if len(p.TailscaleIPs) == 0 {
-					continue
-				}
-				ip := p.TailscaleIPs[0].String()
-				dns := strings.ToLower(strings.TrimSuffix(p.DNSName, "."))
-				if dns != "" {
-					m[dns] = ip
-					if label, _, ok := strings.Cut(dns, "."); ok {
-						m[label] = ip
-					}
-				}
-				if h := strings.ToLower(p.HostName); h != "" {
-					if _, exists := m[h]; !exists {
-						m[h] = ip
-					}
+// peerIP reads the status peer table. A miss forces one re-read: right after
+// the node starts the table can still be empty.
+func (e *engine) peerIP(host string) (string, bool) {
+	key := normalizeName(host)
+	if key == "" {
+		return "", false
+	}
+	e.names.mu.Lock()
+	defer e.names.mu.Unlock()
+	e.refreshNamesLocked(false)
+	if ip, ok := e.names.byName[key]; ok {
+		return ip, true
+	}
+	e.refreshNamesLocked(true)
+	ip, ok := e.names.byName[key]
+	return ip, ok
+}
+
+// dialTarget returns the address an SSH client dials for host: a peer IP from
+// the status table, else the name through the node's own MagicDNS, never the
+// system resolver.
+func (e *engine) dialTarget(ctx context.Context, host string, port int) (string, error) {
+	if ip, err := netip.ParseAddr(normalizeName(host)); err == nil {
+		return net.JoinHostPort(ip.String(), strconv.Itoa(port)), nil
+	}
+	if ip, ok := e.peerIP(host); ok {
+		return net.JoinHostPort(ip, strconv.Itoa(port)), nil
+	}
+	if !e.nodeRunning(ctx) {
+		return "", fmt.Errorf("cannot reach %q: the tailnet node is not running", host)
+	}
+	return net.JoinHostPort(host, strconv.Itoa(port)), nil
+}
+
+// nodeRunning reports whether the node reached Running; only then does tsnet
+// answer MagicDNS names itself.
+func (e *engine) nodeRunning(ctx context.Context) bool {
+	st, err := e.lc.Status(ctx)
+	return err == nil && st.BackendState == ipn.Running.String()
+}
+
+func (e *engine) refreshNamesLocked(force bool) {
+	if !force && e.names.byName != nil && time.Since(e.names.updated) <= 10*time.Second {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	st, err := e.lc.Status(ctx)
+	cancel()
+	if err != nil {
+		return
+	}
+	e.names.byName, e.names.prefixes = peerTable(st)
+	e.names.updated = time.Now()
+}
+
+// peerTable maps every peer's host name and MagicDNS name (also its first
+// label) to its tailnet IP, and collects the routes it advertises.
+func peerTable(st *ipnstate.Status) (map[string]string, []netip.Prefix) {
+	m := map[string]string{}
+	var prefixes []netip.Prefix
+	for _, p := range st.Peer {
+		if p.AllowedIPs != nil {
+			for _, pfx := range p.AllowedIPs.All() {
+				// Skip exit-node default routes; only tailnet-specific space counts.
+				if pfx.Bits() > 0 {
+					prefixes = append(prefixes, pfx)
 				}
 			}
-			e.names.byName = m
-			e.names.prefixes = prefixes
-			e.names.updated = time.Now()
+		}
+		if len(p.TailscaleIPs) == 0 {
+			continue
+		}
+		ip := p.TailscaleIPs[0].String()
+		dns := normalizeName(p.DNSName)
+		if dns != "" {
+			m[dns] = ip
+			if label, _, ok := strings.Cut(dns, "."); ok {
+				m[label] = ip
+			}
+		}
+		if h := normalizeName(p.HostName); h != "" {
+			if _, exists := m[h]; !exists {
+				m[h] = ip
+			}
 		}
 	}
+	return m, prefixes
 }
 
 func (e *engine) inTailnet(ip netip.Addr) bool {
 	ip = ip.Unmap()
 	e.names.mu.Lock()
 	defer e.names.mu.Unlock()
-	e.refreshNamesLocked()
+	e.refreshNamesLocked(false)
 	for _, p := range e.names.prefixes {
 		if p.Contains(ip) {
 			return true

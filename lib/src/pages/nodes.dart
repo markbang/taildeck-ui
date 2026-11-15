@@ -11,6 +11,7 @@ import '../glyphs.dart';
 import '../motion.dart';
 import '../widgets/controls.dart';
 import '../widgets/foundation.dart';
+import '../widgets/net_loading.dart';
 import '../widgets/wavy.dart';
 
 class NodesPage extends StatelessWidget {
@@ -36,6 +37,8 @@ class NodesPage extends StatelessWidget {
         ? backend.peers
         : (demoData ? demoPeers : const <NodeItem>[]);
     final online = nodes.where((node) => node.online).toList();
+    // Nothing to show yet: the node is coming up, not missing.
+    final starting = backend.tailnetStarting;
     return PageBody(
       title: live ? backend.tailnet : (demoData ? demoTailnet : l10n.tabNodes),
       onRefresh: live ? backend.refresh : null,
@@ -55,7 +58,12 @@ class NodesPage extends StatelessWidget {
           onChanged: (_) {},
         ),
         const SizedBox(height: 14),
-        if (self case final self?) ...[
+        if (starting)
+          NetLoading(
+            title: l10n.tailnetWaiting,
+            caption: l10n.tailnetWaitingBody,
+          )
+        else if (self case final self?) ...[
           Reveal(
             key: const ValueKey('self-card'),
             child: _SelfCard(
@@ -70,23 +78,24 @@ class NodesPage extends StatelessWidget {
           ),
           const SizedBox(height: 14),
         ],
-        Reveal(
-          key: const ValueKey('peer-list'),
-          index: 1,
-          child: nodes.isEmpty
-              ? _EmptyNodes(text: l10n.nodesEmpty)
-              : AnimatedGroupCard(
-                  dividerInset: 60,
-                  children: [
-                    for (final node in nodes)
-                      _PeerRow(
-                        key: ValueKey(node.name),
-                        node: node,
-                        onTap: () => onOpenNode(node),
-                      ),
-                  ],
-                ),
-        ),
+        if (!starting)
+          Reveal(
+            key: const ValueKey('peer-list'),
+            index: 1,
+            child: nodes.isEmpty
+                ? _EmptyNodes(text: l10n.nodesEmpty)
+                : AnimatedGroupCard(
+                    dividerInset: 60,
+                    children: [
+                      for (final node in nodes)
+                        _PeerRow(
+                          key: ValueKey(node.name),
+                          node: node,
+                          onTap: () => onOpenNode(node),
+                        ),
+                    ],
+                  ),
+          ),
       ],
     );
   }

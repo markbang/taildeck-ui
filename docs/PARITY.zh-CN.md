@@ -41,7 +41,7 @@ Flutter 客户端对 [markbang/taildeck](https://github.com/markbang/taildeck)�
 | 打开服务 | 应用内 WebView 或经网关用默认浏览器 | 按设置分流：Android/iOS 用应用内 WebView，其他平台用默认浏览器，两者都经 `127.0.0.1:18680` | 未验证 | 共用 `gatewayUrl` 与分流已接好，回退提示有截图；网关仍未实际跑通 |
 | 18680 网关 | 本地回环正向代理，每个服务独立源 | 复用 `bridge/` 里的同一 Go 网关 | 未验证 | 代码原样复用，但需要运行中的节点才能测 |
 | 应用内 WebView | 支持代理覆盖的 WebView，tailnet 主机走网关 | `webview_flutter` 加载网关地址，带返回/刷新、进度与重试 | 部分 | 仅 Android 与 iOS；桌面和网页仍用系统浏览器并就地说明。未在真机上跑过；下载、文件选择与 HTTP 认证尚未接入 |
-| Agents 列表 | 按工作区的 herdr pane、状态、错误 | 经 SSH 读取真实 `agent.list`，工作区分区、状态胶囊、连接卡片 | 部分 | 已实现，错误状态验证过；真实 pane 未测 |
+| Agents 列表 | 按工作区的 herdr pane、状态、错误 | 经 SSH 读取真实 `agent.list`，工作区分区、状态胶囊；连接表单收在「连接设置」后面 | 部分 | 启动先等节点 Running 且读到对端表，最多重试三次，错误给人话并带「重试」；`android-smoke` 里的 `tool/agents_android.sh` 覆盖冷启动。真实 pane 未测 |
 | Agent 聊天 | 会话记录、输入、重启、模型切换、更多历史 | 会话记录或屏幕文本、输入、重启、`/model` 与 effort 选择、翻页 | 部分 | 同样没有真实 herdr；缺的东西见下面几行 |
 | 通知 | 在通知里允许 / 拒绝 / 回复 | `flutter_local_notifications`，应用在后台时 pane 变为 `blocked` 或 `done` 就提醒，点按打开该 pane 的聊天；设置里有中英文开关 | 部分 | 目前只能点按打开，还没有允许 / 拒绝 / 回复按钮。Android 与 iOS 已构建；没有真机，投递与权限弹窗未验证 |
 | 消息队列 | 代理忙时排队发送 | 本地排队，代理空闲后逐条发出，可取消或立即发送 | 部分 | 代理工作时入队、`done`/`idle` 后发出；没有真实 herdr 观察代理侧表现 |
@@ -53,6 +53,7 @@ Flutter 客户端对 [markbang/taildeck](https://github.com/markbang/taildeck)�
 | Android 前台服务 | 退到后台时保持节点存活 | `dataSync` 前台服务加一条低优先级通知，节点进入 `Running` 时启动，停止或退出登录时结束 | 未验证 | 已进合并后的 manifest 和 debug APK；没有真机确认进程退到后台后仍存活 |
 | Android 网络钩子 | 基于 ConnectivityManager 的网卡和 DNS | `PlatformBridge.kt` + JNI（`platform_jni.c`），`"platform": "host"` | 已完成 | #16 合入；CI 能构建，尚未在真机运行 |
 | Android 系统返回键 | Compose 返回栈；在节点列表按返回会退出应用 | `lib/src/back.dart` 一条策略：先关弹窗/对话框/菜单，再退当前页，再回第一个标签，最后需连按两次才退出 | 已完成 | `android-smoke` 里 `tool/back_android.sh` 在模拟器上发真实返回键，逐步校验、进程和前台 Activity |
+| 启动状态 | 节点上报前显示空列表 | 节点、服务、代理、日志在节点 Running（或彻底失败）前显示加载状态；节点名经 tsnet 对端表解析，不走系统解析器 | 完成 | `tool/agents_android.sh` 与网页预览（`?tailnet=starting`、`?herdr=tailnet|connecting|error`）；解析逻辑有 Go 测试 |
 | 无障碍 | Compose 语义 | 读屏标签、Esc 关闭、减少动态效果、文字缩放限制在 0.9–1.3 | 已完成 | #15 合入；有减少动态效果和缩放的截图 |
 | Linux 桌面 | — | 带两个原生库的产物，CI 在 Xvfb 里运行 | 已完成 | Kotlin 版之外新增 |
 | Windows / macOS | — | 打 tag 或手动触发时构建未签名包，DLL/dylib 已接好 | 未验证 | 从未启动 |

@@ -16,6 +16,7 @@ import '../widgets/controls.dart';
 import '../widgets/foundation.dart';
 import 'service_sheet.dart';
 import '../widgets/loading.dart';
+import '../widgets/net_loading.dart';
 
 class ServicesPage extends StatefulWidget {
   const ServicesPage({super.key});
@@ -111,7 +112,9 @@ class _ServicesPageState extends State<ServicesPage> {
     final backend = BackendScope.of(context);
     final nodes = backend.available
         ? backend.nodes
-        : (demoData ? [demoSelfNode, ...demoPeers] : const <NodeItem>[]);
+        : (demoData && !backend.tailnetStarting
+              ? [demoSelfNode, ...demoPeers]
+              : const <NodeItem>[]);
     final byName = {for (final node in nodes) node.name: node};
     return PageBody(
       title: l10n.tabServices,
@@ -127,6 +130,16 @@ class _ServicesPageState extends State<ServicesPage> {
             tint: context.colorScheme.onSurfaceVariant,
           ),
           const SizedBox(height: 14),
+        ],
+        // Node badges arrive with the status; until then the page says so
+        // instead of drawing every service as unknown.
+        if (backend.tailnetStarting) ...[
+          NetLoading(
+            title: l10n.tailnetWaiting,
+            caption: l10n.tailnetWaitingBody,
+            rows: 0,
+          ),
+          const SizedBox(height: 18),
         ],
         if (store.all.isEmpty)
           Padding(
