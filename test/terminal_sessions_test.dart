@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:taildeck_ui/src/data.dart';
+import 'package:taildeck_ui/src/demo/demo.dart';
 import 'package:taildeck_ui/src/l10n.dart';
 import 'package:taildeck_ui/src/pages/terminal_sessions.dart';
 import 'package:taildeck_ui/src/terminal_appearance.dart';
@@ -15,11 +15,11 @@ void main() {
     tester,
   ) async {
     final first = store.open(
-      node: selfNode,
+      node: demoSelfNode,
       credentials: const SshCredentials(user: 'root', port: 22),
     );
     final second = store.open(
-      node: peers.first,
+      node: demoPeers.first,
       credentials: const SshCredentials(user: 'deploy', port: 2222),
     );
     SshTerminal? switched;
@@ -39,14 +39,14 @@ void main() {
       ),
     );
 
-    expect(find.text('root@${selfNode.name}'), findsOneWidget);
-    expect(find.text('deploy@${peers.first.name}'), findsOneWidget);
+    expect(find.text('root@${demoSelfNode.name}'), findsOneWidget);
+    expect(find.text('deploy@${demoPeers.first.name}'), findsOneWidget);
 
-    await tester.tap(find.text('deploy@${peers.first.name}'));
+    await tester.tap(find.text('deploy@${demoPeers.first.name}'));
     expect(switched, same(second));
 
     switched = null;
-    await tester.tap(find.text('root@${selfNode.name}'));
+    await tester.tap(find.text('root@${demoSelfNode.name}'));
     expect(switched, isNull, reason: 'the open session is not a switch');
   });
 }
