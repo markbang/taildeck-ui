@@ -19,6 +19,7 @@ built on [prism_ui](https://github.com/chen08209/prism_ui) — the iOS-style des
 | ![Login](docs/screenshots/login.png) | ![SSH terminal](docs/screenshots/terminal.png) |
 | ![Last seen and key expiry](docs/screenshots/nodes-last-seen-en.png) | ![Add service](docs/screenshots/m3-add-service.png) |
 | ![Port scan](docs/screenshots/m3-scan.png) | ![Native terminal](docs/screenshots/m2-terminal.png) |
+| ![Settings](docs/screenshots/settings.png) | ![A settings group](docs/screenshots/settings-tailnet.png) |
 
 ## Platforms
 
