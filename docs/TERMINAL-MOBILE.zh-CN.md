@@ -43,6 +43,14 @@
 
 `tool/termsend_record.sh`（工作流 `termsend-record`）录制发送写出的字节。演示会话把每个字节按插入符记法回显，所以 CR 在网格上显示成 `^M`：`term-send-button.png` 是输入行的发送（`echo send^M`），`term-send-ime.png` 是软键盘的回车（`echo enter^M`），`term-send-ime-action.png` 是 Gboard 自己的发送键（`echo action^M`，键盘不把按键放进无障碍树，所以按颜色找触点），`term-send-insert.png` 与 `-insert-cr.png` 是长按发送改成只插入：先插入 `echo ins` 不回车，再单独发一个 CR。旁边的录屏是同名的 `term-send-*.mp4`。模拟器连不上 tailnet，这些命令没有真实 shell 执行，因此 `echo` 的实际输出、历史调用与补全未实机验证。
 
+`tool/termsessions_record.sh`（工作流 `termsessions-record`）在模拟器上跑同一批流程，对面是真 shell：录制机起一个测试控制面加两个对等节点，`motion_peer` 现在也在 22 端口提供 SSH（任意密钥或密码，pty 上跑 bash），应用因此能拨到真实会话。
+
+桌面版在这台机器上对同一张 tailnet 跑过这些流程，`docs/screenshots/term-*` 里的静帧就来自那里：真实提示符、备用屏上的 `htop`（`term-htop.png`）、插入模式下的 vim 与中文（`term-vim.png`）、一条在远端执行 `df -h /autodl-fs` 的命令片段（`term-snippet-sent.png`）、会话条里的两条会话切换后第一条回滚仍在（`term-sessions.png`）、红色“已断开”与“重连”（`term-reconnect.png`）以及一点之后恢复的同一会话（`term-reconnect-restored.png`）。主题、字体、光标的静帧同样出自原生渲染器（`term-theme-*.png`、`term-font-sans.png`、`term-cursor-*.png`），设置页的截图是 `term-settings-appearance.png` 与 `term-settings-applied.png`。
+
+Android 的静帧和片段来自 `termsessions-record` 那次运行：跑在对等节点真实会话上的画面（`term-android-session.png`）、一条在远端执行 `df -h /` 的命令片段（`term-android-snippet.png`、`term-snippets.mp4`）、会话条里的两条会话（`term-android-sessions.png`、`term-sessions-switch.mp4`），以及经设置切换的主题（`term-theme.mp4`、`term-android-settings.png`）。
+
+有两项没有在这里验证：Android 构建、前台服务以及屏幕缺口——桌面窗口没有刘海、没有手势条，也没有 `dataSync` 服务，所以安全区域和“后台保持”还没验到；模拟器那次录制也漏掉了光标与字体两行（落点压在了浮动导航条上），这两张静帧仍是桌面渲染器的。另外桌面版在输入行快速打字时偶尔会重复一个字符（GTK 在缓冲区被清空的同一刻把同一次按键送了两遍），问题在输入行而不在会话，按每 400 ms 一个字符输入则不会出现。
+
 模拟器无法验证的：捏合本身。它的触摸输入是一组 `virtio_input_multi_touch_*` 设备，没有 `INPUT_PROP_DIRECT`，注入的双指触点会被当成鼠标拖动；`adb shell input` 也没有多点命令。缩放的计算（步长、上下限）由 `test/terminal_gestures_test.dart` 覆盖，设置里的 A± 走的是同一个 setter、同样会触发网格重排。另外这里连不上任何 tailnet，所以没有对真实 shell（vim、htop、tmux）验证过。
 
 ## 来源

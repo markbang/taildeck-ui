@@ -1,5 +1,7 @@
+import '../terminal_appearance.dart';
 import '../terminal_gestures.dart';
 import '../terminal_keys.dart';
+import '../terminal_snippets.dart';
 import 'storage_stub.dart' if (dart.library.io) 'storage_io.dart';
 
 class StoredConfig {
@@ -16,6 +18,12 @@ class StoredConfig {
     this.terminalSwipeArrows = true,
     this.terminalKeyRowWithKeyboard = false,
     this.terminalSendEnter = true,
+    this.terminalTheme = TerminalThemeId.follow,
+    this.terminalFont = TerminalFontId.dejavu,
+    this.terminalCursor = TerminalCursorId.follow,
+    this.terminalCursorBlink = true,
+    this.terminalKeepAlive = true,
+    this.terminalSnippets = const [],
     this.herdrNode = '',
     this.herdrUser = 'root',
     this.herdrPort = 22,
@@ -43,6 +51,12 @@ class StoredConfig {
     terminalKeyRowWithKeyboard:
         json['terminalKeyRowWithKeyboard'] as bool? ?? false,
     terminalSendEnter: json['terminalSendEnter'] as bool? ?? true,
+    terminalTheme: parseTerminalThemeId(json['terminalTheme']),
+    terminalFont: parseTerminalFontId(json['terminalFont']),
+    terminalCursor: parseTerminalCursorId(json['terminalCursor']),
+    terminalCursorBlink: json['terminalCursorBlink'] as bool? ?? true,
+    terminalKeepAlive: json['terminalKeepAlive'] as bool? ?? true,
+    terminalSnippets: parseTerminalSnippets(json['terminalSnippets']),
     herdrNode: json['herdrNode'] as String? ?? '',
     herdrUser: json['herdrUser'] as String? ?? 'root',
     herdrPort: (json['herdrPort'] as num?)?.toInt() ?? 22,
@@ -98,6 +112,18 @@ class StoredConfig {
 
   /// Whether Send presses Enter after the line. Off inserts the text only.
   final bool terminalSendEnter;
+  /// Appearance: theme, family, cursor shape and blink.
+  final TerminalThemeId terminalTheme;
+  final TerminalFontId terminalFont;
+  final TerminalCursorId terminalCursor;
+  final bool terminalCursorBlink;
+
+  /// Whether SSH sessions stay alive with the app in the background; off,
+  /// they end when the app leaves the foreground.
+  final bool terminalKeepAlive;
+
+  /// Named commands in the terminal drawer.
+  final List<TerminalSnippet> terminalSnippets;
 
   /// Node, user and auth the Agents page reconnects to herdr with. The
   /// password itself is never written.
@@ -125,6 +151,14 @@ class StoredConfig {
     'terminalSwipeArrows': terminalSwipeArrows,
     'terminalKeyRowWithKeyboard': terminalKeyRowWithKeyboard,
     'terminalSendEnter': terminalSendEnter,
+    'terminalTheme': terminalTheme.name,
+    'terminalFont': terminalFont.name,
+    'terminalCursor': terminalCursor.name,
+    'terminalCursorBlink': terminalCursorBlink,
+    'terminalKeepAlive': terminalKeepAlive,
+    'terminalSnippets': [
+      for (final snippet in terminalSnippets) snippet.toJson(),
+    ],
     'herdrNode': herdrNode,
     'herdrUser': herdrUser,
     'herdrPort': herdrPort,

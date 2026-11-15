@@ -4,6 +4,7 @@ import 'package:flutter/widgets.dart';
 import 'package:prism_ui/prism_ui.dart';
 
 import '../l10n.dart';
+import '../terminal_appearance.dart';
 import '../terminal_keys.dart';
 import '../widgets/controls.dart';
 
@@ -17,6 +18,8 @@ class TerminalKeyBar extends StatefulWidget {
     required this.onKey,
     required this.onModifier,
     this.active = const {},
+    this.palette = defaultTerminalPalette,
+    this.bottomInset = 0,
   });
 
   final List<List<String>> pages;
@@ -26,6 +29,11 @@ class TerminalKeyBar extends StatefulWidget {
   final Set<String> active;
   final ValueChanged<TerminalKey> onKey;
   final ValueChanged<TerminalMod> onModifier;
+  final TerminalPalette palette;
+
+  /// Gesture bar or cutout below the row: the row's own background covers it,
+  /// so the row sits on the same surface as the rest of the page.
+  final double bottomInset;
 
   @override
   State<TerminalKeyBar> createState() => _TerminalKeyBarState();
@@ -79,12 +87,14 @@ class _TerminalKeyBarState extends State<TerminalKeyBar> {
       explicitChildNodes: true,
       label: l10n.a11yTerminalKeyRow(total),
       child: DecoratedBox(
-        decoration: const BoxDecoration(
-          color: _TerminalKeyColors.background,
-          border: Border(top: BorderSide(color: Color(0x14FFFFFF), width: 0.5)),
+        decoration: BoxDecoration(
+          color: widget.palette.chrome,
+          border: Border(
+            top: BorderSide(color: widget.palette.border, width: 0.5),
+          ),
         ),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(6, 5, 6, 7),
+          padding: EdgeInsets.fromLTRB(6, 5, 6, 7 + widget.bottomInset),
           child: Row(
             children: [
               Expanded(
@@ -109,6 +119,7 @@ class _TerminalKeyBarState extends State<TerminalKeyBar> {
                                   onKey: widget.onKey,
                                   onModifier: widget.onModifier,
                                   active: widget.active.contains(key.id),
+                                  palette: widget.palette,
                                 ),
                               ),
                             ),
@@ -123,6 +134,7 @@ class _TerminalKeyBarState extends State<TerminalKeyBar> {
                   total: total,
                   label: l10n.a11yTerminalKeyPage(index + 1, total),
                   hint: l10n.a11yTerminalKeyPageNext,
+                  palette: widget.palette,
                   onTap: () => _step(index, total),
                 ),
             ],
@@ -133,15 +145,6 @@ class _TerminalKeyBarState extends State<TerminalKeyBar> {
   }
 }
 
-abstract final class _TerminalKeyColors {
-  static const background = Color(0xFF0D0F13);
-  static const fill = Color(0xFF15181F);
-  static const border = Color(0x1FFFFFFF);
-  static const accent = Color(0xFF7FB4FF);
-  static const label = Color(0xFFC9CDD6);
-  static const lockedLabel = Color(0xFF0B0D10);
-}
-
 class _KeyButton extends StatefulWidget {
   const _KeyButton({
     required this.terminalKey,
@@ -149,6 +152,7 @@ class _KeyButton extends StatefulWidget {
     required this.onKey,
     required this.onModifier,
     this.active = false,
+    required this.palette,
   });
 
   final TerminalKey terminalKey;
@@ -158,6 +162,7 @@ class _KeyButton extends StatefulWidget {
   final bool active;
   final ValueChanged<TerminalKey> onKey;
   final ValueChanged<TerminalMod> onModifier;
+  final TerminalPalette palette;
 
   @override
   State<_KeyButton> createState() => _KeyButtonState();
@@ -253,16 +258,16 @@ class _KeyButtonState extends State<_KeyButton> {
             alignment: Alignment.center,
             decoration: ShapeDecoration(
               color: locked
-                  ? _TerminalKeyColors.accent
+                  ? widget.palette.accent
                   : armed
-                  ? _TerminalKeyColors.accent.withValues(alpha: 0.26)
-                  : _TerminalKeyColors.fill,
+                  ? widget.palette.accent.withValues(alpha: 0.26)
+                  : widget.palette.surface,
               shape: RoundedRectangleBorder(
                 borderRadius: radius,
                 side: BorderSide(
                   color: active
-                      ? _TerminalKeyColors.accent
-                      : _TerminalKeyColors.border,
+                      ? widget.palette.accent
+                      : widget.palette.border,
                   width: active ? 1 : 0.5,
                 ),
               ),
@@ -273,13 +278,13 @@ class _KeyButtonState extends State<_KeyButton> {
               overflow: TextOverflow.clip,
               textAlign: TextAlign.center,
               style: TextStyle(
-                fontFamily: 'DejaVuSansMono',
+                fontFamily: terminalFontFamily(TerminalFontId.dejavu),
                 fontSize: 11.5,
                 height: 1.1,
                 fontWeight: active ? FontWeight.w700 : FontWeight.w500,
                 color: locked
-                    ? _TerminalKeyColors.lockedLabel
-                    : _TerminalKeyColors.label,
+                    ? widget.palette.background
+                    : widget.palette.foreground,
                 decoration: TextDecoration.none,
               ),
             ),
@@ -296,6 +301,7 @@ class _PageDots extends StatelessWidget {
     required this.total,
     required this.label,
     required this.hint,
+    required this.palette,
     required this.onTap,
   });
 
@@ -303,6 +309,7 @@ class _PageDots extends StatelessWidget {
   final int total;
   final String label;
   final String hint;
+  final TerminalPalette palette;
   final VoidCallback onTap;
 
   @override
@@ -331,8 +338,8 @@ class _PageDots extends StatelessWidget {
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     color: i == index
-                        ? _TerminalKeyColors.accent
-                        : const Color(0x3DFFFFFF),
+                        ? palette.accent
+                        : palette.foreground.withValues(alpha: 0.24),
                   ),
                 ),
             ],

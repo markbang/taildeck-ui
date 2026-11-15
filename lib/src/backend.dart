@@ -11,12 +11,15 @@ import 'native/bridge.dart';
 import 'native/node_service.dart';
 import 'native/platform_hooks.dart';
 import 'native/ssh.dart';
+import 'preview_env.dart';
 import 'native/storage.dart';
 import 'services.dart';
 import 'notifications.dart';
 import 'ssh_identities.dart';
+import 'terminal_appearance.dart';
 import 'terminal_gestures.dart';
 import 'terminal_keys.dart';
+import 'terminal_snippets.dart';
 
 enum BackendState { unavailable, stopped, starting, needsLogin, running, error }
 
@@ -48,6 +51,19 @@ class TaildeckBackend extends ChangeNotifier {
   TaildeckBackend._(this._bridge, this._storage, this.notifications)
     : _herdr = _bridge == null ? null : HerdrController(_bridge) {
     _herdr?.onAttention = _onAttention;
+    _applyPreviewAppearance();
+  }
+
+  /// `?term=paper&font=systemMono&cursor=bar&blink=0` previews the terminal's
+  /// look without a Settings round trip; it beats the stored config.
+  void _applyPreviewAppearance() {
+    final theme = previewParam('term');
+    final font = previewParam('font');
+    final cursor = previewParam('cursor');
+    if (theme != null) _terminalTheme = parseTerminalThemeId(theme);
+    if (font != null) _terminalFont = parseTerminalFontId(font);
+    if (cursor != null) _terminalCursor = parseTerminalCursorId(cursor);
+    if (previewParam('blink') == '0') _terminalCursorBlink = false;
   }
 
   static const defaultHostname = 'taildeck';
@@ -91,6 +107,12 @@ class TaildeckBackend extends ChangeNotifier {
   bool _terminalSwipeArrows = true;
   bool _terminalKeyRowWithKeyboard = false;
   bool _terminalSendEnter = true;
+  TerminalThemeId _terminalTheme = TerminalThemeId.follow;
+  TerminalFontId _terminalFont = TerminalFontId.dejavu;
+  TerminalCursorId _terminalCursor = TerminalCursorId.follow;
+  bool _terminalCursorBlink = true;
+  bool _terminalKeepAlive = true;
+  List<TerminalSnippet> _terminalSnippets = const [];
   String _platform = 'go';
   String _platformWarning = '';
   bool _herdrAutoTried = false;
@@ -157,6 +179,17 @@ class TaildeckBackend extends ChangeNotifier {
 
   /// Whether Send presses Enter after the line; off inserts the text only.
   bool get terminalSendEnter => _terminalSendEnter;
+  /// Appearance of the terminal page and grid.
+  TerminalThemeId get terminalTheme => _terminalTheme;
+  TerminalFontId get terminalFont => _terminalFont;
+  TerminalCursorId get terminalCursor => _terminalCursor;
+  bool get terminalCursorBlink => _terminalCursorBlink;
+
+  /// Whether SSH sessions stay up while the app is in the background.
+  bool get terminalKeepAlive => _terminalKeepAlive;
+
+  /// Named commands for the terminal drawer.
+  List<TerminalSnippet> get terminalSnippets => _terminalSnippets;
 
   /// herdr link, agent list and pane calls; null without a native backend.
   HerdrController? get herdr => _herdr;
@@ -237,6 +270,12 @@ class TaildeckBackend extends ChangeNotifier {
       _terminalSwipeArrows = config.terminalSwipeArrows;
       _terminalKeyRowWithKeyboard = config.terminalKeyRowWithKeyboard;
       _terminalSendEnter = config.terminalSendEnter;
+      _terminalTheme = config.terminalTheme;
+      _terminalFont = config.terminalFont;
+      _terminalCursor = config.terminalCursor;
+      _terminalCursorBlink = config.terminalCursorBlink;
+      _terminalKeepAlive = config.terminalKeepAlive;
+      _terminalSnippets = config.terminalSnippets;
       notifications.setEnabled(config.agentNotifications);
       _herdrNode = config.herdrNode;
       _herdrUser = config.herdrUser;
@@ -600,8 +639,13 @@ class TaildeckBackend extends ChangeNotifier {
     return granted;
   }
 
-  /// The app's lifecycle, so alerts only fire while it is away.
-  void setForeground(bool value) => _foreground = value;
+  /// The app's lifecycle: alerts fire only while it is away, and without
+  /// background keep-alive the foreground service follows the app.
+  void setForeground(bool value) {
+    if (value == _foreground) return;
+    _foreground = value;
+    _syncService();
+  }
 
   /// Language the notification text is written in.
   void setNotificationLanguage(String code) => notifications.setLanguage(code);
@@ -655,6 +699,61 @@ class TaildeckBackend extends ChangeNotifier {
     notifyListeners();
     await _persist();
   }
+
+  Future<void> setTerminalTheme(TerminalThemeId value) async {
+    if (value == _terminalTheme) return;
+    _terminalTheme = value;
+    notifyListeners();
+    await _persist();
+  }
+
+  Future<void> setTerminalFont(TerminalFontId value) async {
+    if (value == _terminalFont) return;
+    _terminalFont = value;
+    notifyListeners();
+    await _persist();
+  }
+
+  Future<void> setTerminalCursor(TerminalCursorId value) async {
+    if (value == _terminalCursor) return;
+    _terminalCursor = value;
+    notifyListeners();
+    await _persist();
+  }
+
+  Future<void> setTerminalCursorBlink(bool value) async {
+    if (value == _terminalCursorBlink) return;
+    _terminalCursorBlink = value;
+    notifyListeners();
+    await _persist();
+  }
+
+  /// Background keep-alive; off, the Android foreground service stops with the
+  /// app in the background and the shell ends its sessions.
+  Future<void> setTerminalKeepAlive(bool value) async {
+    if (value == _terminalKeepAlive) return;
+    _terminalKeepAlive = value;
+    notifyListeners();
+    _syncService();
+    await _persist();
+  }
+
+  Future<void> setTerminalSnippets(List<TerminalSnippet> value) async {
+    final next = parseTerminalSnippets([
+      for (final snippet in value) snippet.toJson(),
+    ]);
+    if (_snippetsSignature(next) == _snippetsSignature(_terminalSnippets)) {
+      return;
+    }
+    _terminalSnippets = next;
+    notifyListeners();
+    await _persist();
+  }
+
+  static String _snippetsSignature(List<TerminalSnippet> snippets) => [
+    for (final snippet in snippets)
+      '${snippet.id}\u0000${snippet.name}\u0000${snippet.enter}\u0000${snippet.command}',
+  ].join('\u0001');
 
   /// Pages of the extra key row; unknown ids and duplicates are dropped.
   Future<void> setTerminalKeyPages(List<List<String>> pages) async {
@@ -856,12 +955,16 @@ class TaildeckBackend extends ChangeNotifier {
     _syncService();
   }
 
-  /// Android keeps the node in a foreground service only while it runs.
+  /// Android keeps the node in a foreground service while it runs and while
+  /// the app is on screen, or in the background when the user keeps sessions
+  /// alive; sign-out drops the node and with it the service.
   void _syncService() {
-    final running = _state == BackendState.running;
-    if (running == _serviceRunning) return;
-    _serviceRunning = running;
-    unawaited(running ? _service.start() : _service.stop());
+    final wanted =
+        _state == BackendState.running &&
+        (_foreground || _terminalKeepAlive);
+    if (wanted == _serviceRunning) return;
+    _serviceRunning = wanted;
+    unawaited(wanted ? _service.start() : _service.stop());
   }
 
   /// A pane turned blocked or done while the app is away.
@@ -914,6 +1017,12 @@ class TaildeckBackend extends ChangeNotifier {
           terminalSwipeArrows: _terminalSwipeArrows,
           terminalKeyRowWithKeyboard: _terminalKeyRowWithKeyboard,
           terminalSendEnter: _terminalSendEnter,
+          terminalTheme: _terminalTheme,
+          terminalFont: _terminalFont,
+          terminalCursor: _terminalCursor,
+          terminalCursorBlink: _terminalCursorBlink,
+          terminalKeepAlive: _terminalKeepAlive,
+          terminalSnippets: _terminalSnippets,
           agentNotifications: notifications.enabled,
           herdrNode: _herdrNode,
           herdrUser: _herdrUser,
