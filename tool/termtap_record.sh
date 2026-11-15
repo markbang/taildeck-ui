@@ -248,11 +248,15 @@ gate() {
   sleep 4
   [ "$(ime_state)" = "mInputShown=true" ] || fail "tap did not show the IME"
   shot tap-keyboard
-  local focus
-  focus=$(focused_window)
-  case "$focus" in
-    *"$app"*) note "gate: focused window $focus" ;;
-    *) fail "terminal window is not focused: ${focus:-none}" ;;
+  adb shell dumpsys input_method > "$out/input-method-tap.txt" 2> /dev/null || true
+  # With the IME up, dumpsys window's mCurrentFocus is the IME window, so the
+  # focused app comes from the activity instead.
+  local resumed
+  resumed=$(adb shell dumpsys activity activities 2> /dev/null \
+    | grep -m1 'topResumedActivity' | tr -d '\r' || true)
+  case "$resumed" in
+    *"$app"*) note "gate: focused app $resumed" ;;
+    *) fail "terminal is not the resumed activity: ${resumed:-none}" ;;
   esac
 
   tap_grid 0.3 0.35
@@ -275,7 +279,17 @@ gate() {
     fail "typing after the tap did not reach the shell"
   fi
 
-  tap_label 'Hide keyboard' || fail "no Hide keyboard button on the key row"
+  # Enter's IME action may have put the keyboard away, so the row (and its
+  # keyboard button) need the tap again before the button is exercised.
+  tap_grid 0.3 0.35
+  sleep 3
+  [ "$(ime_state)" = "mInputShown=true" ] || fail "the IME was not up for the keyboard button"
+  if ui has 'Hide keyboard' > /dev/null 2>&1; then
+    tap_label 'Hide keyboard' || fail "the keyboard button did not take a tap"
+  else
+    cp "$out/ui.xml" "$out/ui-no-keyboard-button.xml" 2> /dev/null || true
+    fail "no Hide keyboard button on the key row"
+  fi
   sleep 2.5
   [ "$(ime_state)" = "mInputShown=true" ] && fail "the keyboard button did not hide the IME"
   tap_grid 0.3 0.35
