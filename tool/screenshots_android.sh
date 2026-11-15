@@ -42,9 +42,17 @@ shot() { # <name>
   fi
 }
 
-tap() { # <needle>
-  local point
+tap() { # <needle> [x offset from the row's end, in dp]
+  local point bounds density x1 _x2 y1 y2
   if point=$(ui tap "$1"); then
+    if [ -n "${2:-}" ]; then
+      density=$(adb shell wm density 2> /dev/null | sed -n 's/.*Physical density: \([0-9]*\).*/\1/p' | tr -d '\r')
+      bounds=$(ui bounds "$1") || bounds=""
+      if [ -n "$bounds" ]; then
+        read -r x1 y1 _x2 y2 <<< "$bounds"
+        point="$((_x2 - $(awk -v dp="$2" -v dpi="${density:-420}" 'BEGIN { printf "%d", dp * dpi / 160 }'))) $(( (y1 + y2) / 2 ))"
+      fi
+    fi
     adb shell input tap $point > /dev/null 2>&1 || true
     sleep 2
     return 0
@@ -143,8 +151,14 @@ fi
 launch "$settings_url"
 if tap 'Appearance & language'; then
   shot settings-appearance
-  if tap 'Theme'; then
-    sleep 1
+  # The menu opens from the row's value, not its label.
+  if tap 'Theme' 48; then
+    sleep 2
+    if ! ui has 'System' > /dev/null 2>&1; then
+      note "picker: the menu did not open, tapping again"
+      tap 'Theme' 48 || true
+      sleep 2
+    fi
     shot settings-picker
   fi
 fi
@@ -164,7 +178,21 @@ shot settings-bottom-dock
 # status bar behind the scrim.
 launch "taildeck://preview/?preview=1&tab=3&lang=en&scale=1.3"
 swipe_up
+sleep 2
 shot settings-statusbar
+sleep 1
+shot settings-statusbar-settled
+launch "taildeck://preview/?preview=1&tab=3&lang=en&scale=1.3&theme=light"
+sleep 3
+swipe_up
+sleep 2
+shot settings-statusbar-light
+
+# ---- a longer list's foot: the agents page, with its floating button -----
+launch "taildeck://preview/?preview=1&tab=2&lang=en&scale=1.3"
+for _ in 1 2 3 4 5 6 7 8; do swipe_up; done
+sleep 2
+shot agents-bottom-dock
 
 # ---- the key sheet, over the dock ---------------------------------------
 launch "taildeck://preview/?preview=1&sheet=key&lang=en"
