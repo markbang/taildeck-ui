@@ -79,6 +79,13 @@ the same native renderer (`term-theme-*.png`, `term-font-sans.png`,
 `term-cursor-*.png`), and the Settings rows from the app
 (`term-settings-appearance.png`, `term-settings-applied.png`).
 
+The Android stills and clips come from the `termsessions-record` run: a real
+session on the runner's peer (`term-android-session.png`), a snippet that ran
+`df -h /` there (`term-android-snippet.png`, `term-snippets.mp4`), two
+sessions in the strip (`term-android-sessions.png`,
+`term-sessions-switch.mp4`) and the theme switch through Settings
+(`term-theme.mp4`, `term-android-settings.png`).
+
 Two things were not exercised. The Android build, its foreground service and
 the display cutout need the emulator run: the desktop window has no notch, no
 gesture bar and no `dataSync` service, so the safe-area result and the
