@@ -6,6 +6,7 @@ import 'package:prism_ui/prism_ui.dart';
 
 import '../backend.dart';
 import '../data.dart';
+import '../demo/demo.dart';
 import '../glyphs.dart';
 import '../herdr.dart';
 import '../l10n.dart';
@@ -30,8 +31,8 @@ class AgentsPage extends StatefulWidget {
 
 class _AgentsPageState extends State<AgentsPage> {
   /// Demo list: the web preview and hosts without the shared library.
-  late final List<({String section, List<AgentItem> items})> _demo = [
-    for (final group in agents)
+  late final List<({String section, List<DemoAgent> items})> _demo = [
+    for (final group in demoAgents)
       (section: group.section, items: [...group.items]),
   ];
   String _notice = '';
@@ -41,9 +42,9 @@ class _AgentsPageState extends State<AgentsPage> {
     if (choice == null || !mounted) return;
     setState(() {
       final index = _demo.indexWhere((g) => g.section == choice.project);
-      final item = AgentItem(
+      final item = DemoAgent(
         name: choice.harness,
-        state: AgentState.idle,
+        state: DemoAgentState.idle,
         task: choice.task,
         project: choice.project,
         window: 'w1:p1',
@@ -94,7 +95,9 @@ class _AgentsPageState extends State<AgentsPage> {
     final l10n = AppLocalizations.of(context);
     final backend = BackendScope.of(context);
     final herdr = backend.herdr;
-    if (herdr == null) return _demoPage(l10n, backend);
+    if (herdr == null) {
+      return demoData ? _demoPage(l10n, backend) : _unavailablePage(l10n);
+    }
     return ListenableBuilder(
       listenable: herdr,
       builder: (context, _) => Stack(
@@ -311,6 +314,30 @@ class _AgentsPageState extends State<AgentsPage> {
     );
   }
 
+  /// A release build without the native library: no demo cards, just why.
+  Widget _unavailablePage(AppLocalizations l10n) {
+    return PageBody(
+      title: l10n.agentsTitle,
+      subtitle: 'herdr',
+      children: [
+        InlineNotice(
+          text: l10n.herdrNeedsBackend,
+          tint: context.colorScheme.onSurfaceVariant,
+        ),
+        const SizedBox(height: 14),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(6, 24, 6, 8),
+          child: Text(
+            l10n.herdrNoAgents,
+            style: AppTextStyle.subheadline
+                .of(context)
+                .copyWith(color: context.colorScheme.onSurfaceVariant),
+          ),
+        ),
+      ],
+    );
+  }
+
   static List<({String section, List<HerdrAgent> items})> _groups(
     List<HerdrAgent> all,
   ) {
@@ -348,10 +375,10 @@ BlobShape _liveShape(HerdrStatus status) => switch (status) {
   HerdrStatus.idle || HerdrStatus.unknown => BlobShape.cookie4,
 };
 
-BlobShape _demoShape(AgentState state) => switch (state) {
-  AgentState.working => BlobShape.cookie9,
-  AgentState.done => BlobShape.cookie6,
-  AgentState.idle => BlobShape.cookie4,
+BlobShape _demoShape(DemoAgentState state) => switch (state) {
+  DemoAgentState.working => BlobShape.cookie9,
+  DemoAgentState.done => BlobShape.cookie6,
+  DemoAgentState.idle => BlobShape.cookie4,
 };
 
 /// The herdr action: fades and expands in once herdr is ready, as the Kotlin
@@ -440,11 +467,11 @@ String _liveAgentLabel(
   _statusOf(context, agent.status).$1,
 );
 
-String _demoAgentLabel(AppLocalizations l10n, AgentItem agent) =>
+String _demoAgentLabel(AppLocalizations l10n, DemoAgent agent) =>
     l10n.agentSemantics(agent.project, agent.name, switch (agent.state) {
-      AgentState.working => l10n.working,
-      AgentState.idle => l10n.idle,
-      AgentState.done => l10n.done,
+      DemoAgentState.working => l10n.working,
+      DemoAgentState.idle => l10n.idle,
+      DemoAgentState.done => l10n.done,
     });
 
 /// Name, status, task and pane of one live agent.
@@ -542,23 +569,20 @@ class _LiveAgentRow extends StatelessWidget {
 class _DemoAgentRow extends StatelessWidget {
   const _DemoAgentRow({required this.agent});
 
-  final AgentItem agent;
+  final DemoAgent agent;
 
   @override
   Widget build(BuildContext context) {
     final scheme = context.colorScheme;
     final l10n = AppLocalizations.of(context);
     final (label, tint) = switch (agent.state) {
-      AgentState.working => (l10n.working, scheme.primary),
-      AgentState.idle => (l10n.idle, scheme.onSurfaceVariant),
-      AgentState.done => (l10n.done, const Color(0xFF3BB273)),
+      DemoAgentState.working => (l10n.working, scheme.primary),
+      DemoAgentState.idle => (l10n.idle, scheme.onSurfaceVariant),
+      DemoAgentState.done => (l10n.done, const Color(0xFF3BB273)),
     };
-    final task = switch (agent.demoTask) {
-      DemoTask.grafanaAlerts => l10n.demoTaskGrafana,
-      DemoTask.releaseWorkflow => l10n.demoTaskRelease,
-      DemoTask.headscaleBump => l10n.demoTaskHeadscale,
-      null => agent.task,
-    };
+    final task = agent.demoTask == null
+        ? agent.task
+        : demoTaskText(agent.demoTask, zh: l10n.isZh);
     return TapFeedback(
       onTap: () {},
       child: Padding(
@@ -570,7 +594,7 @@ class _DemoAgentRow extends StatelessWidget {
               shape: _demoShape(agent.state),
               color: tint.withValues(alpha: 0.14),
               size: 34,
-              spin: agent.state == AgentState.working,
+              spin: agent.state == DemoAgentState.working,
               child: Text(
                 agent.name.characters.first.toUpperCase(),
                 style: AppTextStyle.subheadline
@@ -720,10 +744,10 @@ class _HerdrConnectCardState extends State<_HerdrConnectCard> {
   }
 
   List<NodeItem> get _nodes =>
-      widget.preview ? [selfNode, ...peers] : widget.backend.nodes;
+      widget.preview ? [demoSelfNode, ...demoPeers] : widget.backend.nodes;
 
   String get _selfName =>
-      widget.preview ? selfNode.name : (widget.backend.self?.name ?? '');
+      widget.preview ? demoSelfNode.name : (widget.backend.self?.name ?? '');
 
   String get _defaultNode {
     final self = _selfName;

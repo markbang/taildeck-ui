@@ -213,6 +213,8 @@ jobs:
             echo "$lib $(stat -c%s "$lib") bytes"
           done
       - run: flutter build linux --release
+      - name: Release snapshot carries no demo data
+        run: tool/check_demo_free.sh build/linux/x64/release/bundle/lib/libapp.so
       - name: Check the bundle ships the native libs
         run: |
           for lib in libtaildeck_bridge.so libtaildeck_term.so; do

@@ -67,6 +67,22 @@ interfaces, the default interface and DNS lookups from `ConnectivityManager`, `N
 the JNI shim `native/bridge/cmd/cshared/platform_jni.c` hands them to `td_set_platform_cb` and forwards default
 network changes to `td_network_changed`. Every other platform keeps the Go stdlib adapter.
 
+### Demo data
+
+The preview dataset (nodes, agents, services, the canned terminal session and its icons) lives in `lib/src/demo/`
+and is reached only through `demoData`, a `const bool.fromEnvironment('TAILDECK_DEMO', defaultValue: kIsWeb)`. Web
+and debug builds keep it; release builds on Android, iOS, Windows, Linux and macOS compile it out, so the pages can
+only show what the node reports — an empty node list, "no agents on this node" or a "not connected" card instead of
+a sample. `--dart-define=TAILDECK_DEMO=true` brings it back for debugging on a device.
+
+`tool/check_demo_free.sh` reads a release `libapp.so` (or an APK) and fails on any demo string. `ci.yml` runs it on
+the Linux release snapshot and `android-smoke.yml` on the release APK, so a demo string that stops being dead code
+fails the PR.
+
+Build errors are handled, not painted grey: `installErrorHandlers()` (lib/src/diagnostics.dart) records every
+uncaught `FlutterError` and `PlatformDispatcher` error in a ring buffer that the Logs page shows, keeps the app
+alive, and `ErrorWidget.builder` draws a readable card in place of the failed subtree.
+
 ## Terminal
 
 Reuse `libghostty-vt` behind a small plain C ABI shim, consumed through `dart:ffi`:

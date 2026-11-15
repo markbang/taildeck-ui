@@ -136,6 +136,17 @@ jobs:
           cp build/app/outputs/flutter-apk/app-x86_64-release.apk build/smoke.apk
           "$(ls -d "${ANDROID_SDK_ROOT:-$ANDROID_HOME}"/build-tools/*/ | sort -V | tail -1)/aapt2" \
             dump badging build/smoke.apk | head -1
+      - name: The release APK carries no demo data
+        if: ${{ env.APK != '' }}
+        run: tool/check_demo_free.sh "$APK"
+      - name: Build the debug APK for the node page gate
+        run: |
+          flutter pub get
+          # A debug build keeps the demo dataset, so the preview route has a
+          # node to open without a tailnet.
+          flutter build apk --debug --target-platform android-x64
+          cp build/app/outputs/flutter-apk/app-debug.apk build/nodepage.apk
+          ls -l build/nodepage.apk
       - name: Drop the signing material
         if: always()
         run: rm -f android/app/release.jks android/key.properties
@@ -199,7 +210,7 @@ jobs:
           # One line: the runner hands each line to sh separately. The splash
           # recording runs before the back and ping cases so its stills exist
           # even when one of those fails; it reinstalls this APK at the end.
-          script: bash tool/smoke_android.sh "$APK" "$APP_ID" smoke && bash tool/splash_shots.sh "$APK" "$APP_ID" smoke-splash && bash tool/back_android.sh "$APK" "$APP_ID" smoke-back && bash tool/ping_android.sh "$APK" "$APP_ID" smoke-ping
+          script: bash tool/smoke_android.sh "$APK" "$APP_ID" smoke && bash tool/splash_shots.sh "$APK" "$APP_ID" smoke-splash && bash tool/back_android.sh "$APK" "$APP_ID" smoke-back && bash tool/ping_android.sh "$APK" "$APP_ID" smoke-ping && bash tool/nodepage_android.sh build/nodepage.apk "$APP_ID" smoke-node
 
       - name: Job summary
         if: always()
@@ -228,6 +239,12 @@ jobs:
             echo '```'
             cat smoke-splash/summary.txt 2>/dev/null || echo 'no summary'
             echo '```'
+            echo
+            echo "### Android node page (grey ErrorWidget gate)"
+            echo
+            echo '```'
+            cat smoke-node/summary.txt 2>/dev/null || echo 'no summary'
+            echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         if: always()
@@ -238,6 +255,7 @@ jobs:
             smoke-back/
             smoke-ping/
             smoke-splash/
+            smoke-node/
           if-no-files-found: warn
       - uses: actions/upload-artifact@v4
         if: always()

@@ -15,12 +15,16 @@ class AppLocalizations implements UiLocalizations {
 
   bool get _zh => locale.languageCode == 'zh';
 
+  /// Whether the app is drawing Chinese copy.
+  bool get isZh => _zh;
+
   String get tabNodes => _zh ? '节点' : 'Nodes';
   String get tabServices => _zh ? '服务' : 'Services';
   String get tabAgents => _zh ? '代理' : 'Agents';
   String get tabSettings => _zh ? '设置' : 'Settings';
 
   String get searchNodes => _zh ? '搜索节点' : 'Search nodes';
+  String get nodesEmpty => _zh ? '还没有节点。' : 'No nodes yet.';
   String thisDevice(String ip) => _zh ? '本机 · $ip' : 'This device · $ip';
   String get thisDeviceSection => _zh ? '本机' : 'This device';
   String get online => _zh ? '在线' : 'Online';
@@ -417,10 +421,6 @@ class AppLocalizations implements UiLocalizations {
     'omp:clone': '从此处复制会话',
     'omp:reload': '重新加载扩展、技能和提示词',
   };
-  String get demoTaskGrafana => _zh ? '调整 Grafana 告警' : 'Tune Grafana alerts';
-  String get demoTaskRelease => _zh ? '添加发布流程' : 'Add release workflow';
-  String get demoTaskHeadscale =>
-      _zh ? '升级 headscale 到 0.27' : 'Bump headscale to 0.27';
   String get terminalOutput => _zh ? '终端输出' : 'Terminal output';
   String get terminalReadOnly => _zh
       ? '终端输出为只读，在下方输入命令。'
@@ -460,8 +460,7 @@ class AppLocalizations implements UiLocalizations {
 
   // Gestures, zoom and the keyboard-aware layout.
   String get terminalInput => _zh ? '命令输入' : 'Command input';
-  String get terminalPasteButton =>
-      _zh ? '从剪贴板插入' : 'Insert from clipboard';
+  String get terminalPasteButton => _zh ? '从剪贴板插入' : 'Insert from clipboard';
   String get terminalSelection => _zh ? '选区操作' : 'Selection actions';
   String get terminalOpenLink => _zh ? '打开链接' : 'Open link';
   String get terminalCopied => _zh ? '已复制' : 'Copied';

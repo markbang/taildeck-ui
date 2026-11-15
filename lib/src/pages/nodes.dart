@@ -5,6 +5,7 @@ import 'package:prism_ui/prism_ui.dart';
 
 import '../backend.dart';
 import '../data.dart';
+import '../demo/demo.dart';
 import '../l10n.dart';
 import '../glyphs.dart';
 import '../motion.dart';
@@ -25,13 +26,18 @@ class NodesPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = context.colorScheme;
+    final l10n = AppLocalizations.of(context);
     final backend = BackendScope.of(context);
     final live = backend.available && backend.self != null;
-    final self = live ? backend.self! : selfNode;
-    final nodes = live ? backend.peers : peers;
+    // The preview draws the demo tailnet; a release build only ever shows what
+    // the node reports, and says so when it reports nothing.
+    final self = live ? backend.self : (demoData ? demoSelfNode : null);
+    final nodes = live
+        ? backend.peers
+        : (demoData ? demoPeers : const <NodeItem>[]);
     final online = nodes.where((node) => node.online).toList();
     return PageBody(
-      title: live ? backend.tailnet : tailnet,
+      title: live ? backend.tailnet : (demoData ? demoTailnet : l10n.tabNodes),
       onRefresh: live ? backend.refresh : null,
       trailing: IconButton(
         onPressed: onToggleTheme,
@@ -40,44 +46,71 @@ class NodesPage extends StatelessWidget {
       ),
       children: [
         if (!backend.available && !kIsWeb) ...[
-          InlineNotice(text: AppLocalizations.of(context).backendUnavailable),
+          InlineNotice(text: l10n.backendUnavailable),
           const SizedBox(height: 14),
         ],
         SearchField(
-          hintText: AppLocalizations.of(context).searchNodes,
+          hintText: l10n.searchNodes,
           fill: SurfaceLevel.card.colorOf(scheme),
           onChanged: (_) {},
         ),
         const SizedBox(height: 14),
-        Reveal(
-          key: const ValueKey('self-card'),
-          child: _SelfCard(
-            node: self,
-            peers: online,
-            starting:
-                backend.available &&
-                (backend.state == BackendState.starting ||
-                    backend.state == BackendState.needsLogin),
-            onOpenNode: onOpenNode,
+        if (self case final self?) ...[
+          Reveal(
+            key: const ValueKey('self-card'),
+            child: _SelfCard(
+              node: self,
+              peers: online,
+              starting:
+                  backend.available &&
+                  (backend.state == BackendState.starting ||
+                      backend.state == BackendState.needsLogin),
+              onOpenNode: onOpenNode,
+            ),
           ),
-        ),
-        const SizedBox(height: 14),
+          const SizedBox(height: 14),
+        ],
         Reveal(
           key: const ValueKey('peer-list'),
           index: 1,
-          child: AnimatedGroupCard(
-            dividerInset: 60,
-            children: [
-              for (final node in nodes)
-                _PeerRow(
-                  key: ValueKey(node.name),
-                  node: node,
-                  onTap: () => onOpenNode(node),
+          child: nodes.isEmpty
+              ? _EmptyNodes(text: l10n.nodesEmpty)
+              : AnimatedGroupCard(
+                  dividerInset: 60,
+                  children: [
+                    for (final node in nodes)
+                      _PeerRow(
+                        key: ValueKey(node.name),
+                        node: node,
+                        onTap: () => onOpenNode(node),
+                      ),
+                  ],
                 ),
-            ],
-          ),
         ),
       ],
+    );
+  }
+}
+
+class _EmptyNodes extends StatelessWidget {
+  const _EmptyNodes({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      radius: AppCorner.xl,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 22),
+        child: Text(
+          text,
+          textAlign: TextAlign.center,
+          style: AppTextStyle.subheadline
+              .of(context)
+              .copyWith(color: context.colorScheme.onSurfaceVariant),
+        ),
+      ),
     );
   }
 }
