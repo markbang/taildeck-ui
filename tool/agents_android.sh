@@ -35,15 +35,21 @@ shot() { adb exec-out screencap -p > "$out/$1.png" || true; }
 # The page under test must be our process, in front: a dismissed app would
 # make every "no error on screen" check true for the wrong reason.
 alive() { # $1: step
-  local pid focus
+  local pid focus tries=10
   pid=$(adb shell pidof "$app" 2>/dev/null | tr -d '\r' || true)
   [ -n "$pid" ] || fail "$1: $app is not running (crashed or was killed)"
   focus=$(adb shell dumpsys window 2>/dev/null | grep -m1 mCurrentFocus | tr -d '\r' || true)
-  case "$focus" in
-    *"$app/"*) ;;
-    *) fail "$1: $app is not in front ($focus)" ;;
-  esac
-  echo "$focus" >> "$out/focus.txt"
+  # The window manager can still name the previous front window while the
+  # launch transition runs, so give it a few seconds before failing.
+  while [ "$tries" -gt 0 ]; do
+    case "$focus" in
+      *"$app/"*) echo "$focus" >> "$out/focus.txt"; return 0 ;;
+    esac
+    sleep 1
+    tries=$((tries - 1))
+    focus=$(adb shell dumpsys window 2>/dev/null | grep -m1 mCurrentFocus | tr -d '\r' || true)
+  done
+  fail "$1: $app is not in front ($focus)"
 }
 
 ui() {
