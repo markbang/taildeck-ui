@@ -19,6 +19,7 @@ import (
 type peerNames struct {
 	mu       sync.Mutex
 	updated  time.Time
+	forced   time.Time // last on-demand re-read, so a miss cannot hammer Status
 	byName   map[string]string
 	prefixes []netip.Prefix // peer addresses and approved subnet routes
 }
@@ -51,7 +52,10 @@ func (e *engine) peerIP(host string) (string, bool) {
 	if ip, ok := e.names.byName[key]; ok {
 		return ip, true
 	}
-	e.refreshNamesLocked(true)
+	if time.Since(e.names.forced) > 5*time.Second {
+		e.names.forced = time.Now()
+		e.refreshNamesLocked(true)
+	}
 	ip, ok := e.names.byName[key]
 	return ip, ok
 }
