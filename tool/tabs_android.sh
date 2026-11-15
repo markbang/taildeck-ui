@@ -28,8 +28,10 @@ fail() {
   exit 1
 }
 
-# The four page headers the demo data draws, in dock order.
-titles=(markbang.github Services Agents Settings)
+# The four page headers, in dock order. A build with the demo data titles the
+# node list after the demo tailnet; a debug build without it falls back to the
+# tab name, so both count as the node page.
+titles=(Nodes Services Agents Settings)
 names=(Nodes Services Agents Settings)
 sequence=(1 2 1 0 3 1 2 1 0 3)
 
@@ -78,6 +80,15 @@ dock() {
   )
 }
 
+# The tab's own header, or the demo tailnet name on the node list.
+expect_header() { # <seen> <tab index> <what>
+  if [ "$1" = "${titles[$2]}" ] ||
+    { [ "$2" = 0 ] && [ "$1" = markbang.github ]; }; then
+    return 0
+  fi
+  fail "$3 left [$1] instead of only '${titles[$2]}'"
+}
+
 # One label per page header still on screen: the dock sits below the band, so a
 # dump above it holds the headers and nothing that merely repeats their names.
 headers() { # <texts-file>
@@ -123,7 +134,7 @@ for i in $(seq 1 10); do
   ui texts "$ymax" > "$out/headers-$(printf %02d "$i").txt" 2> /dev/null || true
   found=$(headers "$out/headers-$(printf %02d "$i").txt")
   note "switch $i -> ${names[$target]}: headers [$found]"
-  [ "$found" = "${titles[$target]}" ] || fail "switch $i left [$found] instead of only '${titles[$target]}'"
+  expect_header "$found" "$target" "switch $i"
   last=$target
 done
 
@@ -147,7 +158,7 @@ shot rest-final
 ui texts "$ymax" > "$out/headers-final.txt" 2> /dev/null || true
 found=$(headers "$out/headers-final.txt")
 note "after rapid taps: headers [$found], last tap ${names[$last]}"
-[ "$found" = "${titles[$last]}" ] || fail "rapid taps left [$found], expected '${titles[$last]}'"
+expect_header "$found" "$last" "rapid taps"
 
 adb logcat -d > "$out/logcat.txt" 2>&1 || true
 probes=$(grep -c "taildeck tabprobe:" "$out/logcat.txt" 2> /dev/null || true)
