@@ -150,7 +150,9 @@ cold_start() { # <tag>
   adb shell rm -f /sdcard/cold.mp4 > /dev/null 2>&1 || true
   # A debug cold start can take 10 s on a loaded emulator: the clip must still
   # be running after the app paints, or the frames are only the launch screen.
-  adb shell screenrecord --time-limit 14 --bit-rate 8000000 /sdcard/cold.mp4 > /dev/null 2>&1 &
+  # A smaller frame keeps the emulator's encoder running for the whole clip.
+  adb shell screenrecord --time-limit 14 --bit-rate 4000000 --size 720x1600 \
+    /sdcard/cold.mp4 > /dev/null 2>&1 &
   local recorder=$!
   sleep 1.2
   # monkey starts a launcher activity of a stopped package; an implicit
@@ -170,8 +172,6 @@ cold_start() { # <tag>
     -an -vf 'scale=360:-2' -c:v libx264 -pix_fmt yuv420p -crf 28 "$out/$tag-3s.mp4" || true
   ffmpeg -loglevel error -y -ss 1.0 -i "$out/$tag.mp4" -t 12.0 \
     -vf 'fps=8,scale=48:48,format=gray' -f rawvideo "$out/$tag.raw" || return 1
-  ffmpeg -loglevel error -y -ss "$(awk -v s="$start_at" 'BEGIN{print s + 2.2}')" \
-    -i "$out/$tag.mp4" -frames:v 1 "$out/$tag-thumb.png" || true
 }
 
 for n in $(seq 1 "$runs"); do
@@ -184,6 +184,10 @@ for n in $(seq 1 "$runs"); do
     sleep 2
   done
   [ -n "$pid" ] || fail "run $n: $app is not running"
+  # The shell itself, once the node has had a moment to settle; the contact
+  # sheet is built from these stills.
+  sleep 2
+  adb exec-out screencap -p > "$out/$tag-after.png" || true
 
   python3 tool/frame_check.py --login "$out/login.raw" --home "$out/home.raw" \
     --frames "$out/$tag.raw" > "$out/$tag-check.txt" 2>&1 || {
@@ -210,7 +214,7 @@ if [ -s "$out/run-01-3s.mp4" ]; then
     -vf 'fps=8,scale=560:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=128[p];[b][p]paletteuse' \
     "$out/cold-start.gif" || true
 fi
-montage "$out"/run-*-thumb.png -tile 5x4 -geometry +4+4 -background '#101214' \
+montage "$out"/run-*-after.png -tile 5x4 -geometry +4+4 -background '#101214' \
   "$out/cold-start-runs.png" 2>/dev/null || true
 
 note "ok: $runs cold starts with the home shell and no login frame"
