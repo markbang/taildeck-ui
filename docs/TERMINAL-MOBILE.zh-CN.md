@@ -52,7 +52,7 @@ herdr 是桌面终端复用器，没有触摸层：`herdrdev/herdr-core` 与 `he
 
 ## 验证
 
-`tool/termtap_record.sh`（工作流 `termtap-record`）就是点击门禁：安装 APK，登录录制机的测试控制面，在对等节点的 sshd 上打开真实会话，收起键盘后点网格——只要 `dumpsys input_method` 不是 `mInputShown=true`、终端窗口不是当前焦点、再点一次或点空白处把 IME 收起来了、点击之后输入的命令没有在 shell 上执行、键行键盘按钮没有收起 IME、或者收起后点一下没有重新弹出，这次运行就失败。同一次运行还在对等节点上启动一个小 Python 程序，打开鼠标跟踪（1000 + SGR 1006）并记录收到的字节；一次点击必须是 `<0;Cx;CyM` 再 `<0;Cx;Cym` 且两次单元格相同，按住 Ctrl 的点击必须是 `<16;`，否则失败。录屏：`tap-focus.mp4`（收起键盘、点击、键盘弹出、再点一次）、`tap-mouse.mp4` 与 `tap-mouse-ctrl.mp4`（探针收到的上报）、`tap-vim.mp4` 与 `tap-vim-before.png` / `tap-vim-after.png`（vim 以 `set mouse=a` 启动，键盘已弹出时再点另一格，光标移到那里）、`tap-htop.mp4` 与 `tap-htop-before.png` / `tap-htop-after.png`（先点一行进程，再点另一行）。静帧：`tap-keyboard.png`。
+`tool/termtap_record.sh`（工作流 `termtap-record`）就是点击门禁：安装 APK，登录录制机的测试控制面，在对等节点的 sshd 上打开真实会话，收起键盘后点网格——只要 `dumpsys input_method` 不是 `mInputShown=true`、终端窗口不是当前焦点、再点一次或点空白处把 IME 收起来了、点击之后输入的命令没有在 shell 上执行、键行键盘按钮没有收起 IME、或者收起后点一下没有重新弹出，这次运行就失败。同一次运行还在对等节点上启动一个小 Python 程序，打开鼠标跟踪（1000 + SGR 1006）并记录收到的字节；一次点击必须是 `<0;Cx;CyM` 再 `<0;Cx;Cym` 且两次单元格相同，按住 Ctrl 的点击必须是 `<16;`，否则失败。录屏：`tap-focus.mp4`（收起键盘、点击、键盘弹出、再点一次）、`tap-mouse.mp4` 与 `tap-mouse-ctrl.mp4`（探针收到的上报）、`tap-vim.mp4` 与 `tap-vim-before.png` / `tap-vim-after.png`（vim 以 `set mouse=a` 打开一个十二行的文件；先点一次把键盘叫回来，再点另一处让光标移到另一行，vim 每次移动都把行号写进 `/tmp/tapvim-cursor`，行号没变就算失败）、`tap-htop.mp4` 与 `tap-htop-before.png` / `tap-htop-after.png`（先点一行进程，再点另一行）。静帧：`tap-keyboard.png`。
 
 
 `tool/termgestures_record.sh`（工作流 `termgestures-record`）在 Android 模拟器上录下手势层：两个方向的滑动方向键、按住方向键连发、选词与两端把手、复制（工具条显示已复制，`term-copy.png`）、打开选区里的链接（Chrome 切到前台，`term-open-link.png`）、横屏（`term-landscape.png`，网格重排成 105×12）、软键盘压缩网格而光标仍在键行之上（`term-keyboard.png`，以及 `-keyboard-hidden.png`）、在设置里加字号并重启后保持（`term-font.png`）。
