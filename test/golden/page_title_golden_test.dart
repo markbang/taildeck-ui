@@ -1,0 +1,122 @@
+@Tags(['golden'])
+library;
+
+import 'package:flutter/widgets.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:prism_ui/prism_ui.dart';
+import 'package:taildeck_ui/src/widgets/foundation.dart';
+import 'package:taildeck_ui/src/widgets/header.dart';
+
+import 'golden_harness.dart';
+
+Widget _page({String? subtitle, VoidCallback? onBack, int rows = 30}) {
+  return Builder(
+    builder: (context) => Surface(
+      color: SurfaceLevel.page.colorOf(context.colorScheme),
+      child: PageBody(
+        title: 'Settings',
+        subtitle: subtitle,
+        onBack: onBack,
+        children: [
+          generateGroup([
+            for (var i = 0; i < rows; i++)
+              DecorationListItem(title: Text('Setting $i')),
+          ]),
+        ],
+      ),
+    ),
+  );
+}
+
+void main() {
+  setUpAll(() async {
+    await loadGoldenFonts();
+    useGoldenComparator();
+  });
+
+  testWidgets('a first-level page opens on its title, not on a gap', (
+    tester,
+  ) async {
+    usePhone(tester, size: const Size(414, 300));
+    await tester.pumpWidget(goldenApp(home: _page()));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    // The large title starts where every page's content starts: the status
+    // bar, the toolbar height and the gap under it.
+    final title = tester.getTopLeft(find.text('Settings'));
+    expect(title.dy, greaterThanOrEqualTo(statusBar + pageToolbarHeight));
+    expect(title.dy, lessThanOrEqualTo(statusBar + pageToolbarHeight + 14));
+    expect(
+      tester.widget<Text>(find.text('Settings')).style!.fontSize,
+      greaterThan(30),
+    );
+    // At rest the compact bar stays out of the way.
+    expect(find.byType(PageBar, skipOffstage: true), findsNothing);
+    await expectLater(
+      find.byType(PrismApp),
+      matchesGoldenFile('goldens/title_top_300.png'),
+    );
+  });
+
+  testWidgets('the large title hands over as the list scrolls', (tester) async {
+    usePhone(tester, size: const Size(414, 300));
+    await tester.pumpWidget(goldenApp(home: _page()));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    await tester.drag(find.byType(ListView), const Offset(0, -34));
+    await tester.pump();
+
+    expect(find.byType(PageHeader, skipOffstage: true), findsOneWidget);
+    final large = tester
+        .widgetList<Text>(find.text('Settings', skipOffstage: true))
+        .map((text) => text.style!.fontSize!)
+        .toList();
+    // The bar's title is in the tree but still fading in.
+    expect(large.length, 2);
+    expect(
+      tester
+          .widgetList<Opacity>(
+            find.ancestor(
+              of: find.text('Settings').first,
+              matching: find.byType(Opacity),
+            ),
+          )
+          .map((opacity) => opacity.opacity),
+      contains(greaterThan(0.1)),
+    );
+    await expectLater(
+      find.byType(PrismApp),
+      matchesGoldenFile('goldens/title_collapsing.png'),
+    );
+  });
+
+  testWidgets('a subpage names itself in the compact bar', (tester) async {
+    usePhone(tester, size: const Size(414, 300));
+    var backed = 0;
+    await tester.pumpWidget(
+      goldenApp(
+        home: _page(subtitle: 'Auto', onBack: () => backed++),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 300));
+
+    final bar = find.byType(PageBar);
+    expect(bar, findsOneWidget);
+    expect(tester.getTopLeft(bar).dy, statusBar);
+    expect(tester.getSize(bar).height, pageToolbarHeight);
+    final list = tester.widget<ListView>(find.byType(ListView));
+    expect(
+      (list.padding! as EdgeInsets).top,
+      greaterThanOrEqualTo(statusBar + pageToolbarHeight),
+    );
+    // Not two titles: the body has no large title of its own.
+    expect(find.text('Settings'), findsOneWidget);
+    await expectLater(
+      find.byType(PrismApp),
+      matchesGoldenFile('goldens/subpage_bar.png'),
+    );
+
+    await tester.tap(find.byTooltip('Back'));
+    expect(backed, 1);
+  });
+}

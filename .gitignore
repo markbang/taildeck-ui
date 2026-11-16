@@ -60,3 +60,4 @@ native/term/build/
 /windows/lib/
 /macos/Frameworks/
 /ios/Frameworks/
+test/golden/failures/
