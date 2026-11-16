@@ -95,18 +95,22 @@ target() { # <node> <port>
 
 shot() { adb exec-out screencap -p > "$out/$1.png" 2> /dev/null || rm -f "$out/$1.png"; }
 
-# A still every moment of a switch, with the epoch ms it was taken: the paint
-# order a person would see, not a state sampled afterwards.
-capture() { # <dir> <count>
-  local dir=$1 count=$2 i file
+# A still every moment of a switch, each with the epoch ms it was asked for:
+# the paint a person would see, not a state sampled afterwards. One screencap
+# takes ~0.5 s on this emulator, so the series is taken against its own clock
+# and stops once the window the wake dials is over.
+capture_window() { # <dir> <tap-ms> <window-ms>
+  local dir=$1 tap=$2 window=$3 i=0 file
   mkdir -p "$dir"
   : > "$dir/times.txt"
-  for i in $(seq 1 "$count"); do
+  while :; do
+    i=$((i + 1))
     file=$(printf '%s/frame-%03d.png' "$dir" "$i")
+    echo "$(date +%s%3N)" >> "$dir/times.txt"
     adb exec-out screencap -p > "$file" 2> /dev/null || rm -f "$file"
-    if [ -s "$file" ]; then
-      echo "$(date +%s%3N)" >> "$dir/times.txt"
-    fi
+    [ -s "$file" ] || { i=$((i - 1)); sed -i '$d' "$dir/times.txt"; }
+    [ $(( $(date +%s%3N) - tap )) -ge "$window" ] && break
+    [ "$i" -ge 24 ] && break
   done
 }
 logs() { timeout 60 adb logcat -d 2> /dev/null | grep -a 'I flutter :'; }
@@ -185,18 +189,15 @@ launch() { # <tag> <tab>
 # One switch: tap the tab, note the phase the page logs first, record the first
 # seconds of it and keep a still of the rest.
 switch_to_agents() { # <tag> <point> <frames?>
-  local tag=$1 point=$2 frames=${3:-} cap=0 started
-  if [ -n "$frames" ]; then
-    capture "$out/$tag-frames" 40 &
-    cap=$!
-    # Two frames land before the tap, so the frames list has a lead-in.
-    sleep 1.2
-  fi
+  local tag=$1 point=$2 frames=${3:-} started
   adb logcat -c > /dev/null 2>&1 || true
   sleep 0.2
   started=$(date +%s%3N)
   echo "$started" > "$out/$tag-tap.txt"
   tap_dock $point
+  if [ -n "$frames" ]; then
+    capture_window "$out/$tag-frames" "$started" 4200
+  fi
   # The page only logs a phase when its tab opens or its state changes. A
   # loaded emulator can take seconds to deliver the tap.
   await_log "$tag" 'taildeck agents: ' 12 \
@@ -206,9 +207,11 @@ switch_to_agents() { # <tag> <point> <frames?>
   sleep 6
   shot "$tag-rest"
   if [ -n "$frames" ]; then
-    wait "$cap" 2> /dev/null || true
-    [ "$(wc -l < "$out/$tag-frames/times.txt")" -ge 8 ] \
-      || fail "$tag: only $(wc -l < "$out/$tag-frames/times.txt") frames were captured"
+    local inside
+    inside=$(awk -v tap="$started" '$1 - tap >= 0 && $1 - tap <= 4200' \
+      "$out/$tag-frames/times.txt" | wc -l)
+    note "$tag: $(wc -l < "$out/$tag-frames/times.txt") stills, $inside inside the first 4.2 s"
+    [ "$inside" -ge 3 ] || fail "$tag: the still series missed the window the dial owns"
   fi
 }
 
