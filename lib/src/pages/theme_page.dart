@@ -2,6 +2,7 @@ import 'package:flutter/widgets.dart';
 import 'package:prism_ui/icons/icons.dart';
 import 'package:prism_ui/prism_ui.dart';
 
+import '../glyphs.dart';
 import '../l10n.dart';
 import '../shell.dart';
 import '../theme.dart';
@@ -46,7 +47,7 @@ class ThemePage extends StatelessWidget {
         children: [
           ThemePreview(floatingBar: floatingNavigation),
           const SizedBox(height: 24),
-          SectionLabel(l10n.themeMode),
+          SectionLabel(l10n.themeMode, glyph: Glyphs2.sun),
           PreviewChoiceGroup<ThemeMode>(
             value: theme.mode,
             onChanged: theme.setMode,
@@ -71,7 +72,7 @@ class ThemePage extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 24),
-          SectionLabel(l10n.navigation),
+          SectionLabel(l10n.navigation, glyph: Glyphs2.sliders),
           generateGroup([
             SelectRow<bool>(
               label: l10n.bottomBar,

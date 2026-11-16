@@ -119,7 +119,20 @@ launch_taildeck() {
   # their frames; the emulator itself runs with real motion.
   adb shell "am start -W -a android.intent.action.VIEW -d 'taildeck://preview/?preview=1&tab=3&lang=en&splash=0&slow=$slow' -n $component" \
     > "$out/launch-taildeck.txt" 2>&1 || true
-  wait_home "$app" "$out" "$here" Settings 45 || fail "Taildeck never showed the settings tab"
+  # The dock's "Settings" label is the readiness signal; the dumps can fail on
+  # a busy boot, so keep trying and keep what the screen showed.
+  local attempt
+  for attempt in $(seq 1 20); do
+    if gate_in_front "$app" && ui has Settings > /dev/null 2>&1; then
+      sleep 1
+      return 0
+    fi
+    sleep 2
+  done
+  note "dump: $(adb shell uiautomator dump /sdcard/ui.xml 2>&1 | tail -n 1)"
+  shot taildeck-launch-fail
+  ui texts "$SH" > "$out/taildeck-launch-fail.txt" 2> /dev/null || true
+  note "Taildeck: no dock after 40 s, carrying on"
 }
 
 # FlClash's page push is 300 ms; Taildeck's is spring-settled, so both clips
@@ -138,7 +151,10 @@ drag_step() {
 geometry
 launch_taildeck
 shot taildeck-settings
-wait_for Language 15 || fail "the settings list does not show the language select"
+wait_for Language 15 || {
+  shot taildeck-settings-fail
+  fail "the settings list does not show the language select"
+}
 note "Taildeck settings: list with the language row"
 
 language_point=$(value_point Language) || fail "no bounds for the language row"
