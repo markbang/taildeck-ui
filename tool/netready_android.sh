@@ -169,10 +169,15 @@ cold_start() { # <tag> <query>
   curl -fsS -X POST "$hold_url" > /dev/null 2>&1 \
     || fail "no held-netmap control plane at $hold_url (start tool/motion/control -hold-map)"
   adb logcat -c > /dev/null 2>&1 || true
-  adb shell "am start -W -a android.intent.action.VIEW -d 'taildeck://preview/?$2' -n $component" \
+  adb shell "am start -a android.intent.action.VIEW -d 'taildeck://preview/?$2' -n $component" \
     > "$out/$1-launch.txt" 2>&1 || return 1
   grep -q "Activity: $app/" "$out/$1-launch.txt"
 }
+
+# Only the app's own lines: a full logcat read per poll is what made this gate
+# outrun its time budget.
+flutter_log() { adb logcat -d -s flutter:I 2> /dev/null; }
+log_has() { flutter_log | grep -q "$1"; }
 
 # Samples the page until the ready line is in logcat, and counts the runs that
 # saw the loading state: a run whose dumps all landed after the netmap proves
@@ -180,34 +185,35 @@ cold_start() { # <tag> <query>
 loading_runs=0
 runs_done=0
 sample_until_ready() { # <tag> <phase>
-  local tag=$1 phase=$2 t0 loading=0 forbidden=()
+  local tag=$1 phase=$2 t0 forbidden=() loading=0 attempt needle
   t0=$(date +%s%3N)
   case "$phase" in
     node) forbidden=("${forbidden_common[@]}" "${forbidden_node[@]}") ;;
     agents) forbidden=("${forbidden_common[@]}" "${forbidden_agents[@]}") ;;
   esac
-  while :; do
-    local ready=0 needle
+  # The window opens when the shell paints and closes when the netmap lands, so
+  # the dumps go right after the route and nowhere else.
+  while ! log_has 'taildeck route: shell'; do
+    [ $(( $(date +%s%3N) - t0 )) -gt 20000 ] && fail "$tag: no shell route within 20 s; see $tag-launch.txt"
+    sleep 0.4
+  done
+  for attempt in 1 2 3; do
+    [ -s "$out/$tag.png" ] || adb exec-out screencap -p > "$out/$tag.png" 2>/dev/null || true
     if dump_page; then
       page_has "Connecting to the tailnet" && loading=1
-      [ -s "$out/$tag.png" ] || adb exec-out screencap -p > "$out/$tag.png" 2>/dev/null || true
+      if ! log_has 'taildeck netstate: Running at'; then
+        for needle in "${forbidden[@]}"; do
+          page_has "$needle" && fail "$tag: the $phase page shows \"$needle\" while the netmap is not in"
+        done
+      fi
     fi
-    # The ready line can land between the dump and this read: a sample taken
-    # after it is content, so it gets no pre-ready check.
-    if adb logcat -d 2>/dev/null | grep -q 'taildeck netstate: Running at'; then
-      ready=1
-    else
-      for needle in "${forbidden[@]}"; do
-        page_has "$needle" && fail "$tag: the $phase page shows \"$needle\" while the netmap is not in"
-      done
-    fi
-    [ "$ready" -eq 1 ] && break
-    # A debug cold start on a loaded emulator can take 10 s to reach the node.
-    if [ $(( $(date +%s%3N) - t0 )) -gt 30000 ]; then
-      [ -s "$out/$tag.png" ] || adb exec-out screencap -p > "$out/$tag.png" 2>/dev/null || true
-      fail "$tag: the page was still loading 30 s after the start"
-    fi
-    sleep 0.2
+    log_has 'taildeck netstate: Running at' && break
+    sleep 0.3
+  done
+  # A debug cold start on a loaded emulator can take 10 s to reach the node.
+  while ! log_has 'taildeck netstate: Running at'; do
+    [ $(( $(date +%s%3N) - t0 )) -gt 30000 ] && fail "$tag: the page was still loading 30 s after the start"
+    sleep 0.5
   done
   runs_done=$((runs_done + 1))
   loading_runs=$((loading_runs + loading))
@@ -215,7 +221,7 @@ sample_until_ready() { # <tag> <phase>
 
 check_netstate() { # <tag> <phase>
   local tag=$1 phase=$2 netmap_ms
-  adb logcat -d 2>/dev/null > "$out/$tag-logcat.txt" || true
+  flutter_log > "$out/$tag-logcat.txt" || true
   grep -q 'taildeck netstate: no netmap at' "$out/$tag-logcat.txt" \
     || fail "$tag: the cold start never reported a netmap-less status; the window was not exercised"
   # The netmap line comes before readiness; the ready line repeats its time.
@@ -225,7 +231,7 @@ check_netstate() { # <tag> <phase>
   [ "$netmap_ms" -ge 1000 ] \
     || fail "$tag: the netmap was in after ${netmap_ms}ms; the delayed-netmap window was not in effect"
   # After ready the page has to be content, not the loading state.
-  sleep 1
+  sleep 0.5
   dump_page || true
   local needle
   for needle in "${forbidden_common[@]}"; do
