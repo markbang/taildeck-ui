@@ -175,9 +175,6 @@ note "saved herdr target: bangwu"
 # node that is not found was looked up before its netmap. Retry is different:
 # a real herdr failure may offer it, so it is only forbidden while loading.
 forbidden_common=("Can't find node" "Connect herdr" "localhost" "No nodes yet")
-# What the page shows once it has content instead of the loading card.
-content_node="This device"
-content_agents="Connection settings"
 
 cold_start() { # <tag> <query>
   adb shell am force-stop "$app" > /dev/null 2>&1 || true
@@ -203,32 +200,35 @@ flutter_log() { timeout 60 adb logcat -d 2> /dev/null | grep -a 'I flutter :'; }
 loading_runs=0
 runs_done=0
 sample_until_ready() { # <tag> <phase>
-  local tag=$1 phase=$2 t0 loading=0 marker="This device" needle
+  local tag=$1 phase=$2 t0 loading=0 ready=0 needle
   t0=$(date +%s%3N)
-  case "$phase" in
-    node) marker=$content_node ;;
-    agents) marker=$content_agents ;;
-  esac
   while :; do
+    ready=0
+    flutter_log | grep -q 'taildeck netstate: Running at' && ready=1
+    # The page is read before the log: a sample that still shows the loading
+    # card while the log says ready is the transition, not a bug.
     if dump_page; then
       [ -s "$out/$tag.png" ] || adb exec-out screencap -p > "$out/$tag.png" 2>/dev/null || true
-      for needle in "${forbidden_common[@]}"; do
-        page_has "$needle" && fail "$tag: the $phase page shows \"$needle\" before the netmap is in"
-      done
+      if [ "$ready" -eq 0 ]; then
+        for needle in "${forbidden_common[@]}"; do
+          page_has "$needle" && fail "$tag: the $phase page shows \"$needle\" before the netmap is in"
+        done
+      fi
       if page_has "Connecting to the tailnet"; then
         loading=1
         if [ "$phase" = agents ] && page_has "Retry"; then
           fail "$tag: the Agents page offers Retry while the tailnet is still loading"
         fi
-      elif page_has "$marker"; then
-        break
       fi
     fi
+    [ "$ready" -eq 1 ] && break
     # A debug cold start on a loaded emulator can take 10 s to reach the node.
     [ $(( $(date +%s%3N) - t0 )) -gt 40000 ] \
       && fail "$tag: the $phase page never left its loading state; see ui.xml"
-    sleep 0.2
+    sleep 0.3
   done
+  # One more read after the log says ready: the page has to be content now.
+  sleep 1
   [ -s "$out/$tag.png" ] || adb exec-out screencap -p > "$out/$tag.png" 2>/dev/null || true
   runs_done=$((runs_done + 1))
   loading_runs=$((loading_runs + loading))
