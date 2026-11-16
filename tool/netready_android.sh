@@ -174,9 +174,10 @@ cold_start() { # <tag> <query>
   grep -q "Activity: $app/" "$out/$1-launch.txt"
 }
 
-# Only the app's own lines: a full logcat read per poll is what made this gate
+# Filter on the device and cap the tail: a host-side filter still sends the
+# whole 2 MB buffer over adb on every poll, which is what made this gate
 # outrun its time budget.
-flutter_log() { adb logcat -d -s flutter:I 2> /dev/null; }
+flutter_log() { adb shell logcat -d -s flutter:I -t 400 2> /dev/null; }
 log_has() { flutter_log | grep -q "$1"; }
 
 # Samples the page until the ready line is in logcat, and counts the runs that
