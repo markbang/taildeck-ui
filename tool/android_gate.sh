@@ -37,7 +37,9 @@ gate_ui() { # <out-dir> <tool-dir> <ui.py args...>
 # first: a uiautomator dump during a cold start is what ANRs the app on a loaded
 # emulator, so the tree is read only after the route is the shell.
 wait_home() { # <app> <out-dir> <tool-dir> [marker] [seconds]
-  local app=$1 out=$2 tools=$3 marker=${4:-Services} limit=${5:-45} waited=0
+  # ${4-Services}, not ${4:-Services}: an empty marker means "no dock label
+  # expected" (a launch that opens a sheet covers it).
+  local app=$1 out=$2 tools=$3 marker=${4-Services} limit=${5:-45} waited=0
   local attempt
   while [ "$waited" -lt "$limit" ]; do
     if gate_in_front "$app" &&
