@@ -102,9 +102,12 @@ screen_size() {
 
 # One dump per check: a page is read once and scanned for every string it may
 # not show, so the window costs one dump, not one per string.
+# A failed dump leaves the previous file on the device, so the success line is
+# the only proof the tree on screen is the current one.
 dump_page() {
-  timeout 60 adb shell uiautomator dump /sdcard/ui.xml > /dev/null 2>&1 || true
-  timeout 30 adb pull /sdcard/ui.xml "$out/ui.xml" > /dev/null 2>&1 || true
+  rm -f "$out/ui.xml"
+  timeout 60 adb shell uiautomator dump /sdcard/ui.xml 2> /dev/null | grep -q 'dumped to' || return 1
+  timeout 30 adb pull /sdcard/ui.xml "$out/ui.xml" > /dev/null 2>&1 || return 1
   [ -s "$out/ui.xml" ]
 }
 
@@ -160,12 +163,13 @@ note "saved herdr target: bangwu"
 
 # --- 20 cold starts per page, sampling the window ----------------------------
 
-# Until the app logs that the netmap is in, these strings mean a page drew the
-# netmap-less status as the node. bangwu is online, so they are wrong after it
-# is in as well, except Retry, which a real herdr failure may offer.
-forbidden_common=("Can't find node" "Connect herdr")
-forbidden_node=("localhost" "No nodes yet")
-forbidden_agents=("localhost" "No nodes yet" "Retry")
+# These strings are wrong on either page at any time: bangwu is online, and a
+# node that is not found was looked up before its netmap. Retry is different:
+# a real herdr failure may offer it, so it is only forbidden while loading.
+forbidden_common=("Can't find node" "Connect herdr" "localhost" "No nodes yet")
+# What the page shows once it has content instead of the loading card.
+content_node="This device"
+content_agents="Connection settings"
 
 cold_start() { # <tag> <query>
   adb shell am force-stop "$app" > /dev/null 2>&1 || true
@@ -175,51 +179,46 @@ cold_start() { # <tag> <query>
   curl -fsS -X POST "$hold_url" > /dev/null 2>&1 \
     || fail "no held-netmap control plane at $hold_url (start tool/motion/control -hold-map)"
   adb logcat -c > /dev/null 2>&1 || true
-  # No -W: the gate polls the route line instead of waiting for the first
-  # frame, which is what the slow runs paid for.
+  # No -W: the page is what this gate samples, not the first frame.
   adb shell "am start -a android.intent.action.VIEW -d 'taildeck://preview/?$2' -n $component" \
     > "$out/$1-launch.txt" 2>&1 || return 1
-  # Without -W, am start only says it dispatched the intent.
   grep -q "^Starting: Intent" "$out/$1-launch.txt"
 }
 
 # The app's own lines, filtered on the host: the log is cleared per run, so one
-# read per run is enough, and the gate polls the page instead of the log (a
-# device-side -s/-t filter returned nothing and stalled every run).
+# read per run is enough (a device-side -s/-t filter returns nothing here).
 flutter_log() { timeout 60 adb logcat -d 2> /dev/null | grep -a 'I flutter :'; }
 
-# Samples the page until it leaves its loading state, and counts the runs that
-# saw that state: a run whose dumps all landed after the netmap proves nothing,
+# Samples the page until it shows content, and counts the runs that saw the
+# loading state: a run whose samples all landed after the netmap proves nothing,
 # so the total has to stay above zero.
 loading_runs=0
 runs_done=0
 sample_until_ready() { # <tag> <phase>
-  local tag=$1 phase=$2 t0 forbidden=() loading=0 needle
+  local tag=$1 phase=$2 t0 loading=0 marker="This device" needle
   t0=$(date +%s%3N)
   case "$phase" in
-    node) forbidden=("${forbidden_common[@]}" "${forbidden_node[@]}") ;;
-    agents) forbidden=("${forbidden_common[@]}" "${forbidden_agents[@]}") ;;
+    node) marker=$content_node ;;
+    agents) marker=$content_agents ;;
   esac
-  # The dock's labels say the shell painted, which is when the window opens.
-  while :; do
-    dump_page && page_has "Services" && break
-    [ $(( $(date +%s%3N) - t0 )) -gt 20000 ] && fail "$tag: no shell within 20 s; see $tag-launch.txt"
-    sleep 0.3
-  done
   while :; do
     if dump_page; then
       [ -s "$out/$tag.png" ] || adb exec-out screencap -p > "$out/$tag.png" 2>/dev/null || true
+      for needle in "${forbidden_common[@]}"; do
+        page_has "$needle" && fail "$tag: the $phase page shows \"$needle\" before the netmap is in"
+      done
       if page_has "Connecting to the tailnet"; then
         loading=1
-        for needle in "${forbidden[@]}"; do
-          page_has "$needle" && fail "$tag: the $phase page shows \"$needle\" while the netmap is not in"
-        done
-      else
+        if [ "$phase" = agents ] && page_has "Retry"; then
+          fail "$tag: the Agents page offers Retry while the tailnet is still loading"
+        fi
+      elif page_has "$marker"; then
         break
       fi
     fi
     # A debug cold start on a loaded emulator can take 10 s to reach the node.
-    [ $(( $(date +%s%3N) - t0 )) -gt 40000 ] && fail "$tag: the page was still loading 40 s after the start"
+    [ $(( $(date +%s%3N) - t0 )) -gt 40000 ] \
+      && fail "$tag: the $phase page never left its loading state; see ui.xml"
     sleep 0.2
   done
   [ -s "$out/$tag.png" ] || adb exec-out screencap -p > "$out/$tag.png" 2>/dev/null || true
