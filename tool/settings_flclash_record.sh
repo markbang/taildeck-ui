@@ -147,6 +147,13 @@ launch_taildeck() { # [time dilation]
   # their frames; the emulator itself runs with real motion.
   adb shell "am start -W -a android.intent.action.VIEW -d 'taildeck://preview/?preview=1&tab=3&lang=en&splash=0&slow=$stretch' -n $component" \
     > "$out/launch-taildeck.txt" 2>&1 || true
+  # At ?slow=20 every animation lasts seconds, and a dump during the shell's
+  # own start-up is what ANRs the app on a loaded runner: let it paint first.
+  if [ "$stretch" -gt 10 ]; then
+    sleep 15
+    dismiss_system_dialogs
+    return 0
+  fi
   sleep 3
   dismiss_system_dialogs
   # The dock's "Settings" label is the readiness signal; the dumps can fail on
@@ -223,15 +230,15 @@ shot taildeck-back
 launch_taildeck 20
 slow_point=$(ui tap Theme 2> /dev/null) || slow_point=""
 if [ -n "$slow_point" ]; then
-  slow_push() { tap_then_stills taildeck-expand "$slow_point" 3; }
-  record taildeck-slow 14 slow_push
+  slow_push() { tap_point "$slow_point" 9; }
+  record taildeck-slow 16 slow_push
   # The clip holds the middle of the expansion, which one screencap cannot
   # reach.
-  ffmpeg -loglevel error -y -i "$out/taildeck-slow.mp4" -vf "select='eq(n,2)'" \
+  ffmpeg -loglevel error -y -i "$out/taildeck-slow.mp4" -vf "select='eq(n,4)'" \
     -frames:v 1 "$out/taildeck-expand-mid.png" 2> /dev/null || true
-  slow_shrink() { back_then_stills taildeck-shrink 3; }
-  record taildeck-shrink 14 slow_shrink
-  ffmpeg -loglevel error -y -i "$out/taildeck-shrink.mp4" -vf "select='eq(n,1)'" \
+  slow_shrink() { adb shell input keyevent 4 > /dev/null 2>&1 || true; sleep 7; }
+  record taildeck-shrink 16 slow_shrink
+  ffmpeg -loglevel error -y -i "$out/taildeck-shrink.mp4" -vf "select='eq(n,3)'" \
     -frames:v 1 "$out/taildeck-shrink-mid.png" 2> /dev/null || true
 fi
 back_key
