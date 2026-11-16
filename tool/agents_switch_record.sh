@@ -326,7 +326,7 @@ case "$(rest_has "Can't find node ghost")" in
 esac
 # This failure lands within the first second, so only the log can order it; the
 # frames still show the card arriving and the still carries its words.
-check_frames fast 0 "" "$out/fast-rest.png"
+check_frames fast 0 --stills-only "$out/fast-rest.png"
 
 note "ok: no stale failure painted; the wake's own failure shows with Retry"
 adb uninstall "$app" > /dev/null 2>&1 || true
