@@ -1,0 +1,8 @@
+device: 1080x2400 at 420 dpi, 411.4 dp wide
+taildeck about: About, Version 0.2.21, Opens its settings 53 1635 1028 1798
+taildeck language row: 53 1325 1028 1472
+taildeck system: 608 1336 986 1451
+taildeck menu: rows 115.5 dp 44.0 System 1567 text 608,1336,986,1451
+flclash language row: 42 791 1038 938
+flclash menu: rows 115.5 dp 44.0 Default 1494 text 609,801,996,917
+files: 12 stills
