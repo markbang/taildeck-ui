@@ -151,7 +151,7 @@ launch() { # <query> <marker>
     > /dev/null 2>&1 || true
   sleep 4
   dismiss_system_dialogs
-  for attempt in $(seq 1 25); do
+  for attempt in $(seq 1 45); do
     if gate_in_front "$app" && ui has "$marker" > /dev/null 2>&1; then
       sleep 1
       return 0
@@ -159,7 +159,7 @@ launch() { # <query> <marker>
     sleep 2
   done
   shot "$marker-launch-fail"
-  fail "no '$marker' after 50 s"
+  fail "no '$marker' after 90 s"
 }
 
 # ---- one Taildeck build ---------------------------------------------------
