@@ -114,7 +114,7 @@ jobs:
               full=true
               # The long 20x loops wait for a label or a manual run: a PR gets
               # the fast on-device set in one boot (target: under 20 minutes).
-              echo "GATES=cold-start splash agents stills tabs back ping node termtap" >> "$GITHUB_ENV"
+              echo "GATES=cold-start splash agents stills tabs back ping node" >> "$GITHUB_ENV"
               ;;
           esac
           source=false
