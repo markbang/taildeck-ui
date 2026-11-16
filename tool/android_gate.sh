@@ -47,7 +47,9 @@ wait_home() { # <app> <out-dir> <tool-dir> [marker] [seconds]
       sleep 0.8
       for attempt in $(seq 1 10); do
         gate_in_front "$app" || return 1
-        gate_ui "$out" "$tools" has "$marker" > /dev/null 2>&1 && return 0
+        if [ -z "$marker" ] || gate_ui "$out" "$tools" has "$marker" > /dev/null 2>&1; then
+          return 0
+        fi
         sleep 2
       done
       return 1

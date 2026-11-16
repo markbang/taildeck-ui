@@ -25,13 +25,16 @@ pass() { echo "ok: $*" | tee -a "$out/summary.txt"; }
 note() { echo "$*" | tee -a "$out/summary.txt"; }
 
 adb wait-for-device
-activity=$(adb shell cmd package resolve-activity --brief "$app" 2>/dev/null | tail -n 1 | tr -d '\r')
-[ -n "$activity" ] || fail "no launcher activity for $app"
 
 # A fresh install has no saved herdr target and no node key: the exact cold
 # start the report describes.
 adb uninstall "$app" > /dev/null 2>&1 || true
 adb install -g "$apk" > "$out/install.txt" 2>&1 || fail "adb install failed, see install.txt"
+
+# After the install: resolve-activity answers for whatever build is on the
+# device, and the gates before this one install their own.
+activity=$(adb shell cmd package resolve-activity --brief "$app" 2>/dev/null | tail -n 1 | tr -d '\r')
+[ -n "$activity" ] || fail "no launcher activity for $app"
 
 shot() { adb exec-out screencap -p > "$out/$1.png" || true; }
 

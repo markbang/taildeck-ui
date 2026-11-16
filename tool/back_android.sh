@@ -63,7 +63,9 @@ start() { # $1: preview query
     > "$out/launch.txt" 2>&1 || return 1
   grep -q "Activity: $app/" "$out/launch.txt" || return 1
   wait_first_frame
-  wait_home "$app" "$out" "$here" Services 30 \
+  # No dock marker: the launches with a sheet cover it, and wait_sheet is what
+  # proves that sheet opened.
+  wait_home "$app" "$out" "$here" '' 30 \
     || fail "the shell did not settle for $1; see launch.txt"
 }
 

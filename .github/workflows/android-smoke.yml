@@ -46,6 +46,10 @@ on:
         default: false
   workflow_dispatch:
     inputs:
+      gates:
+        description: Space-separated gate labels to run (cold-start splash agents stills tabs back ping node termtap routing netready)
+        type: string
+        default: all
       full-gate:
         description: Run the routing, termtap and netready gates too
         type: boolean
@@ -84,6 +88,7 @@ env:
   APP_ID: ${{ inputs.application-id || 'top.bangwu.taildeck' }}
   KOTLIN_APK_URL: https://github.com/markbang/taildeck/releases/download/v0.1.0/taildeck-0.1.0-x86_64.apk
   AVD_NAME: taildeck-api34
+  GATES: ${{ inputs.gates || 'all' }}
   # The emulator runner creates the AVD under ANDROID_AVD_HOME when it is set;
   # pinning it is what lets the cache find the AVD and its boot snapshot again.
   ANDROID_AVD_HOME: /home/runner/.android/avd
@@ -384,7 +389,8 @@ jobs:
           echo "::warning::the emulator still runs; skipping the AVD snapshot cache"
           exit 1
       - name: Save the AVD snapshot
-        if: steps.avd.outputs.cache-hit != 'true'
+        # A gate failure does not spoil the boot, so the cache is warmed anyway.
+        if: always() && steps.avd.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
           path: ~/.android/avd

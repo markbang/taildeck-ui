@@ -58,9 +58,10 @@ height=${geometry#*x}
 # Drop the status bar and the navigation dock: the page fills the middle.
 crop="${width}x$((height * 6 / 10))+0+$((height / 6))"
 convert "$out/node-page.png" -crop "$crop" +repage "$out/node-page-content.png" 2>/dev/null || true
-read -r mean std < <(
-  convert "$out/node-page-content.png" -format '%[fx:mean] %[fx:standard_deviation]' info: 2>/dev/null || echo '1 0'
-)
+readings=$(convert "$out/node-page-content.png" \
+  -format '%[fx:mean] %[fx:standard_deviation]' info: 2>/dev/null || echo '1 0')
+mean=${readings%% *}
+std=${readings##* }
 echo "content mean=$mean std=$std ($crop)" | tee -a "$out/summary.txt"
 
 if awk -v s="$std" 'BEGIN { exit !(s < 0.02) }'; then

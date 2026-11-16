@@ -21,6 +21,9 @@ netready_apk=${NETREADY_APK:-$demo}
 control_url=${CONTROL_URL:-}
 auth_key=${AUTH_KEY:-tskey-test}
 seed_state=${SEED_STATE:-}
+# GATES: "all" (the default) or a space-separated list of gate labels, so one
+# gate can be re-run on its own while a breakage is being chased.
+gates=${GATES:-all}
 mkdir -p "$out"
 results="$out/gate-results.txt"
 : > "$results"
@@ -45,9 +48,17 @@ skip() { # <label> <reason>
   note "skip $1: $2"
 }
 
+selected() { # <label>
+  case " $gates " in
+    *" all "*|*" $1 "*) return 0 ;;
+  esac
+  return 1
+}
+
 gate() { # <label> <timeout-seconds> <command...>
   local label=$1 limit=$2 start secs status
   shift 2
+  selected "$label" || { skip "$label" "not in GATES"; return 0; }
   start=$(date +%s)
   total=$((total + 1))
   echo "::group::gate $label"
