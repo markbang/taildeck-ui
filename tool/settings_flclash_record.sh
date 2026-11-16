@@ -411,7 +411,8 @@ side_by_side() { # <name> <taildeck clip> <flclash clip> [seconds]
 }
 
 side_by_side settings-flclash-language taildeck-language flclash-language 5
-side_by_side settings-flclash-theme taildeck-slow flclash-push 9
+side_by_side settings-flclash-expand taildeck-slow flclash-push 9
+side_by_side settings-flclash-shrink taildeck-shrink flclash-back 9
 side_by_side settings-flclash-drag taildeck-drag flclash-drag 6
 
 # Still pairs for the pull request.
