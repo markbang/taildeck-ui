@@ -122,20 +122,20 @@ Pick the control from the kind of value, not from how it looks in the form:
 
 ## Page bars
 
-- A subpage — anything with a back arrow: a settings section, Theme, Logs, a
-  node, an agent's chat — names itself in a compact bar over its content
-  (`PageBar`): a circular back button, one line of title (plus a caption line
-  when the page has one), and the page's actions at the end. The body has no
-  large title of its own; its content scrolls under the bar, which carries the
-  page's colour at 90% and eases out below it.
-- A first-level page (Nodes, Services, Agents, Settings) keeps its large
-  title, and hands it to the bar as the list scrolls: the title fades out
-  first, the bar's title comes in after it, so the page never reads as two
-  titles. A list too short to scroll the title under the bar still hands over
-  by its own end.
-- Both bars sit on the same 72 dp toolbar, so a page keeps its place when it
-  moves between the two, and the same widget carries the back button, the
-  title's `header` semantics and the actions' labels.
+- Every page names itself in one bar over its content (`PageBar`): a circular
+  back button on a subpage, the page's title, and its actions at the end, on a
+  material at the page's colour that holds under the title and eases out below
+  it, so the content scrolls under.
+- A first-level page carries FlClash's page title — 24 pt semibold, centred in
+  the 72 dp bar under the safe area — with no title of its own in the body, so
+  nothing sits between the status bar and the page's name. A subpage carries
+  the 17 pt bar title instead, and keeps the back button.
+- The bar's material comes in as the list scrolls and the first-level title
+  becomes the compact one, so a scrolled page reads as a subpage's bar; at rest
+  nothing paints over the status icons.
+- Both bars sit on the same 72 dp toolbar, so a page keeps its place between
+  the two, and the same widget carries the back button, the title's `header`
+  semantics and the actions' labels.
 
 ## Motion
 
