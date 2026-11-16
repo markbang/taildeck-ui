@@ -72,9 +72,9 @@ mkdir -p "$out/files"
 # run-as takes the file as one base64 argument; a bare cat would let the pty
 # translate the bytes.
 push_file() { # <local> <app-relative>
-  local b64
-  b64=$(base64 -w0 "$1")
-  adb shell "run-as $app sh -c 'echo $b64 | base64 -d > $2'" > /dev/null 2>&1
+  adb push "$1" /sdcard/taildeck-seed.bin > /dev/null 2>&1 || return 1
+  adb shell "run-as $app cp /sdcard/taildeck-seed.bin $2" > /dev/null 2>&1 || return 1
+  adb shell rm -f /sdcard/taildeck-seed.bin > /dev/null 2>&1 || true
 }
 
 adb shell run-as "$app" mkdir -p files/tsnet > /dev/null 2>&1 \
