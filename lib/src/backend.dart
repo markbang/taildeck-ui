@@ -128,7 +128,15 @@ class TaildeckBackend extends ChangeNotifier {
   Map<String, int> _sshPorts = const {};
   bool _foreground = true;
   bool _refreshing = false;
-  bool _statusApplied = false;
+  bool _netmapSeen = false;
+  bool _selfIpSeen = false;
+  bool _netmapGapLogged = false;
+  bool _netmapLogged = false;
+  bool _netstateLogged = false;
+  final Stopwatch _nodeClock = Stopwatch();
+  Duration? _runningAt;
+  Duration? _netmapAt;
+  Duration? _selfIpAt;
   bool _herdrWaking = false;
   bool _cancelStart = false;
   String _pingIp = '';
@@ -142,14 +150,26 @@ class TaildeckBackend extends ChangeNotifier {
   bool get tailnetStarting =>
       previewParam('tailnet') == 'starting' ||
       (available &&
-          !_statusApplied &&
+          !tailnetReady &&
           _state != BackendState.error &&
           _state != BackendState.needsLogin);
 
-  /// The node is Running and its first status (self and peers) has been read,
-  /// so peer names can resolve.
-  bool get tailnetReady =>
-      _state == BackendState.running && _statusApplied;
+  /// The signals behind [tailnetReady]: the backend state, a status built from
+  /// a netmap, and that netmap giving this node a tailnet address.
+  ({bool running, bool netmap, bool selfIp}) get tailnetSignals => (
+    running: _state == BackendState.running,
+    netmap: _netmapSeen,
+    selfIp: _selfIpSeen,
+  );
+
+  /// The node is Running over a netmap that knows this node's address, so peer
+  /// names resolve and a dial cannot race the first map. Before this, a status
+  /// only carries the OS hostname and an empty peer table.
+  bool get tailnetReady {
+    final signals = tailnetSignals;
+    return signals.running && signals.netmap && signals.selfIp;
+  }
+
   String get error => _error;
   String get authUrl => _authUrl;
   String get hostname => _hostname;
@@ -198,6 +218,7 @@ class TaildeckBackend extends ChangeNotifier {
 
   /// Whether Send presses Enter after the line; off inserts the text only.
   bool get terminalSendEnter => _terminalSendEnter;
+
   /// Appearance of the terminal page and grid.
   TerminalThemeId get terminalTheme => _terminalTheme;
   TerminalFontId get terminalFont => _terminalFont;
@@ -274,8 +295,7 @@ class TaildeckBackend extends ChangeNotifier {
 
   /// The shell is the right route: a saved login the node has not rejected.
   /// Pages keep their loading states until the node is Running.
-  bool get showShell =>
-      hasPersistedLogin && _state != BackendState.needsLogin;
+  bool get showShell => hasPersistedLogin && _state != BackendState.needsLogin;
 
   /// Start was requested and we are waiting for the user (or the control
   /// server) to finish signing in.
@@ -859,7 +879,7 @@ class TaildeckBackend extends ChangeNotifier {
     _self = null;
     _peers = const [];
     _tailnet = '';
-    _statusApplied = false;
+    _resetNetstate();
     _herdrAutoTried = false;
     unawaited(_herdr?.disconnect() ?? Future<void>.value());
     _hasPersistedLogin = false;
@@ -902,6 +922,10 @@ class TaildeckBackend extends ChangeNotifier {
     final bridge = _bridge;
     final storage = _storage;
     if (bridge == null || storage == null) return;
+    _resetNetstate();
+    _nodeClock
+      ..reset()
+      ..start();
     try {
       final dir = await storage.stateDir();
       final reply = await bridge.start(
@@ -948,7 +972,10 @@ class TaildeckBackend extends ChangeNotifier {
     _started = false;
     _gatewayPort = 0;
     _rawState = '';
-    _statusApplied = false;
+    _self = null;
+    _peers = const [];
+    _tailnet = '';
+    _resetNetstate();
     _state = BackendState.stopped;
     _authUrl = '';
     _waitingForLogin = false;
@@ -987,19 +1014,89 @@ class TaildeckBackend extends ChangeNotifier {
     _setState(status['state'] as String? ?? _rawState);
     final url = status['authUrl'] as String? ?? '';
     if (url.isNotEmpty) _authUrl = url;
-    _tailnet = status['tailnet'] as String? ?? _tailnet;
-    final self = status['self'];
-    _self = self is Map<String, dynamic>
-        ? nodeFromJson(self, isSelf: true)
-        : null;
-    _peers = [
-      for (final peer in status['peers'] as List? ?? const [])
-        if (peer is Map<String, dynamic>) nodeFromJson(peer),
-    ];
-    _statusApplied = true;
-    // herdr needs the peer table, which only this reply brings.
-    if (_state == BackendState.running) _autoConnectHerdr();
+    // A status without a netmap carries the OS hostname, no address and no
+    // peers; pages keep waiting instead of drawing that as the node.
+    if (_statusHasNetmap(status)) {
+      _netmapSeen = true;
+      _netmapAt ??= _nodeClock.elapsed;
+      _tailnet = status['tailnet'] as String? ?? _tailnet;
+      final self = status['self'];
+      _self = self is Map<String, dynamic>
+          ? nodeFromJson(self, isSelf: true)
+          : null;
+      _peers = [
+        for (final peer in status['peers'] as List? ?? const [])
+          if (peer is Map<String, dynamic>) nodeFromJson(peer),
+      ];
+      if (_self?.ips.isNotEmpty ?? false) {
+        _selfIpSeen = true;
+        _selfIpAt ??= _nodeClock.elapsed;
+      }
+      _logNetmap();
+      _logNetstate();
+    } else {
+      _logNetmapGap();
+    }
+    // herdr needs the peer table, which only a netmap status brings.
+    if (tailnetReady) _autoConnectHerdr();
     notifyListeners();
+  }
+
+  /// Whether this status was built from a netmap. The lib reports it; one
+  /// without the flag is still recognised by what only a netmap can bring.
+  bool _statusHasNetmap(Map<String, dynamic> status) {
+    if (status['netmap'] case final bool netmap) return netmap;
+    final self = status['self'];
+    final ips = self is Map<String, dynamic> ? self['ips'] as List? : null;
+    return (ips?.isNotEmpty ?? false) ||
+        ((status['peers'] as List?)?.isNotEmpty ?? false);
+  }
+
+  String _at(Duration? at) => at == null ? '-' : '${at.inMilliseconds}ms';
+
+  void _logNetmapGap() {
+    if (_netmapGapLogged) return;
+    _netmapGapLogged = true;
+    final state = _rawState.isEmpty ? 'NoState' : _rawState;
+    debugPrint(
+      'taildeck netstate: no netmap at ${_at(_nodeClock.elapsed)} '
+      '($state); pages wait',
+    );
+  }
+
+  /// The netmap is in but readiness is not: which signal is still missing.
+  void _logNetmap() {
+    if (_netmapLogged || tailnetReady) return;
+    _netmapLogged = true;
+    debugPrint(
+      'taildeck netstate: netmap at ${_at(_netmapAt)}, '
+      'self ip ${_self?.ip ?? '-'}, state ${_rawState.isEmpty ? 'NoState' : _rawState}; '
+      'pages wait',
+    );
+  }
+
+  /// One line per start with the three readiness milestones, so a slow netmap
+  /// is visible in a log instead of guessed from a screenshot.
+  void _logNetstate() {
+    if (_netstateLogged || !tailnetReady) return;
+    _netstateLogged = true;
+    debugPrint(
+      'taildeck netstate: Running at ${_at(_runningAt)}, '
+      'netmap at ${_at(_netmapAt)}, '
+      'self ip ${_self?.ip ?? '-'} at ${_at(_selfIpAt)}',
+    );
+  }
+
+  void _resetNetstate() {
+    _netmapSeen = false;
+    _selfIpSeen = false;
+    _netmapGapLogged = false;
+    _netmapLogged = false;
+    _netstateLogged = false;
+    _runningAt = null;
+    _netmapAt = null;
+    _selfIpAt = null;
+    _nodeClock.stop();
   }
 
   void _setState(String raw) {
@@ -1013,6 +1110,7 @@ class TaildeckBackend extends ChangeNotifier {
       _ => BackendState.starting,
     };
     if (_state == BackendState.running) {
+      if (_nodeClock.isRunning) _runningAt ??= _nodeClock.elapsed;
       _waitingForLogin = false;
       _hasPersistedLogin = true;
       if (!_persistedSignIn) _persist(signedIn: true);
@@ -1025,8 +1123,7 @@ class TaildeckBackend extends ChangeNotifier {
   /// alive; sign-out drops the node and with it the service.
   void _syncService() {
     final wanted =
-        _state == BackendState.running &&
-        (_foreground || _terminalKeepAlive);
+        _state == BackendState.running && (_foreground || _terminalKeepAlive);
     if (wanted == _serviceRunning) return;
     _serviceRunning = wanted;
     unawaited(wanted ? _service.start() : _service.stop());

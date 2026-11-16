@@ -10,9 +10,38 @@ import 'package:taildeck_ui/src/l10n.dart';
 import 'package:taildeck_ui/src/native/bridge.dart';
 import 'package:taildeck_ui/src/native/storage.dart';
 import 'package:taildeck_ui/src/pages/agents.dart';
+import 'package:taildeck_ui/src/pages/nodes.dart';
 
 class _FakeBridge implements NativeBridge {
-  static const statusReply = {'state': 'Running'};
+  /// A status from a cold start before the first netmap: the OS hostname, no
+  /// address and no peer table (what the node reports while it is coming up).
+  static const preNetmapStatus = {
+    'state': 'Running',
+    'netmap': false,
+    'self': {'name': 'localhost', 'ips': <String>[], 'os': 'android'},
+    'peers': <Object>[],
+  };
+
+  static const readyStatus = {
+    'state': 'Running',
+    'netmap': true,
+    'self': {
+      'name': 'taildeck',
+      'ips': ['100.64.0.1'],
+      'online': true,
+      'os': 'linux',
+    },
+    'peers': [
+      {
+        'name': 'bangwu',
+        'ips': ['100.64.0.2'],
+        'online': true,
+        'os': 'linux',
+      },
+    ],
+  };
+
+  Map<String, dynamic> statusReply = readyStatus;
   final _events = StreamController<BridgeEvent>.broadcast();
   int herdrDials = 0;
   String herdrError = '';
@@ -162,6 +191,21 @@ class _MemoryStorage implements BackendStorage {
   Future<void> deleteSshKey(String name) async => keys.remove(name);
 }
 
+Widget _nodesApp(TaildeckBackend backend) => MediaQuery(
+  data: const MediaQueryData(size: Size(414, 896)),
+  child: MaterialApp(
+    locale: const Locale('en'),
+    localizationsDelegates: const [AppLocalizations.delegate],
+    supportedLocales: const [Locale('en'), Locale('zh')],
+    home: BackendScope(
+      backend: backend,
+      child: Scaffold(
+        body: NodesPage(onOpenNode: (_) {}, onToggleTheme: () {}),
+      ),
+    ),
+  ),
+);
+
 Widget _app(TaildeckBackend backend) => MediaQuery(
   data: const MediaQueryData(size: Size(414, 896)),
   child: MaterialApp(
@@ -294,6 +338,65 @@ void main() {
       expect(herdr.link, HerdrLink.ready);
       expect(herdr.agents, hasLength(1));
       expect(herdr.failure, HerdrFailure.none);
+    });
+  });
+
+  group('tailnet readiness', () {
+    TaildeckBackend signedIn(_FakeBridge bridge) => TaildeckBackend(
+      bridge: bridge,
+      storage: _MemoryStorage()
+        ..config = const StoredConfig(signedIn: true, herdrNode: 'bangwu'),
+    );
+
+    test('a Running status without a netmap is not ready', () async {
+      final bridge = _FakeBridge()..statusReply = _FakeBridge.preNetmapStatus;
+      final backend = signedIn(bridge);
+      await backend.init();
+
+      expect(backend.tailnetSignals, (
+        running: true,
+        netmap: false,
+        selfIp: false,
+      ));
+      expect(backend.tailnetReady, isFalse);
+      expect(backend.tailnetStarting, isTrue);
+      // The OS hostname and an empty peer table are not a tailnet.
+      expect(backend.self, isNull);
+      expect(backend.peers, isEmpty);
+      expect(bridge.herdrDials, 0);
+      backend.dispose();
+    });
+
+    test('the first netmap makes it ready and dials herdr once', () async {
+      final bridge = _FakeBridge();
+      final backend = signedIn(bridge);
+      await backend.init();
+
+      expect(backend.tailnetReady, isTrue);
+      expect(backend.self?.ip, '100.64.0.1');
+      expect(backend.peers.map((peer) => peer.name), ['bangwu']);
+      expect(backend.tailnetStarting, isFalse);
+      await Future<void>.delayed(Duration.zero);
+      expect(bridge.herdrDials, 1);
+      backend.dispose();
+    });
+
+    testWidgets('the node page waits instead of drawing localhost', (
+      tester,
+    ) async {
+      final backend = signedIn(
+        _FakeBridge()..statusReply = _FakeBridge.preNetmapStatus,
+      );
+      await backend.init();
+      await tester.pumpWidget(_nodesApp(backend));
+      await tester.pump();
+
+      expect(find.text('Connecting to the tailnet…'), findsOneWidget);
+      expect(find.textContaining('localhost'), findsNothing);
+      expect(find.text('No nodes yet.'), findsNothing);
+      await tester.pumpWidget(const SizedBox());
+      backend.dispose();
+      await tester.pump();
     });
   });
 
