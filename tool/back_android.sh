@@ -103,6 +103,18 @@ wait_sheet() { # $1: sheet kind
   fail "sheet=$1 never opened; logcat: $(adb logcat -d 2>/dev/null | grep 'taildeck preview' | tail -n 3 | tr '\n' ' ')"
 }
 
+# The app answers back with a log line after the sheet's animation. A single
+# grep reads the log too early on a loaded emulator, so the answer is waited
+# for; the state it names is still asserted exactly once afterwards.
+wait_log() { # <pattern> <seconds>
+  local _i
+  for _i in $(seq 1 "$2"); do
+    adb logcat -d 2>/dev/null | grep -q "$1" && return 0
+    sleep 1
+  done
+  return 1
+}
+
 expect_count() { # $1: step, $2: exactly this many
   local seen
   seen=$(count "$1")
@@ -150,7 +162,8 @@ for sheet in ssh service agent key dialog; do
   wait_sheet "$sheet"
   shot "sheet-$sheet-open"
   back
-  adb logcat -d 2>/dev/null | grep -q 'taildeck preview: sheet closed'     || fail "sheet=$sheet: back did not close the sheet"
+  wait_log 'taildeck preview: sheet closed' 10 \
+    || fail "sheet=$sheet: back did not close the sheet in 10 s; logcat: $(adb logcat -d 2>/dev/null | grep -E 'taildeck (preview|back)' | tail -n 3 | tr '\n' ' ')"
   expect_count page 0
   alive "sheet=$sheet closed"
   shot "sheet-$sheet-closed"
