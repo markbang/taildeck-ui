@@ -6,15 +6,20 @@
 # exists can hit that screen, so every gate waits for the app to be in front,
 # the route to be the shell, and the launch screen's fade to finish.
 
-# The app is ours, alive and the focused window.
+# The app is ours, alive and in front. mCurrentFocus alone is not enough: it
+# reads null for a while after am start on this emulator, while the window and
+# the resumed activity are already ours.
 gate_in_front() { # <app>
   local app=$1 pid focus
   pid=$(adb shell pidof "$app" 2>/dev/null | tr -d '\r' || true)
   [ -n "$pid" ] || return 1
-  focus=$(adb shell dumpsys window 2>/dev/null | grep -m1 mCurrentFocus | tr -d '\r' || true)
+  focus=$(adb shell dumpsys window 2>/dev/null \
+    | grep -E 'mCurrentFocus|mFocusedApp' | tr -d '\r' || true)
   case "$focus" in
     *"$app/"*) return 0 ;;
   esac
+  adb shell dumpsys activity activities 2>/dev/null \
+    | grep -q "topResumedActivity.*$app/" && return 0
   return 1
 }
 
