@@ -323,8 +323,14 @@ jobs:
             | tee gates/badging.txt
           echo "smoking $apk ($(stat -c%s "$apk") bytes)"
       - name: The release APK carries no demo data
-        if: steps.mode.outputs.full != 'true' && steps.mode.outputs.source == 'true'
-        run: tool/check_demo_free.sh "$APK"
+        if: steps.mode.outputs.full != 'true'
+        run: |
+          # A gate-only re-run may smoke the demo APK itself; that is not the
+          # release build this check is about.
+          case "$APK" in
+            */demo.apk) echo "demo build under test; not a release APK" ;;
+            *) tool/check_demo_free.sh "$APK" ;;
+          esac
 
       - name: Start the test control plane and the peers
         id: control
