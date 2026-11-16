@@ -29,6 +29,13 @@ gate_stop() { # <app>
     sleep 1
     waited=$((waited + 1))
   done
+  {
+    echo "wait_home $app: pid '$(adb shell pidof "$app" 2>/dev/null | tr -d '\r' || true)'"
+    echo "wait_home $app: focus '$(adb shell dumpsys window 2>/dev/null | grep -m1 mCurrentFocus | tr -d '\r' || true)'"
+    echo "wait_home $app: marker '$marker'"
+  } >&2
+  adb exec-out screencap -p > "$out/wait-home-fail.png" 2> /dev/null || true
+  adb pull /sdcard/ui.xml "$out/wait-home-fail.ui.xml" > /dev/null 2>&1 || true
   return 1
 }
 
