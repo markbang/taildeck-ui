@@ -97,7 +97,7 @@ jobs:
   smoke:
     name: one emulator, every on-device gate
     runs-on: ubuntu-latest
-    timeout-minutes: 110
+    timeout-minutes: 80
     steps:
       - uses: actions/checkout@v4
 
@@ -110,7 +110,12 @@ jobs:
           # A pull request always runs the whole set; the release call and a
           # ship-mode dispatch smoke the APK they were given.
           case "${{ github.event_name }}" in
-            pull_request) full=true ;;
+            pull_request)
+              full=true
+              # The long 20x loops wait for a label or a manual run: a PR gets
+              # the fast on-device set in one boot (target: under 20 minutes).
+              echo "GATES=cold-start splash agents stills tabs back ping node termtap" >> "$GITHUB_ENV"
+              ;;
           esac
           source=false
           if [ "$full" = true ] || [ "${{ inputs.build }}" = true ]; then source=true; fi
