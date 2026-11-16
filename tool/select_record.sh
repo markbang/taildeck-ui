@@ -47,12 +47,17 @@ geometry() {
 shot() { adb exec-out screencap -p > "$out/$1.png" 2> /dev/null || rm -f "$out/$1.png"; }
 back_key() { adb shell input keyevent 4 > /dev/null 2>&1 || true; }
 
+# A dump that fails must not be read off the last one, or a miss would look
+# like a miss forever: both copies go before uiautomator runs.
 ui() {
   local attempt
   for attempt in 1 2 3; do
+    rm -f "$out/ui.xml"
+    adb shell rm -f /sdcard/ui.xml > /dev/null 2>&1 || true
     adb shell uiautomator dump /sdcard/ui.xml > /dev/null 2>&1 || true
     adb pull /sdcard/ui.xml "$out/ui.xml" > /dev/null 2>&1 || true
-    if python3 "$here/ui.py" "$out/ui.xml" "$@" 2> /dev/null; then return 0; fi
+    if [ -s "$out/ui.xml" ] &&
+      python3 "$here/ui.py" "$out/ui.xml" "$@" 2> /dev/null; then return 0; fi
     sleep 0.5
   done
   return 1
@@ -149,7 +154,7 @@ launch() { # <query> <marker>
   adb logcat -c > /dev/null 2>&1 || true
   adb shell "am start -W -a android.intent.action.VIEW -d 'taildeck://preview/?$query' -n $component" \
     > /dev/null 2>&1 || true
-  sleep 4
+  sleep 6
   dismiss_system_dialogs
   for attempt in $(seq 1 45); do
     if gate_in_front "$app" && ui has "$marker" > /dev/null 2>&1; then
