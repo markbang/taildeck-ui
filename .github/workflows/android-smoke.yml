@@ -302,9 +302,10 @@ jobs:
           if [ "${{ steps.mode.outputs.full }}" = "true" ]; then
             apk=$(pick profile.apk) || { echo "::error::the profile APK was not built"; exit 1; }
           else
-            apk=$(pick smoke.apk || pick taildeck-android-x64.apk || \
-              ls build/artifact/taildeck-android-x64-*.apk build/artifact/*.apk 2>/dev/null | head -1) \
-              || { echo "::error::no APK to smoke"; exit 1; }
+            # Ship mode: the APK the caller uploaded, under its release name.
+            apk=$(pick smoke.apk || pick taildeck-android-x64.apk ||
+              find build/artifact -maxdepth 1 -name 'taildeck-android-x64-*.apk' | sort | head -1)
+            [ -n "$apk" ] || apk=$(find build/artifact -maxdepth 1 -name '*.apk' | sort | head -1)
           fi
           test -s "$apk" || { echo "::error::no APK to smoke"; exit 1; }
           echo "APK=$apk" >> "$GITHUB_ENV"
