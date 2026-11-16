@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart' hide TextField;
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:prism_ui/prism_ui.dart' show TextField;
 import 'package:taildeck_ui/src/backend.dart';
@@ -88,6 +89,34 @@ void main() {
 
     expect(find.byType(TextField), findsNothing);
     expect(sent, 'echo 你好\necho done');
+  });
+
+  testWidgets('Compose appends the clipboard, CJK included', (tester) async {
+    final backend = TaildeckBackend(storage: _MemoryStorage());
+    addTearDown(backend.dispose);
+    String? sent;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async =>
+          call.method == 'Clipboard.getData' ? {'text': '你好'} : null,
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
+    await _open(tester, backend, onResult: (text) => sent = text);
+
+    await tester.tap(find.byTooltip('Paste'));
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).controller!.text,
+      '你好',
+    );
+    await tester.tap(find.text('Send'));
+    await tester.pumpAndSettle();
+    expect(sent, '你好');
   });
 
   testWidgets('Compose can leave the Enter off, and the setting sticks', (

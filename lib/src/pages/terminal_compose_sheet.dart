@@ -60,6 +60,23 @@ class _ComposeSheetState extends State<_ComposeSheet> {
     Navigator.of(context).pop(text);
   }
 
+  /// Appends the clipboard, so a long command copied in the terminal (or
+  /// anywhere else) can be sent without retyping it.
+  Future<void> _paste() async {
+    final data = await Clipboard.getData(Clipboard.kTextPlain);
+    final text = data?.text;
+    if (text == null || text.isEmpty) return;
+    final value = _text.value;
+    final offset = value.selection.isValid
+        ? value.selection.end
+        : value.text.length;
+    final next = value.text.replaceRange(offset, offset, text);
+    _text.value = TextEditingValue(
+      text: next,
+      selection: TextSelection.collapsed(offset: offset + text.length),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
@@ -96,6 +113,11 @@ class _ComposeSheetState extends State<_ComposeSheet> {
                   l10n.terminalCompose,
                   style: AppTextStyle.title2.of(context, emphasized: true),
                 ),
+              ),
+              IconButton(
+                onPressed: _paste,
+                icon: const GlyphIcon(Glyphs.paste),
+                tooltip: l10n.paste,
               ),
               IconButton(
                 onPressed: () => Navigator.of(context).pop(),
@@ -141,8 +163,7 @@ class _ComposeSheetState extends State<_ComposeSheet> {
                         l10n.snippetAppendEnter,
                         backend.terminalSendEnter,
                       ),
-                      onChanged: (value) =>
-                          backend.setTerminalSendEnter(value),
+                      onChanged: (value) => backend.setTerminalSendEnter(value),
                     ),
                     const SizedBox(width: 10),
                     Flexible(
@@ -150,19 +171,18 @@ class _ComposeSheetState extends State<_ComposeSheet> {
                         backend.terminalSendEnter
                             ? l10n.terminalSendEnterOn
                             : l10n.terminalSendInsertOnly,
-                        style: AppTextStyle.footnote.of(context).copyWith(
-                          color: context.colorScheme.onSurfaceVariant,
-                        ),
+                        style: AppTextStyle.footnote
+                            .of(context)
+                            .copyWith(
+                              color: context.colorScheme.onSurfaceVariant,
+                            ),
                       ),
                     ),
                   ],
                 ),
               ),
               const SizedBox(width: 10),
-              FilledButton(
-                onPressed: _send,
-                child: Text(l10n.terminalSend),
-              ),
+              FilledButton(onPressed: _send, child: Text(l10n.terminalSend)),
             ],
           ),
         ],

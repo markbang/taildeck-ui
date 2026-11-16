@@ -65,9 +65,19 @@ ime_state() {
 }
 
 hide_ime() {
+  if ui has 'Hide keyboard' > /dev/null 2>&1; then
+    tap_label 'Hide keyboard' > /dev/null 2>&1 || true
+    sleep 1.2
+    return 0
+  fi
   [ "$(ime_state)" = "mInputShown=true" ] || return 0
   adb shell input keyevent KEYCODE_BACK > /dev/null 2>&1 || true
   sleep 1.5
+}
+
+open_keyboard() {
+  ui has 'Hide keyboard' > /dev/null 2>&1 && return 0
+  tap_label 'Show keyboard'
 }
 
 type_text() {
@@ -101,13 +111,25 @@ record() { # <name> <seconds> <function>
 
 grid_box() { ui bounds 'Terminal output'; }
 
-tap_grid() { # <fx> <fy>, both 0..1
-  local fx=$1 fy=$2 box x1 y1 x2 y2 x y
-  box=$(grid_box) || { note "no grid bounds"; return 1; }
+grid_point() { # <fx> <fy>
+  local fx=$1 fy=$2 box x1 y1 x2 y2
+  box=$(grid_box) || return 1
   read -r x1 y1 x2 y2 <<< "$box"
-  x=$(awk -v f="$fx" -v a="$x1" -v b="$x2" 'BEGIN { printf "%d", a + f * (b - a) }')
-  y=$(awk -v f="$fy" -v a="$y1" -v b="$y2" 'BEGIN { printf "%d", a + f * (b - a) }')
-  tap_xy "$x $y"
+  awk -v f="$fx" -v a="$x1" -v b="$x2" -v g="$fy" -v c="$y1" -v d="$y2"     'BEGIN { printf "%d %d", a + f * (b - a), c + g * (d - c) }'
+}
+
+tap_grid() { # <fx> <fy>, both 0..1
+  local point
+  point=$(grid_point "$1" "$2") || { note "no grid bounds"; return 1; }
+  tap_xy "$point"
+}
+
+long_press_grid() { # <fx> <fy>
+  local point
+  point=$(grid_point "$1" "$2") || { note "no grid bounds"; return 1; }
+  # shellcheck disable=SC2086
+  adb shell input swipe $point $point 900 > /dev/null 2>&1 || true
+  sleep 1.2
 }
 
 scroll_down() {
@@ -269,9 +291,19 @@ new_toolbar() {
   sleep 1
 }
 
+# Chinese without a Chinese IME: print it from octal escapes, copy it from the
+# grid, and let Compose paste it.
 compose_flow() {
+  send_command "clear" 1
+  send_command "sh /tmp/tapzh.sh" 2
+  long_press_grid 0.06 0.06
+  tap_label 'Copy' || { note "compose: the selection toolbar had no Copy"; return 1; }
+  sleep 1
   tap_label 'Compose' || { note "compose: no Compose button"; return 1; }
   sleep 2
+  type_text "echo "
+  tap_label 'Paste' || { note "compose: no Paste button"; return 1; }
+  sleep 1
   shot sheet-compose
   tap_label 'Send' || { note "compose: no Send button"; return 1; }
   sleep 3
@@ -304,22 +336,15 @@ fi
 # old build has to go before the new one can be installed.
 adb uninstall "$app" > /dev/null 2>&1 || true
 adb install -r -g "$apk" > "$out/install.txt" 2>&1 || { note "install failed, see install.txt"; exit 0; }
-# A deep link as the very first launch after install hangs on the splash, so
-# the app starts plainly once; the Compose prefill then comes from a deep link
-# on the initialised app.
 launch || { note "cannot launch the app"; exit 0; }
 sign_in || true
-compose_url="taildeck://preview/?compose=echo%20%E4%BD%A0%E5%A5%BD%EF%BC%8C%E7%BB%88%E7%AB%AF"
-if launch "$compose_url" && wait_for "Nodes" 20; then
-  note "compose launch: node list up"
-else
-  note "compose launch did not reach the node list; falling back to a plain launch"
-  launch || { note "cannot launch the app"; exit 0; }
-  sign_in || true
-fi
+cat > /tmp/tapzh.sh <<'ZH'
+#!/bin/sh
+printf '\344\275\240\345\245\275\n'
+ZH
 record sheet-open 25 new_open
 shot sheet-dark
-record sheet-compose 18 compose_flow
+record sheet-compose 26 compose_flow
 record sheet-tap 10 new_tap
 record sheet-keyboard 14 new_keyboard
 record sheet-toolbar 16 new_toolbar

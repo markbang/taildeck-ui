@@ -75,9 +75,21 @@ focused_window() {
 }
 
 hide_ime() {
+  # The capsule knows the state; tapping its button is the same path a user
+  # takes and works even when dumpsys reports a stale flag.
+  if ui has 'Hide keyboard' > /dev/null 2>&1; then
+    tap_label 'Hide keyboard' > /dev/null 2>&1 || true
+    sleep 1.5
+    return 0
+  fi
   [ "$(ime_state)" = "mInputShown=true" ] || return 0
   adb shell input keyevent KEYCODE_BACK > /dev/null 2>&1 || true
   sleep 2
+}
+
+open_keyboard() {
+  ui has 'Hide keyboard' > /dev/null 2>&1 && return 0
+  tap_label 'Show keyboard'
 }
 
 type_text() {
@@ -235,7 +247,7 @@ open_session() {
 }
 
 send_command() { # <text> [settle seconds], through the keyboard button
-  if ! tap_label 'Show keyboard'; then
+  if ! open_keyboard; then
     note "no Show keyboard button"
     return 1
   fi
