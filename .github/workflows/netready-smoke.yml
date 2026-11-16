@@ -1,0 +1,150 @@
+# Tailnet-ready gate: the test control plane holds a node's first netmap for
+# ~2 s, so every cold start has a window where the node reports Running with no
+# tailnet address and no peer table. 20 cold starts per page must keep their
+# loading state through that window: no OS hostname, no "No nodes yet", and no
+# "Can't find node" for the peer that is online. Runs on the KVM emulator; the
+# stills, the log timestamps and the contact sheets go in the artifact.
+name: netready-smoke
+
+on:
+  pull_request:
+    paths:
+      - lib/src/backend.dart
+      - lib/src/pages/nodes.dart
+      - lib/src/pages/agents.dart
+      - lib/src/agents_phase.dart
+      - lib/src/native/bridge.dart
+      - native/bridge/bridge.go
+      - tool/netready_android.sh
+      - .github/workflows/netready-smoke.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: netready-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GOPROXY: https://proxy.golang.org,direct
+  GOTOOLCHAIN: auto
+  APP_ID: top.bangwu.taildeck
+  NETMAP_HOLD_MS: 2000
+
+jobs:
+  netready:
+    name: 20 cold starts per page, netmap held 2 s
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+      - uses: actions/setup-go@v6
+        with:
+          go-version: 1.27.x
+          cache-dependency-path: native/bridge/go.sum
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.1
+      - name: Pin the Android NDK
+        run: |
+          sdk="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+          ndk="$sdk/ndk/28.2.13676358"
+          if [ ! -d "$ndk" ]; then
+            sdkmanager_bin="$(ls "$sdk"/cmdline-tools/*/bin/sdkmanager | sort -V | tail -1)"
+            yes | "$sdkmanager_bin" --licenses > /dev/null 2>&1 || true
+            "$sdkmanager_bin" --install "ndk;28.2.13676358"
+          fi
+          test -d "$ndk"
+          echo "ANDROID_NDK_HOME=$ndk" >> "$GITHUB_ENV"
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.9
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Build the native libs (x86_64)
+        run: |
+          set -o pipefail
+          tool/build_native.sh android-x86_64 | tee /tmp/build_native.log
+          tool/build_term.sh android-x86_64 | tee /tmp/build_term.log
+      - name: Build a debug APK (x86_64)
+        # Debug is what makes run-as possible: the gate drops the node's netmap
+        # cache before every cold start, or the cached map hides the window.
+        run: |
+          flutter build apk --debug --target-platform android-x64
+          cp build/app/outputs/flutter-apk/app-debug.apk build/netready.apk
+          ls -l build/netready.apk
+      - name: Start the test control plane and a peer named bangwu
+        id: control
+        run: |
+          set -o pipefail
+          (cd tool/motion && go build -o /tmp/motion_control ./control && go build -o /tmp/motion_peer ./peer)
+          /tmp/motion_control -addr 127.0.0.1:8080 -hold-map "${NETMAP_HOLD_MS}ms" > /tmp/control.log 2>&1 &
+          for _ in $(seq 1 20); do
+            grep -q 'listening on' /tmp/control.log && break
+            sleep 1
+          done
+          grep 'listening on' /tmp/control.log || { cat /tmp/control.log; exit 1; }
+          /tmp/motion_peer -hostname bangwu -control http://127.0.0.1:8080 \
+            -key tskey-test -port 3000 -ssh-port 22 > /tmp/peer.log 2>&1 &
+          for _ in $(seq 1 60); do
+            grep -q 'serving on' /tmp/peer.log && break
+            sleep 1
+          done
+          grep 'serving on' /tmp/peer.log || { cat /tmp/peer.log; exit 1; }
+          echo "control_url=http://10.0.2.2:8080" >> "$GITHUB_OUTPUT"
+          derp=$(sed -n 's/.*DERP httpsrv listener: 127\.0\.0\.1:\([0-9]*\).*/\1/p' /tmp/control.log | head -1)
+          echo "derp_port=$derp" >> "$GITHUB_OUTPUT"
+      - name: Seed a node key for the app
+        # The app starts from a key already registered here, so no login tap can
+        # fall back to the browser flow mid-gate.
+        run: |
+          tool/build_native.sh linux
+          dart run tool/seed_state.dart linux/lib/libtaildeck_bridge.so /tmp/seed \
+            http://127.0.0.1:8080 tskey-test taildeck
+      - name: Install the recording tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg imagemagick
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          ls -l /dev/kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: >-
+            CONTROL_URL='${{ steps.control.outputs.control_url }}'
+            DERP_PORT='${{ steps.control.outputs.derp_port }}'
+            SEED_STATE=/tmp/seed/tailscaled.state
+            bash tool/netready_android.sh build/netready.apk "$APP_ID" netready-smoke
+      - name: Job summary
+        if: always()
+        run: |
+          {
+            echo "### Tailnet-ready gate (20 cold starts per page, netmap held ${NETMAP_HOLD_MS} ms)"
+            echo
+            echo '```'
+            cat netready-smoke/summary.txt 2>/dev/null || echo 'no summary'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: netready-smoke
+          path: netready-smoke/
+          if-no-files-found: warn
