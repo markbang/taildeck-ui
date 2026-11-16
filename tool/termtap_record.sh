@@ -192,10 +192,19 @@ launch() { # [url]
 
 sign_in() {
   [ -n "$control_url" ] || { note "no control server: cannot reach a shell"; return 1; }
-  if ui has "Nodes" > /dev/null 2>&1; then
-    note "sign-in: already signed in"
-    return 0
-  fi
+  # A cold start can sit on the splash for a while; wait for the first screen
+  # before reading its fields.
+  local waited=0
+  while [ "$waited" -lt 45 ]; do
+    if ui has "Nodes" > /dev/null 2>&1; then
+      note "sign-in: already signed in"
+      return 0
+    fi
+    ui has "Control server" > /dev/null 2>&1 && break
+    sleep 1
+    waited=$((waited + 1))
+  done
+  ui has "Control server" > /dev/null 2>&1 || { note "sign-in: no login screen"; return 1; }
   local point
   point=$(find_or_scroll "Control server") || { note "sign-in: no control-server row"; return 1; }
   tap_xy "$point"

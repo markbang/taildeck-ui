@@ -172,11 +172,19 @@ launch() { # [url]
 
 sign_in() {
   [ -n "$control_url" ] || { note "no control server: cannot reach a shell"; return 1; }
-  # A deep-link launch can sit on the splash longer than a plain one.
-  if wait_for "Nodes" 20 || ui has "Nodes" > /dev/null 2>&1; then
-    note "sign-in: already signed in"
-    return 0
-  fi
+  # A cold start can sit on the splash for a while; wait for the first screen
+  # before reading its fields.
+  local waited=0
+  while [ "$waited" -lt 45 ]; do
+    if ui has "Nodes" > /dev/null 2>&1; then
+      note "sign-in: already signed in"
+      return 0
+    fi
+    ui has "Control server" > /dev/null 2>&1 && break
+    sleep 1
+    waited=$((waited + 1))
+  done
+  ui has "Control server" > /dev/null 2>&1 || { note "sign-in: no login screen"; return 1; }
   local point
   point=$(find_or_scroll "Control server") || {
     note "sign-in: no control-server row"
@@ -296,13 +304,15 @@ fi
 # old build has to go before the new one can be installed.
 adb uninstall "$app" > /dev/null 2>&1 || true
 adb install -r -g "$apk" > "$out/install.txt" 2>&1 || { note "install failed, see install.txt"; exit 0; }
-# The Compose prefill comes from the launch query, so the deep link starts the
-# app once; a plain launch is the fallback when that query cannot start it.
+# A deep link as the very first launch after install hangs on the splash, so
+# the app starts plainly once; the Compose prefill then comes from a deep link
+# on the initialised app.
+launch || { note "cannot launch the app"; exit 0; }
+sign_in || true
 compose_url="taildeck://preview/?compose=echo%20%E4%BD%A0%E5%A5%BD%EF%BC%8C%E7%BB%88%E7%AB%AF"
-if launch "$compose_url"; then
-  sign_in || true
-fi
-if ! wait_for "Nodes" 20; then
+if launch "$compose_url" && wait_for "Nodes" 20; then
+  note "compose launch: node list up"
+else
   note "compose launch did not reach the node list; falling back to a plain launch"
   launch || { note "cannot launch the app"; exit 0; }
   sign_in || true
