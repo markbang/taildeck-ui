@@ -183,48 +183,46 @@ cold_start() { # <tag> <query>
   grep -q "^Starting: Intent" "$out/$1-launch.txt"
 }
 
-# Filter on the device and cap the tail: a host-side filter still sends the
-# whole 2 MB buffer over adb on every poll, which is what made this gate
-# outrun its time budget.
-flutter_log() { timeout 30 adb shell logcat -d -s flutter:I -t 400 2> /dev/null; }
-log_has() { flutter_log | grep -q "$1"; }
+# The app's own lines, filtered on the host: the log is cleared per run, so one
+# read per run is enough, and the gate polls the page instead of the log (a
+# device-side -s/-t filter returned nothing and stalled every run).
+flutter_log() { timeout 60 adb logcat -d 2> /dev/null | grep -a 'I flutter :'; }
 
-# Samples the page until the ready line is in logcat, and counts the runs that
-# saw the loading state: a run whose dumps all landed after the netmap proves
-# nothing, so the total has to stay above zero.
+# Samples the page until it leaves its loading state, and counts the runs that
+# saw that state: a run whose dumps all landed after the netmap proves nothing,
+# so the total has to stay above zero.
 loading_runs=0
 runs_done=0
 sample_until_ready() { # <tag> <phase>
-  local tag=$1 phase=$2 t0 forbidden=() loading=0 attempt needle
+  local tag=$1 phase=$2 t0 forbidden=() loading=0 needle
   t0=$(date +%s%3N)
   case "$phase" in
     node) forbidden=("${forbidden_common[@]}" "${forbidden_node[@]}") ;;
     agents) forbidden=("${forbidden_common[@]}" "${forbidden_agents[@]}") ;;
   esac
-  # The window opens when the shell paints and closes when the netmap lands, so
-  # the dumps go right after the route and nowhere else.
-  while ! log_has 'taildeck route: shell'; do
-    [ $(( $(date +%s%3N) - t0 )) -gt 20000 ] && fail "$tag: no shell route within 20 s; see $tag-launch.txt"
-    sleep 0.4
+  # The dock's labels say the shell painted, which is when the window opens.
+  while :; do
+    dump_page && page_has "Services" && break
+    [ $(( $(date +%s%3N) - t0 )) -gt 20000 ] && fail "$tag: no shell within 20 s; see $tag-launch.txt"
+    sleep 0.3
   done
-  for attempt in 1 2 3; do
-    [ -s "$out/$tag.png" ] || adb exec-out screencap -p > "$out/$tag.png" 2>/dev/null || true
+  while :; do
     if dump_page; then
-      page_has "Connecting to the tailnet" && loading=1
-      if ! log_has 'taildeck netstate: Running at'; then
+      [ -s "$out/$tag.png" ] || adb exec-out screencap -p > "$out/$tag.png" 2>/dev/null || true
+      if page_has "Connecting to the tailnet"; then
+        loading=1
         for needle in "${forbidden[@]}"; do
           page_has "$needle" && fail "$tag: the $phase page shows \"$needle\" while the netmap is not in"
         done
+      else
+        break
       fi
     fi
-    log_has 'taildeck netstate: Running at' && break
-    sleep 0.3
+    # A debug cold start on a loaded emulator can take 10 s to reach the node.
+    [ $(( $(date +%s%3N) - t0 )) -gt 40000 ] && fail "$tag: the page was still loading 40 s after the start"
+    sleep 0.2
   done
-  # A debug cold start on a loaded emulator can take 10 s to reach the node.
-  while ! log_has 'taildeck netstate: Running at'; do
-    [ $(( $(date +%s%3N) - t0 )) -gt 30000 ] && fail "$tag: the page was still loading 30 s after the start"
-    sleep 0.5
-  done
+  [ -s "$out/$tag.png" ] || adb exec-out screencap -p > "$out/$tag.png" 2>/dev/null || true
   runs_done=$((runs_done + 1))
   loading_runs=$((loading_runs + loading))
 }
