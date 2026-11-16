@@ -241,7 +241,10 @@ type nodeJSON struct {
 }
 
 type statusJSON struct {
-	State          string     `json:"state"`
+	State string `json:"state"`
+	// Netmap reports whether this status was built from a netmap: false means
+	// self and peers carry nothing the tailnet said yet.
+	Netmap         bool       `json:"netmap"`
 	AuthURL        string     `json:"authUrl,omitempty"`
 	Tailnet        string     `json:"tailnet,omitempty"`
 	MagicDNSSuffix string     `json:"magicDnsSuffix,omitempty"`
@@ -270,6 +273,7 @@ func Status() (string, error) {
 	}
 	out := statusJSON{
 		State:          st.BackendState,
+		Netmap:         st.Self != nil && st.Self.InNetworkMap,
 		AuthURL:        st.AuthURL,
 		MagicDNSSuffix: st.MagicDNSSuffix,
 		Health:         st.Health,
