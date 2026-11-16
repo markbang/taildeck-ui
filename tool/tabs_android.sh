@@ -144,11 +144,10 @@ settle_headers() { # <index> <tag> <target tab>
     if ui texts "$ymax" > "$out/headers-$2.txt" 2> /dev/null; then
       found=$(headers "$out/headers-$2.txt")
       [ "$(header_count "$found")" -eq 1 ] && { echo "$found"; return 0; }
-      # Until the node is up the Agents page shows its loading card instead of
-      # a header; the card belongs to that page and no other, so it settles it.
-      if [ -z "$found" ] && [ "$3" = 2 ] &&
-        grep -q 'Connecting to the tailnet' "$out/headers-$2.txt"; then
-        echo Agents
+      # A data page draws its tailnet loading card instead of a header until the
+      # node is up; that card is the page itself, so it settles the tab.
+      if [ -z "$found" ] && grep -q 'Connecting to the tailnet' "$out/headers-$2.txt"; then
+        echo "${titles[$3]}"
         return 0
       fi
     fi
