@@ -152,9 +152,11 @@ launch() { # <tag> <tab>
 switch_to_agents() { # <tag> <point> <clip?>
   local tag=$1 point=$2 clip=${3:-} rec=0
   if [ -n "$clip" ]; then
-    adb shell "rm -f /sdcard/$tag.mp4" > /dev/null 2>&1 || true
+    # /data/local/tmp, not /sdcard: the gate runs as root (adb root) and the
+    # sdcard's FUSE mount does not always take a root write.
+    adb shell "rm -f /data/local/tmp/$tag.mp4" > /dev/null 2>&1 || true
     adb shell screenrecord --time-limit 9 --bit-rate 6000000 --size 540x1200 \
-      "/sdcard/$tag.mp4" > /dev/null 2>&1 &
+      "/data/local/tmp/$tag.mp4" > "$out/$tag-recorder.txt" 2>&1 &
     rec=$!
     sleep 0.8
   fi
@@ -172,8 +174,12 @@ switch_to_agents() { # <tag> <point> <clip?>
   if [ -n "$clip" ]; then
     wait "$rec" 2> /dev/null || true
     sleep 1
-    adb pull "/sdcard/$tag.mp4" "$out/$tag.mp4" > /dev/null 2>&1 || true
-    [ -s "$out/$tag.mp4" ] || fail "$tag: no clip"
+    adb shell "ls -l /data/local/tmp/$tag.mp4" >> "$out/$tag-recorder.txt" 2>&1 || true
+    adb pull "/data/local/tmp/$tag.mp4" "$out/$tag.mp4" >> "$out/$tag-recorder.txt" 2>&1 || true
+    [ -s "$out/$tag.mp4" ] || {
+      note "$tag: recorder said: $(head -3 "$out/$tag-recorder.txt" | tr '\n' ' ')"
+      fail "$tag: no clip"
+    }
   fi
 }
 
