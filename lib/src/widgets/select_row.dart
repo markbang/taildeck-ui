@@ -3,10 +3,11 @@ import 'package:prism_ui/icons/icons.dart';
 import 'package:prism_ui/prism_ui.dart';
 
 import '../l10n.dart';
+import 'select_value_button.dart';
 
-/// A card row that picks one of [options] from a menu, as FlClash's option
-/// rows do: the current value and a picker chevron at the row's end, the menu
-/// opening out of the value, the selected item checked.
+/// A card row that picks one of [options] from a menu, as FlClash's
+/// `ListItem.options` rows do: the current value and a picker glyph at the
+/// row's end, the menu opening out of that value and returning into it.
 class SelectRow<T> extends StatefulWidget {
   const SelectRow({
     super.key,
@@ -39,13 +40,13 @@ class _SelectRowState<T> extends State<SelectRow<T>> {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = context.colorScheme;
     final l10n = AppLocalizations.of(context);
     final current = widget.options
         .where((option) => option.$1 == widget.value)
         .firstOrNull;
     final shown = current?.$2 ?? '—';
     final row = DecorationListItem(
+      contentPadding: const EdgeInsets.only(left: 16, right: 8),
       leading: widget.glyph == null ? null : GlyphIcon(widget.glyph!),
       title: Text(widget.label),
       subtitle: widget.subtitle == null ? null : Text(widget.subtitle!),
@@ -53,27 +54,9 @@ class _SelectRowState<T> extends State<SelectRow<T>> {
       trailing: PopupAnchor(
         targetBuilder: (open) {
           _openMenu = open;
-          return TextButton(
+          return SelectValueButton(
+            label: shown,
             onPressed: widget.enabled ? open : null,
-            style: ButtonStyle.from(
-              foregroundColor: scheme.onSurfaceVariant,
-              textStyle: context.listTitleStyle,
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              spacing: 4,
-              children: [
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 160),
-                  child: PopupValueText(
-                    shown,
-                    alignment: AlignmentDirectional.centerEnd,
-                  ),
-                ),
-                const GlyphIcon(Glyphs.picker),
-              ],
-            ),
           );
         },
         popupBuilder: (_) => PopupMenu(

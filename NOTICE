@@ -9,8 +9,19 @@ version. It is licensed GPL-3.0 because it links prism_ui.
 Third-party code:
 
 - prism_ui (https://github.com/chen08209/prism_ui), GPL-3.0.
-  Vendored under third_party/prism_ui at 0.1.2 with one patch: the web build of
-  SceneBuilder.pushClipRSuperellipse requires an explicit clipBehavior.
+  Vendored under third_party/prism_ui at 0.1.2 with these patches: the web build
+  of SceneBuilder.pushClipRSuperellipse requires an explicit clipBehavior;
+  reduce motion shortens the popup's unfold; and a popup returning into a control
+  with no surface of its own dissolves its drop's glass into it instead of leaving
+  a pill of frost where the control shows only text (lib/popup.dart).
+
+- FlClash (https://github.com/chen08209/FlClash), GPL-3.0, 0.9.3.
+  The select row follows its `ListItem.options` and `_OptionsValueButton`
+  (lib/ui/list_item.dart): a value and picker glyph that open the row's menu and
+  take it back as it closes. lib/src/widgets/select_row.dart and
+  select_value_button.dart are ports of that code on the vendored prism_ui, with
+  the drop's glass dissolving into a control that has no surface of its own
+  (third_party/prism_ui/lib/popup.dart).
 
 - Taildeck (https://github.com/markbang/taildeck), MIT.
   This repository is a UI redesign of that app; the Android implementation,
