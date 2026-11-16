@@ -58,8 +58,17 @@ adb shell wm dismiss-keyguard > /dev/null 2>&1 || true
 adb uninstall "$app" > /dev/null 2>&1 || true
 adb install -g "$apk" > "$out/install.txt" 2>&1 || fail "adb install failed, see install.txt"
 
-component=${LAUNCH_ACTIVITY:-$(adb shell cmd package resolve-activity --brief "$app" 2>/dev/null | tail -n 1 | tr -d '\r' || true)}
+# The launcher is not ready the moment the install returns: wait for the
+# package to be visible, then for its activity to resolve.
+component=
+for _ in $(seq 1 20); do
+  adb shell pm path "$app" 2> /dev/null | grep -q '^package:' || { sleep 1; continue; }
+  component=${LAUNCH_ACTIVITY:-$(adb shell cmd package resolve-activity --brief "$app" 2>/dev/null | tail -n 1 | tr -d '\r' || true)}
+  [ -n "$component" ] && break
+  sleep 1
+done
 [ -n "$component" ] || fail "no launcher activity for $app"
+note "installed: $component"
 
 # The login page costs taps that miss on a loaded emulator (and a missed auth
 # key silently opens the browser flow), so the gate starts from a node key
@@ -124,10 +133,25 @@ cold_start() { # <tag> <query>
   curl -fsS -X POST "$hold_url?host=$hostname" > /dev/null 2>&1 \
     || fail "no held-netmap control plane at $hold_url (start tool/motion/control -hold-map)"
   adb logcat -c > /dev/null 2>&1 || true
-  # No -W: the page is what this gate samples, not the first frame.
-  adb shell "am start -a android.intent.action.VIEW -d 'taildeck://preview/?$2' -n $component" \
-    > "$out/$1-launch.txt" 2>&1 || return 1
-  grep -q "^Starting: Intent" "$out/$1-launch.txt"
+  launch_app "$1" "$2"
+}
+
+# No -W: the page is what this gate samples, not the first frame. A start right
+# after install can be refused by the launcher, so it is retried twice with a
+# gap, and both the am output and the pid are kept for a failure.
+launch_app() { # <tag> <query>
+  local attempt
+  for attempt in 1 2 3; do
+    adb shell "am start -a android.intent.action.VIEW -d 'taildeck://preview/?$2' -n $component" \
+      > "$out/$1-launch.txt" 2>&1 || true
+    adb shell pidof "$app" > "$out/$1-pid.txt" 2> /dev/null || true
+    # A retry of a running app reports the intent as delivered, not as new.
+    grep -Eq '^(Starting: Intent|Warning: Activity not started)' "$out/$1-launch.txt" && return 0
+    note "$1: am start $attempt/3 did not dispatch: $(tr '\n' ' ' < "$out/$1-launch.txt") pid $(tr -d '\n' < "$out/$1-pid.txt" 2> /dev/null || echo none)"
+    [ "$attempt" -eq 3 ] && break
+    sleep 2
+  done
+  return 1
 }
 
 # A plain start, no window armed: proves the seeded session signs in and lists
@@ -136,8 +160,7 @@ preflight() {
   adb shell am force-stop "$app" > /dev/null 2>&1 || true
   adb shell rm -rf "$data/files/tsnet/profile-data" > /dev/null 2>&1 || true
   adb logcat -c > /dev/null 2>&1 || true
-  adb shell "am start -a android.intent.action.VIEW -d 'taildeck://preview/?tab=0&lang=en&splash=0' -n $component" \
-    > "$out/preflight-launch.txt" 2>&1 || return 1
+  launch_app preflight "tab=0&lang=en&splash=0" || return 1
   local t0 waited
   t0=$(date +%s%3N)
   while [ $(( $(date +%s%3N) - t0 )) -lt 40000 ]; do
