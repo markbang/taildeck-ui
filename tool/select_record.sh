@@ -15,8 +15,7 @@ here=$(cd "$(dirname "$0")" && pwd)
 # shellcheck source=tool/android_gate.sh
 . "$here/android_gate.sh"
 slow=${SELECT_SLOW:-5}
-tail=${SELECT_TAIL:-15}
-limit=${SELECT_LIMIT:-1.5}
+still=${SELECT_STILL:-20}
 app=top.bangwu.taildeck
 flclash=com.follow.clash
 mkdir -p "$out"
@@ -117,6 +116,20 @@ record() { # <name> <seconds> <command...>
   fi
 }
 
+# Stills as fast as screencap allows, to catch the close mid-flight: with
+# ?slow=20 one lasts seconds and screencap lands several frames inside it.
+tap_then_stills() { # <prefix> <'x y'> [settle seconds]
+  adb exec-out screencap -p > /dev/null 2>&1 || true
+  # shellcheck disable=SC2086
+  ( adb shell input tap $2 > /dev/null 2>&1 || true ) &
+  local i
+  for i in 1 2 3 4 5 6; do
+    adb exec-out screencap -p > "$out/$1-$i.png" 2> /dev/null || true
+  done
+  wait
+  sleep "${3:-1}"
+}
+
 dismiss_system_dialogs() {
   adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS > /dev/null 2>&1 || true
   for label in Allow 允许 OK; do
@@ -171,6 +184,14 @@ record_language() { # <tag>
   shot "$tag-language-closed"
   ui has 中文 > /dev/null 2>&1 && note "$tag: the language menu stayed open"
   note "$tag language: box $box"
+  # The same close at a fifth of its speed, so stills can land inside it.
+  launch "preview=1&tab=3&lang=en&splash=0&slow=$still" Language
+  language_point=$(value_point Language) || fail "$tag: no bounds for Language"
+  tap_point "$language_point" $((still + 2))
+  tap_then_stills "$tag-language-slow" "$((W / 8)) $((SH / 10))" $((still + 1))
+  montage "$out/$tag-language-slow-"*.png -tile 6x -geometry 300x+2+2 \
+    -background '#222' "$out/$tag-language-close-stills.png" 2> /dev/null ||
+    note "$tag: no stills montage"
 }
 
 record_ssh() { # <tag>
@@ -185,6 +206,11 @@ record_ssh() { # <tag>
   record "$tag-ssh-close" 14 ssh_close
   shot "$tag-ssh-closed"
   note "$tag ssh: box $ssh_box"
+  tap_point "$auth_point" $((still + 2))
+  tap_then_stills "$tag-ssh-slow" "$((W / 2)) $((SH / 10))" $((still + 1))
+  montage "$out/$tag-ssh-slow-"*.png -tile 6x -geometry 300x+2+2 \
+    -background '#222' "$out/$tag-ssh-close-stills.png" 2> /dev/null ||
+    note "$tag: no stills montage"
 }
 
 # The same gestures on one build, then the choice it picks.
@@ -304,31 +330,29 @@ else
   note "FlClash never showed its Tools tab; only Taildeck is recorded"
 fi
 
-# ---- every frame of each close -------------------------------------------
+# ---- what the emulator's encoder kept ------------------------------------
 
-check_close() { # <clip> <out sub-dir> <box> <name> <expected: pass|fail>
-  local clip=$1 dir=$2 box=$3 name=$4 expected=$5 status=0
+# SwiftShader's encoder drops most frames of these animations, so the clips
+# here measure the flow and feed the side-by-side; the every-frame analysis of
+# the same close runs on the web build (tool/select_web_check.sh).
+clip_frames() { # <name>
+  local clip="$out/$1.mp4" frames seconds
   if [ ! -s "$clip" ]; then
-    note "$name: no clip to cut"
+    note "$1: no clip"
     return 0
   fi
-  python3 "$here/select_frames.py" "$clip" "$out/$dir" "$box" --name "$name" \
-    --tail "$tail" --limit "$limit" >> "$summary" 2>&1 || status=$?
-  if [ "$status" -eq 0 ]; then
-    note "$name: tail settled (expected $expected)"
-  else
-    note "$name: tail still shows a block (expected $expected)"
-  fi
-  if [ "$expected" = pass ] && [ "$status" -ne 0 ]; then
-    fail "$name: the close left a block in its last $tail frames"
-  fi
+  frames=$(ffprobe -v error -select_streams v:0 -count_frames \
+    -show_entries stream=nb_read_frames -of csv=p=0 "$clip" 2> /dev/null || echo 0)
+  seconds=$(ffprobe -v error -show_entries format=duration -of csv=p=0 \
+    "$clip" 2> /dev/null || echo 0)
+  note "$1: ${frames} frames in ${seconds}s (the encoder keeps only some)"
 }
 
-check_close "$out/after-language-close.mp4" language-after "$box" language-after pass
-check_close "$out/before-language-close.mp4" language-before "$box" language-before fail
-check_close "$out/after-ssh-close.mp4" ssh-after "$ssh_box" ssh-after pass
-check_close "$out/before-ssh-close.mp4" ssh-before "$ssh_box" ssh-before fail
-check_close "$out/flclash-language-close.mp4" flclash-language "$box" flclash-language any
+clip_frames after-language-close
+clip_frames before-language-close
+clip_frames after-ssh-close
+clip_frames before-ssh-close
+clip_frames flclash-language-close
 
 # ---- side by side --------------------------------------------------------
 

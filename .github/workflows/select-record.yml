@@ -1,8 +1,9 @@
-# Records a select closing on an emulator: Settings > Language and the SSH
-# sheet's Authentication row, on the build before the close-animation fix and
-# the build after it, plus FlClash closing its language menu. Every frame of
-# each close is cut and measured, so a block left at the value's place shows up
-# in the contact sheet and in the check.
+# Records a select closing: Settings > Language and the SSH sheet's
+# Authentication row, on the build before the close-animation fix and on the
+# build after it, plus FlClash closing its language menu on a device. Every
+# frame of each close is cut and measured in the web job, since the emulator's
+# software encoder drops most frames of these animations; the device job runs
+# the flows, takes stills mid-close and records the side-by-side with FlClash.
 name: select-record
 
 on:
@@ -14,6 +15,8 @@ on:
       - third_party/prism_ui/lib/popup.dart
       - tool/select_record.sh
       - tool/select_frames.py
+      - tool/select_web.py
+      - tool/select_web_check.sh
       - .github/workflows/select-record.yml
 
 permissions:
@@ -30,8 +33,43 @@ env:
   SELECT_SLOW: '5'
 
 jobs:
-  record:
-    name: select closes, before and after, against FlClash
+  frames:
+    name: every frame of each close, web build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.9
+          channel: stable
+          cache: true
+      - name: Install Chromium for the clips
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg imagemagick fonts-dejavu-core
+          python3 -m pip install --quiet playwright
+          python3 -m playwright install --with-deps chromium
+      - name: Record and measure the closes
+        run: tool/select_web_check.sh select-web
+      - name: Job summary
+        if: always()
+        run: |
+          {
+            echo '### Select closes, every frame'
+            echo
+            echo '```'
+            cat select-web/summary.txt 2>/dev/null || echo 'no summary'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: select-web
+          path: select-web/
+          if-no-files-found: warn
+
+  device:
+    name: the flows and FlClash, on the emulator
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -63,8 +101,9 @@ jobs:
           channel: stable
           cache: true
       - name: Build the debug APKs, after and before
-        # A debug build carries the demo dataset and ?slow=, which stretches
-        # the close so the clip holds every frame of it.
+        # A debug build carries ?slow=, which stretches the close so stills can
+        # land inside it, and --dart-define=TAILDECK_DEMO brings the preview
+        # routes' dataset that a debug build no longer ships.
         run: |
           set -o pipefail
           git fetch --no-tags --depth=1 origin \
@@ -72,15 +111,16 @@ jobs:
           flutter pub get
           tool/build_native.sh android-x86_64 | tee /tmp/build_native.log
           tool/build_term.sh android-x86_64 | tee /tmp/build_term.log
-          # The SSH sheet's preview route needs the demo dataset.
           flutter build apk --debug --target-platform android-x64 \
             --dart-define=TAILDECK_DEMO=true
           cp build/app/outputs/flutter-apk/app-debug.apk build/select-after.apk
           # The same tree with the fix taken out, for the "before" clip.
           cp lib/src/widgets/select_row.dart /tmp/select_row.dart
           cp third_party/prism_ui/lib/popup.dart /tmp/popup.dart
-          git show origin/main:lib/src/widgets/select_row.dart > lib/src/widgets/select_row.dart
-          git show origin/main:third_party/prism_ui/lib/popup.dart > third_party/prism_ui/lib/popup.dart
+          git show origin/main:lib/src/widgets/select_row.dart \
+            > lib/src/widgets/select_row.dart
+          git show origin/main:third_party/prism_ui/lib/popup.dart \
+            > third_party/prism_ui/lib/popup.dart
           rm -f lib/src/widgets/select_value_button.dart
           flutter build apk --debug --target-platform android-x64 \
             --dart-define=TAILDECK_DEMO=true
@@ -121,7 +161,7 @@ jobs:
         if: always()
         run: |
           {
-            echo '### Select closes, before and after'
+            echo '### Select closes on the emulator'
             echo
             echo '```'
             cat select/summary.txt 2>/dev/null || echo 'no summary'
