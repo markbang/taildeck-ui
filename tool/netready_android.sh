@@ -169,9 +169,12 @@ cold_start() { # <tag> <query>
   curl -fsS -X POST "$hold_url" > /dev/null 2>&1 \
     || fail "no held-netmap control plane at $hold_url (start tool/motion/control -hold-map)"
   adb logcat -c > /dev/null 2>&1 || true
+  # No -W: the gate polls the route line instead of waiting for the first
+  # frame, which is what the slow runs paid for.
   adb shell "am start -a android.intent.action.VIEW -d 'taildeck://preview/?$2' -n $component" \
     > "$out/$1-launch.txt" 2>&1 || return 1
-  grep -q "Activity: $app/" "$out/$1-launch.txt"
+  # Without -W, am start only says it dispatched the intent.
+  grep -q "^Starting: Intent" "$out/$1-launch.txt"
 }
 
 # Filter on the device and cap the tail: a host-side filter still sends the
