@@ -357,6 +357,10 @@ appearance_step() {
   point=$(ui tap "Settings") || { note "appearance: no Settings tab"; return 0; }
   tap_xy "$point"
   sleep 1.5
+  # The terminal's own settings page opens from the list.
+  point=$(find_or_scroll "Terminal") || { note "appearance: no Terminal row"; return 0; }
+  tap_xy "$point"
+  sleep 1.5
   point=$(scroll_clear "Color theme") || { note "appearance: no theme row"; return 0; }
   shot term-settings-appearance
   record term-theme 12 theme_step
@@ -365,7 +369,9 @@ appearance_step() {
   scroll_clear "Cursor" > /dev/null 2>&1 || true
   check term-cursor-font "Bar"
   shot term-settings-applied
-  # Back into the terminal: the theme and font are live on the real session.
+  # Back out of the settings page, then into the terminal on the same session.
+  adb shell input keyevent 4 > /dev/null 2>&1 || true
+  sleep 1.2
   to_tabs || true
   sleep 1
   point=$(find_or_scroll "$peer") || return 0

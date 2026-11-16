@@ -196,11 +196,7 @@ class PageBody extends StatelessWidget {
                 gradient: LinearGradient(
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
-                  colors: [
-                    color,
-                    color,
-                    color.withValues(alpha: 0),
-                  ],
+                  colors: [color, color, color.withValues(alpha: 0)],
                   stops: const [0, 0.7, 1],
                 ),
               ),
@@ -221,6 +217,8 @@ class GroupCard extends StatelessWidget {
   });
 
   final List<Widget> children;
+
+  /// Where a divider starts, so it lines up with the rows' titles.
   final double dividerInset;
   final Widget? header;
 

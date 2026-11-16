@@ -53,26 +53,6 @@ class ExitGuard {
   void clear() => _armed = null;
 }
 
-/// The pages a tab opens over its own list (a settings section, the logs), in
-/// the order they were opened. The shell asks here before it changes tab, so
-/// the system back key closes the innermost page first.
-class BackStack {
-  final _handlers = <bool Function()>[];
-
-  void add(bool Function() close) => _handlers.add(close);
-
-  void remove(bool Function() close) => _handlers.remove(close);
-
-  /// True when a page closed itself for this press; the innermost page that
-  /// has something open answers first.
-  bool closeTop() {
-    for (final handler in _handlers.reversed) {
-      if (handler()) return true;
-    }
-    return false;
-  }
-}
-
 /// True while the software keyboard is up, where back means "hide it".
 bool keyboardVisible(BuildContext context) =>
     MediaQuery.viewInsetsOf(context).bottom > 0;

@@ -3,17 +3,18 @@ import 'package:prism_ui/icons/icons.dart';
 import 'package:prism_ui/prism_ui.dart';
 
 import '../l10n.dart';
-import 'foundation.dart';
 
-/// A card row that opens a popup menu of choices: the one select used for
-/// every form value in the app.
-class SelectRow<T> extends StatelessWidget {
+/// A card row that picks one of [options] from a menu, as FlClash's option
+/// rows do: the current value and a picker chevron at the row's end, the menu
+/// opening out of the value, the selected item checked.
+class SelectRow<T> extends StatefulWidget {
   const SelectRow({
     super.key,
     required this.label,
     required this.value,
     required this.options,
     required this.onChanged,
+    this.glyph,
     this.subtitle,
     this.enabled = true,
   });
@@ -22,83 +23,81 @@ class SelectRow<T> extends StatelessWidget {
   final T value;
   final List<(T, String)> options;
   final ValueChanged<T> onChanged;
+  final Glyph? glyph;
 
   /// A caption under the label, for what the choice means.
   final String? subtitle;
   final bool enabled;
 
   @override
+  State<SelectRow<T>> createState() => _SelectRowState<T>();
+}
+
+class _SelectRowState<T> extends State<SelectRow<T>> {
+  /// Where the menu opens from, set by the anchor below.
+  PopupOpen? _openMenu;
+
+  @override
   Widget build(BuildContext context) {
     final scheme = context.colorScheme;
     final l10n = AppLocalizations.of(context);
-    final current = options.where((option) => option.$1 == value).firstOrNull;
+    final current = widget.options
+        .where((option) => option.$1 == widget.value)
+        .firstOrNull;
     final shown = current?.$2 ?? '—';
-    final row = Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+    final row = DecorationListItem(
+      leading: widget.glyph == null ? null : GlyphIcon(widget.glyph!),
+      title: Text(widget.label),
+      subtitle: widget.subtitle == null ? null : Text(widget.subtitle!),
+      onPressed: () => _openMenu?.call(),
+      trailing: PopupAnchor(
+        targetBuilder: (open) {
+          _openMenu = open;
+          return TextButton(
+            onPressed: widget.enabled ? open : null,
+            style: ButtonStyle.from(
+              foregroundColor: scheme.onSurfaceVariant,
+              textStyle: context.listTitleStyle,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              spacing: 4,
               children: [
-                Text(
-                  label,
-                  style: context.listTitleStyle.copyWith(
-                    color: enabled ? null : scheme.onSurfaceVariant,
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 160),
+                  child: PopupValueText(
+                    shown,
+                    alignment: AlignmentDirectional.centerEnd,
                   ),
                 ),
-                if (subtitle != null)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 2),
-                    child: Text(subtitle!, style: context.listCaptionStyle),
-                  ),
+                const GlyphIcon(Glyphs.picker),
               ],
             ),
-          ),
-          const SizedBox(width: 12),
-          // The current value, as FlClash's option rows show it: one line at
-          // the row's end, never wide enough to squeeze the label.
-          RowValue(
-            shown,
-            maxWidth: 160,
-            tint: scheme.onSurfaceVariant,
-          ),
-          const SizedBox(width: 6),
-          GlyphIcon(
-            Glyphs.picker,
-            size: 14,
-            color: scheme.onSurfaceVariant.opacity50,
-          ),
-        ],
+          );
+        },
+        popupBuilder: (_) => PopupMenu(
+          items: [
+            for (final (option, text) in widget.options)
+              PopupMenuItem(
+                label: text,
+                checked: option == widget.value,
+                onPressed: () => widget.onChanged(option),
+              ),
+          ],
+        ),
       ),
     );
-    final semantics = Semantics(
+    if (!widget.enabled) {
+      return Opacity(opacity: 0.55, child: row);
+    }
+    return Semantics(
       container: true,
       button: true,
-      label: '$label, $shown',
+      label: '${widget.label}, $shown',
       hint: l10n.select,
       excludeSemantics: true,
       child: row,
-    );
-    if (!enabled) {
-      return Opacity(opacity: 0.55, child: semantics);
-    }
-    return PopupAnchor(
-      targetBuilder: (open) => PressRegion(
-        onTap: open,
-        overlay: PressRegion.pressOverlay,
-        child: semantics,
-      ),
-      popupBuilder: (context) => PopupMenu(
-        items: [
-          for (final (option, text) in options)
-            PopupMenuItem(
-              label: text,
-              checked: option == value,
-              onPressed: () => onChanged(option),
-            ),
-        ],
-      ),
     );
   }
 }
