@@ -64,10 +64,12 @@ ui() {
   return 1
 }
 
+# One dump per second: the retrying ui() would triple the dump cost while a
+# loaded emulator paints.
 wait_for() { # <marker> <seconds>
   local waited=0
   while [ "$waited" -lt "$2" ]; do
-    ui has "$1" && return 0
+    dump_page && page_has "$1" && return 0
     sleep 1
     waited=$((waited + 1))
   done
@@ -135,7 +137,7 @@ tap_text "Connect" || {
 }
 # Not wait_home: a loaded emulator can take longer than its three dumps to
 # paint the shell after the route is logged.
-wait_for "Services" 180 || fail "sign-in did not reach the shell; see ui.xml"
+wait_for "Services" 90 || fail "sign-in did not reach the shell; see ui.xml"
 note "signed in against $control_url"
 
 adb shell am force-stop "$app" > /dev/null 2>&1 || true
