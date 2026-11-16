@@ -8,15 +8,15 @@ name: termtap-record
 
 on:
   workflow_dispatch:
-  # Temporary: dispatch only reaches a workflow that is on the default branch.
-  push:
-    branches: [feat/terminal-sheet-ui]
+  # Evidence is recorded on demand: a dispatch, or the `record` label on a PR.
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
 
 permissions:
   contents: read
 
 concurrency:
-  group: termtap-record-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 env:
@@ -25,6 +25,7 @@ env:
 
 jobs:
   gate:
+    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'record') }}
     name: tap focus, keyboard and mouse reports on the emulator
     runs-on: ubuntu-latest
     steps:
