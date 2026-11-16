@@ -133,11 +133,8 @@ class _TerminalCanvasState extends State<TerminalCanvas>
   String _notice = '';
   Timer? _noticeTimer;
 
-  _Metrics _measure() => _Metrics(
-    widget.fontSize,
-    widget.fontFamily,
-    widget.fontFallback,
-  );
+  _Metrics _measure() =>
+      _Metrics(widget.fontSize, widget.fontFamily, widget.fontFallback);
 
   void _syncBlink() {
     final wanted =
@@ -359,14 +356,23 @@ class _TerminalCanvasState extends State<TerminalCanvas>
     final columns = snapshot.cols;
     if (snapshot.rows == 0 || columns == 0) return;
     final (x, y) = _cellAt(local, snapshot);
-    bool filled(int column) {
+    bool inGrid(int column) {
       final index = (y * columns + column) * 4;
-      if (index + 3 >= snapshot.cells.length) return false;
-      if (snapshot.cells[index + 3] & TermFlags.spacer != 0) return false;
-      return snapshot.cells[index] > 32;
+      return index + 3 < snapshot.cells.length;
     }
 
-    final range = wordRange(x, columns, filled);
+    bool hasText(int column) =>
+        inGrid(column) && snapshot.cells[(y * columns + column) * 4] > 32;
+    bool spacer(int column) =>
+        inGrid(column) &&
+        snapshot.cells[(y * columns + column) * 4 + 3] & TermFlags.spacer != 0;
+
+    final range = wordRangeWithSpacers(
+      x,
+      columns,
+      hasText: hasText,
+      spacer: spacer,
+    );
     _applySelection(GridSelection(range.from, y, range.to, y));
     unawaited(HapticFeedback.mediumImpact());
   }
@@ -505,7 +511,11 @@ class _TerminalCanvasState extends State<TerminalCanvas>
                       ),
                     )
                   else ...[
-                    _ToolButton(label: l10n.copy, onTap: _copy, palette: widget.palette),
+                    _ToolButton(
+                      label: l10n.copy,
+                      onTap: _copy,
+                      palette: widget.palette,
+                    ),
                     if (url != null) ...[
                       const SizedBox(width: gap / 2),
                       _ToolButton(
@@ -870,6 +880,7 @@ class _GridPainter extends CustomPainter {
       old.palette != palette ||
       old.origin != origin;
 }
+
 class _CursorPainter extends CustomPainter {
   _CursorPainter({
     required this.snapshot,
@@ -903,7 +914,8 @@ class _CursorPainter extends CustomPainter {
     final top = origin.dy + y * _ch;
     final right = left + (flags & TermFlags.wide != 0 ? 2 : 1) * _cw;
     final brush = Paint()..isAntiAlias = false;
-    final cursor = snapshot.cursorColor != 0 &&
+    final cursor =
+        snapshot.cursorColor != 0 &&
             snapshot.cursorColor != palette.cursor.toARGB32()
         ? Color(snapshot.cursorColor | 0xFF000000)
         : palette.cursor;
@@ -945,8 +957,11 @@ class _CursorPainter extends CustomPainter {
     }
   }
 
-  String _textOf() => snapshot.graphemeAt(snapshot.cursorX, snapshot.cursorY) ??
-      String.fromCharCode(snapshot.codepointAt(snapshot.cursorX, snapshot.cursorY));
+  String _textOf() =>
+      snapshot.graphemeAt(snapshot.cursorX, snapshot.cursorY) ??
+      String.fromCharCode(
+        snapshot.codepointAt(snapshot.cursorX, snapshot.cursorY),
+      );
 
   @override
   bool shouldRepaint(_CursorPainter old) =>

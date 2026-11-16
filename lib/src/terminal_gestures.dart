@@ -100,6 +100,22 @@ class GridSelection {
   return (from: from, to: to);
 }
 
+/// The word under [x] when wide (CJK) characters own a spacer cell: the run
+/// continues through the spacer, so 你好 is one word and not just 你.
+({int from, int to}) wordRangeWithSpacers(
+  int x,
+  int columns, {
+  required bool Function(int) hasText,
+  required bool Function(int) spacer,
+}) {
+  bool filled(int column) {
+    if (spacer(column)) return column > 0 && hasText(column - 1);
+    return hasText(column);
+  }
+
+  return wordRange(x, columns, filled);
+}
+
 const _trailingPunctuation = '.,;:!?\'")]}';
 
 /// The URL when the whole selection is one http(s) link, else null. Trailing
