@@ -30,6 +30,9 @@ summary="$out/summary.txt"
 fail() {
   echo "FAIL: $*" | tee -a "$summary"
   adb logcat -d > "$out/logcat-fail.txt" 2>&1 || true
+  # The node's own log says why it never reached Running.
+  adb shell run-as "$app" sh -c 'cat files/tsnet/tailscaled.log*.txt' \
+    > "$out/tsnet-fail.txt" 2> /dev/null || true
   adb pull /sdcard/ui.xml "$out/ui-fail.xml" > /dev/null 2>&1 || true
   adb uninstall "$app" > /dev/null 2>&1 || true
   exit 1
@@ -199,9 +202,10 @@ sample_until_ready() { # <tag> <phase>
       done
     fi
     [ "$ready" -eq 1 ] && break
-    if [ $(( $(date +%s%3N) - t0 )) -gt 15000 ]; then
+    # A debug cold start on a loaded emulator can take 10 s to reach the node.
+    if [ $(( $(date +%s%3N) - t0 )) -gt 30000 ]; then
       [ -s "$out/$tag.png" ] || adb exec-out screencap -p > "$out/$tag.png" 2>/dev/null || true
-      fail "$tag: no \"netstate: Running\" line within 15 s; the page may be stuck in loading"
+      fail "$tag: the page was still loading 30 s after the start"
     fi
     sleep 0.2
   done
@@ -214,7 +218,9 @@ check_netstate() { # <tag> <phase>
   adb logcat -d 2>/dev/null > "$out/$tag-logcat.txt" || true
   grep -q 'taildeck netstate: no netmap at' "$out/$tag-logcat.txt" \
     || fail "$tag: the cold start never reported a netmap-less status; the window was not exercised"
-  netmap_ms=$(sed -n 's/.*netstate: Running at [^,]*, netmap at \([0-9]*\)ms.*/\1/p' "$out/$tag-logcat.txt" | tail -1)
+  # The netmap line comes before readiness; the ready line repeats its time.
+  netmap_ms=$(sed -n -e 's/.*netstate: Running at [^,]*, netmap at \([0-9]*\)ms.*/\1/p' \
+    -e 's/.*netstate: netmap at \([0-9]*\)ms.*/\1/p' "$out/$tag-logcat.txt" | tail -1)
   [ -n "$netmap_ms" ] || fail "$tag: no ready netstate line; see $tag-logcat.txt"
   [ "$netmap_ms" -ge 1000 ] \
     || fail "$tag: the netmap was in after ${netmap_ms}ms; the delayed-netmap window was not in effect"

@@ -131,6 +131,7 @@ class TaildeckBackend extends ChangeNotifier {
   bool _netmapSeen = false;
   bool _selfIpSeen = false;
   bool _netmapGapLogged = false;
+  bool _netmapLogged = false;
   bool _netstateLogged = false;
   final Stopwatch _nodeClock = Stopwatch();
   Duration? _runningAt;
@@ -1031,6 +1032,7 @@ class TaildeckBackend extends ChangeNotifier {
         _selfIpSeen = true;
         _selfIpAt ??= _nodeClock.elapsed;
       }
+      _logNetmap();
       _logNetstate();
     } else {
       _logNetmapGap();
@@ -1062,6 +1064,17 @@ class TaildeckBackend extends ChangeNotifier {
     );
   }
 
+  /// The netmap is in but readiness is not: which signal is still missing.
+  void _logNetmap() {
+    if (_netmapLogged || tailnetReady) return;
+    _netmapLogged = true;
+    debugPrint(
+      'taildeck netstate: netmap at ${_at(_netmapAt)}, '
+      'self ip ${_self?.ip ?? '-'}, state ${_rawState.isEmpty ? 'NoState' : _rawState}; '
+      'pages wait',
+    );
+  }
+
   /// One line per start with the three readiness milestones, so a slow netmap
   /// is visible in a log instead of guessed from a screenshot.
   void _logNetstate() {
@@ -1078,6 +1091,7 @@ class TaildeckBackend extends ChangeNotifier {
     _netmapSeen = false;
     _selfIpSeen = false;
     _netmapGapLogged = false;
+    _netmapLogged = false;
     _netstateLogged = false;
     _runningAt = null;
     _netmapAt = null;
