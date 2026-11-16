@@ -46,28 +46,27 @@ gate_ui() { # <out-dir> <tool-dir> <ui.py args...>
   python3 "$tools/ui.py" "$out/ui.xml" "$@" 2> /dev/null
 }
 
-# The shell is painted and the launch screen has faded. The cheap signals come
-# first: a uiautomator dump during a cold start is what ANRs the app on a loaded
-# emulator, so the tree is read only after the route is the shell.
+# The shell is painted and the launch screen has faded. The shell only exists
+# once the route is decided, so a dock label (or focus, for a caller that opens
+# a sheet) plus the fade is enough; the route log is not required, so a build
+# from before that log still passes.
 wait_home() { # <app> <out-dir> <tool-dir> [marker] [seconds]
   local app=$1 out=$2 tools=$3 marker=${4:-Services} limit=${5:-45} waited=0
   local attempt
   while [ "$waited" -lt "$limit" ]; do
-    # A startup ANR kills the process; retrying the launch is the caller's job,
-    # not something another 30 s of waiting can fix.
+    # A startup ANR kills the process; retrying the launch is the caller's job.
     [ -n "$(adb shell pidof "$app" 2>/dev/null | tr -d '\r' || true)" ] || return 1
-    if gate_in_front "$app" &&
-      adb logcat -d 2>/dev/null | grep -q 'taildeck route: shell'; then
+    if gate_in_front "$app"; then
+      if [ -n "$marker" ]; then
+        gate_ui "$out" "$tools" has "$marker" > /dev/null 2>&1 || {
+          sleep 1
+          waited=$((waited + 1))
+          continue
+        }
+      fi
       # The launch screen fades over 340 ms after the route is decided.
       sleep 0.8
-      # A modal sheet hides the page's semantics, so a caller that opens one
-      # passes an empty marker and trusts the route and focus.
-      [ -n "$marker" ] || { gate_in_front "$app" && return 0; }
-      for attempt in 1 2 3; do
-        gate_in_front "$app" || return 1
-        gate_ui "$out" "$tools" has "$marker" > /dev/null 2>&1 && return 0
-        sleep 1
-      done
+      gate_in_front "$app" && return 0
       return 1
     fi
     sleep 1
