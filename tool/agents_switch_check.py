@@ -35,7 +35,10 @@ def main() -> int:
         help="only check the cards the stills carry; a run whose screencaps "
              "were too slow to cover the lead-in is reported, not failed",
     )
-    parser.add_argument("--grey", type=float, default=3.0)
+    # The loading skeleton sits in the same place as the card and shares its
+    # title, so the card has to match tightly: the same card scores ~0.3, the
+    # skeleton ~3.0.
+    parser.add_argument("--grey", type=float, default=1.5)
     parser.add_argument("--edge", type=float, default=1.5)
     args = parser.parse_args()
 
