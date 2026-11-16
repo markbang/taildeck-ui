@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/widgets.dart';
 import 'package:prism_ui/icons/icons.dart';
 import 'package:prism_ui/prism_ui.dart';
@@ -11,6 +13,7 @@ import 'controls.dart';
 import 'pull_to_refresh.dart';
 import 'service_avatar.dart';
 import 'loading.dart';
+import 'header.dart';
 
 /// Room a page leaves at its foot: what floats over it (the navigation dock)
 /// plus the system gesture area, and a gap. Every scrollable page ends with
@@ -51,13 +54,13 @@ class RowValue extends StatelessWidget {
   }
 }
 
-class PageBody extends StatelessWidget {
+class PageBody extends StatefulWidget {
   const PageBody({
     super.key,
     required this.title,
     this.subtitle,
     this.trailing,
-    this.leading,
+    this.onBack,
     this.children,
     this.maxWidth = 720,
     this.padding,
@@ -70,7 +73,11 @@ class PageBody extends StatelessWidget {
   final String title;
   final String? subtitle;
   final Widget? trailing;
-  final Widget? leading;
+
+  /// A subpage: its bar carries the back button and the title, and the body
+  /// has no large title of its own, as FlClash's second-level pages.
+  final VoidCallback? onBack;
+
   final List<Widget>? children;
   final double maxWidth;
   final EdgeInsets? padding;
@@ -88,80 +95,140 @@ class PageBody extends StatelessWidget {
   /// the Kotlin settings page does.
   final bool animateSize;
 
+  /// The gap between the bar and the large title, which the title crosses
+  /// before the bar starts taking it over.
+  static const _titleClearance = 12.0;
+
+  /// How far the list scrolls before the bar has the title: the title's own
+  /// line plus the gap under it.
+  static const _collapseDistance = 56.0;
+
+  @override
+  State<PageBody> createState() => _PageBodyState();
+}
+
+class _PageBodyState extends State<PageBody> {
+  final _controller = ScrollController();
+
+  /// 0 leaves a first-level page's large title in place, 1 floats the compact
+  /// bar over the content; a subpage opens at 1.
+  final _collapse = ValueNotifier<double>(1);
+
+  @override
+  void initState() {
+    super.initState();
+    _collapse.value = widget.onBack == null ? 0 : 1;
+    _controller.addListener(_handleScroll);
+  }
+
+  @override
+  void didUpdateWidget(PageBody oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.onBack != widget.onBack) _handleScroll();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    _collapse.dispose();
+    super.dispose();
+  }
+
+  void _handleScroll() {
+    if (widget.onBack != null) return;
+    final offset = _controller.hasClients ? _controller.offset : 0.0;
+    // The bar takes the title over as the list scrolls; a list too short to
+    // scroll the title under it still hands over, by its own end.
+    final room = _controller.hasClients
+        ? _controller.position.maxScrollExtent
+        : 0.0;
+    final distance = math.min(PageBody._collapseDistance, room);
+    final collapse = distance <= 0
+        ? 0.0
+        : ((offset - PageBody._titleClearance) /
+                  (distance - PageBody._titleClearance))
+              .clamp(0.0, 1.0);
+    if ((collapse - _collapse.value).abs() > 0.004) _collapse.value = collapse;
+  }
+
   @override
   Widget build(BuildContext context) {
-    final scheme = context.colorScheme;
-    return Align(
-      alignment: Alignment.topCenter,
-      child: ConstrainedBox(
-        constraints: BoxConstraints(maxWidth: maxWidth),
-        child: _refreshable(
-          context,
-          _statusBarScrim(
-            context,
-            ListView(
-              physics: onRefresh == null
-                  ? null
-                  : const AlwaysScrollableScrollPhysics(),
-              padding:
-                  padding ??
-                  EdgeInsets.fromLTRB(
-                    20,
-                    context.contentTopPadding,
-                    20,
-                    pageBottomPadding(context) + bottomExtra,
-                  ),
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (leading != null) ...[
-                      leading!,
-                      const SizedBox(width: 4),
-                    ],
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Semantics(
-                            header: true,
-                            child: Text(
-                              title,
-                              maxLines: titleMaxLines,
-                              overflow: TextOverflow.ellipsis,
-                              style: AppTextStyle.largeTitle.of(
-                                context,
-                                emphasized: true,
-                              ),
-                            ),
-                          ),
-                          if (subtitle != null)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 2),
-                              child: Text(
-                                subtitle!,
-                                style: AppTextStyle.subheadline
-                                    .of(context)
-                                    .copyWith(color: scheme.onSurfaceVariant),
-                              ),
-                            ),
-                        ],
+    final subpage = widget.onBack != null;
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: Align(
+            alignment: Alignment.topCenter,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: widget.maxWidth),
+              child: _refreshable(
+                context,
+                ListView(
+                  controller: _controller,
+                  physics: widget.onRefresh == null
+                      ? null
+                      : const AlwaysScrollableScrollPhysics(),
+                  padding:
+                      widget.padding ??
+                      EdgeInsets.fromLTRB(
+                        20,
+                        context.contentTopPadding,
+                        20,
+                        pageBottomPadding(context) + widget.bottomExtra,
                       ),
-                    ),
-                    ?trailing,
+                  children: [
+                    if (!subpage) _largeTitle(context),
+                    if (widget.animateSize)
+                      AnimatedContentSize(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [...?widget.children],
+                        ),
+                      )
+                    else
+                      ...?widget.children,
                   ],
                 ),
-                const SizedBox(height: 16),
-                if (animateSize)
-                  AnimatedContentSize(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [...?children],
-                    ),
-                  )
-                else
-                  ...?children,
-              ],
+              ),
+            ),
+          ),
+        ),
+        PositionedDirectional(
+          start: 0,
+          end: 0,
+          top: 0,
+          child: ValueListenableBuilder<double>(
+            valueListenable: _collapse,
+            builder: (context, collapse, _) => PageHeader(
+              collapse: collapse,
+              child: PageBar(
+                title: widget.title,
+                subtitle: widget.subtitle,
+                onBack: widget.onBack,
+                trailing: widget.trailing,
+                maxWidth: widget.maxWidth,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// The page's name in full, above the content a first-level page lists. The
+  /// compact bar takes it over once it has scrolled under the bar.
+  Widget _largeTitle(BuildContext context) {
+    return ValueListenableBuilder<double>(
+      valueListenable: _collapse,
+      builder: (context, collapse, _) => ExcludeSemantics(
+        excluding: collapse > 0.5,
+        child: ExcludeFocus(
+          excluding: collapse > 0.5,
+          child: IgnorePointer(
+            ignoring: collapse > 0.5,
+            child: Opacity(
+              opacity: PageHeader.largeTitleOpacity(collapse),
+              child: _titleBlock(context),
             ),
           ),
         ),
@@ -169,42 +236,56 @@ class PageBody extends StatelessWidget {
     );
   }
 
-  Widget _refreshable(BuildContext context, Widget list) {
-    final onRefresh = this.onRefresh;
-    if (onRefresh == null) return list;
-    return PullToRefresh(onRefresh: onRefresh, child: list);
-  }
-
-  /// Opaque at the top and fading out below the status bar, so a title
-  /// scrolling under the system icons stays readable; light and dark follow
-  /// the page colour.
-  Widget _statusBarScrim(BuildContext context, Widget list) {
-    final top = MediaQuery.paddingOf(context).top;
-    if (top <= 0 || context.isInCompactSheet) return list;
-    final color = SurfaceLevel.page.colorOf(context.colorScheme);
-    return Stack(
+  Widget _titleBlock(BuildContext context) {
+    final scheme = context.colorScheme;
+    final subtitle = widget.subtitle;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        list,
-        PositionedDirectional(
-          start: 0,
-          end: 0,
-          top: 0,
-          child: IgnorePointer(
-            child: Container(
-              height: top + 12,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [color, color, color.withValues(alpha: 0)],
-                  stops: const [0, 0.7, 1],
-                ),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Semantics(
+                    header: true,
+                    child: Text(
+                      widget.title,
+                      maxLines: widget.titleMaxLines,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTextStyle.largeTitle.of(
+                        context,
+                        emphasized: true,
+                      ),
+                    ),
+                  ),
+                  if (subtitle != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text(
+                        subtitle,
+                        style: AppTextStyle.subheadline
+                            .of(context)
+                            .copyWith(color: scheme.onSurfaceVariant),
+                      ),
+                    ),
+                ],
               ),
             ),
-          ),
+            ?widget.trailing,
+          ],
         ),
+        const SizedBox(height: 16),
       ],
     );
+  }
+
+  Widget _refreshable(BuildContext context, Widget list) {
+    final onRefresh = widget.onRefresh;
+    if (onRefresh == null) return list;
+    return PullToRefresh(onRefresh: onRefresh, child: list);
   }
 }
 

@@ -1,5 +1,4 @@
 import 'package:flutter/widgets.dart';
-import 'package:prism_ui/icons/icons.dart';
 import 'package:prism_ui/prism_ui.dart';
 
 import '../glyphs.dart';
@@ -39,11 +38,7 @@ class ThemePage extends StatelessWidget {
       color: SurfaceLevel.page.colorOf(context.colorScheme),
       child: PageBody(
         title: l10n.theme,
-        leading: IconButton(
-          onPressed: () => Navigator.maybePop(context),
-          icon: const GlyphIcon(Glyphs.chevronBack),
-          tooltip: l10n.back,
-        ),
+        onBack: () => Navigator.maybePop(context),
         children: [
           ThemePreview(floatingBar: floatingNavigation),
           const SizedBox(height: 24),
