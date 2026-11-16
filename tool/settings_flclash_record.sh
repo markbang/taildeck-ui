@@ -69,10 +69,12 @@ value_point() { # <text>: the row's value at its end, where a select opens from
   echo "$((x2 - 40)) $(((y1 + y2) / 2))"
 }
 
-# Four stills as fast as screencap allows, to catch a transition mid-flight.
+# Stills as fast as screencap allows, to catch a transition mid-flight. The
+# first capture warms the path: a cold one can trail the whole animation.
 mid_stills() { # <prefix>
+  adb exec-out screencap -p > /dev/null 2>&1 || true
   local i
-  for i in 1 2 3 4; do
+  for i in 1 2 3 4 5 6; do
     adb exec-out screencap -p > "$out/$1-$i.png" 2> /dev/null || true
   done
 }
@@ -162,10 +164,12 @@ dismiss_system_dialogs() {
 # second.
 theme_point= drag_point=
 theme_step() {
+  # The tap runs beside the captures, so the stills start before it lands.
   # shellcheck disable=SC2086
-  adb shell input tap $theme_point > /dev/null 2>&1 || true
+  ( adb shell input tap $theme_point > /dev/null 2>&1 || true ) &
   mid_stills taildeck-push
-  sleep $((slow + 2))
+  wait
+  sleep $((slow + 1))
 }
 
 drag_step() {
@@ -184,7 +188,14 @@ wait_for Language 15 || {
 note "Taildeck settings: list with the language row"
 
 language_point=$(value_point Language) || fail "no bounds for the language row"
-record taildeck-language 12 tap_point "$language_point"
+language_tap() {
+  # shellcheck disable=SC2086
+  ( adb shell input tap $language_point > /dev/null 2>&1 || true ) &
+  mid_stills taildeck-language
+  wait
+  sleep $((slow + 1))
+}
+record taildeck-language 12 language_tap
 shot taildeck-language-open
 ui has English > /dev/null 2>&1 || fail "the language menu did not open"
 ui has 中文 > /dev/null 2>&1 || note "the language menu lists no zh entry"
@@ -281,10 +292,12 @@ open_tools() {
 }
 
 flclash_theme_step() {
+  # Its push is 300 ms, shorter than a screencap; the clip's third frame holds
+  # the middle of it.
   # shellcheck disable=SC2086
-  adb shell input tap $1 > /dev/null 2>&1 || true
-  mid_stills flclash-push
+  ( adb shell input tap $1 > /dev/null 2>&1 || true ) &
   sleep 3
+  wait
 }
 flclash_drag_step() {
   tap_point "$1" 3
@@ -306,12 +319,17 @@ if launch_flclash; then
     else
       record flclash-language 12 tap_label Language
     fi
+    # Its unfold is short: the clip holds the middle of it.
+    ffmpeg -loglevel error -y -i "$out/flclash-language.mp4" -vf "select='eq(n,1)'" \
+      -frames:v 1 "$out/flclash-language-2.png" 2> /dev/null || true
     shot flclash-language-open
     back_key
     sleep 1
     flclash_theme_point=$(ui tap Theme 2> /dev/null) || flclash_theme_point=""
     if [ -n "$flclash_theme_point" ]; then
       record flclash-push 12 flclash_theme_step "$flclash_theme_point"
+      ffmpeg -loglevel error -y -i "$out/flclash-push.mp4" -vf "select='eq(n,2)'" \
+        -frames:v 1 "$out/flclash-push-3.png" 2> /dev/null || true
       shot flclash-theme
       wait_for "Theme mode" 15 && note "FlClash theme page: mode rows found" ||
         note "FlClash theme page: no 'Theme mode' in the dump"
@@ -365,7 +383,8 @@ for pair in \
   "settings:taildeck-settings:flclash-tools" \
   "language:taildeck-language-open:flclash-language-open" \
   "theme:taildeck-theme:flclash-theme" \
-  "push:taildeck-push-3:flclash-push-3"; do
+  "push:taildeck-push-3:flclash-push-3" \
+  "popup:taildeck-language-3:flclash-language-2"; do
   name=${pair%%:*}
   rest=${pair#*:}
   td=${rest%%:*}
