@@ -6,8 +6,8 @@
 # drops its loading state before the app logs that the netmap is in.
 # Needs CONTROL_URL, a node key seeded against that control plane
 # (tool/seed_state.dart, SEED_STATE) and a peer named bangwu on it
-# (tool/motion/peer -hostname bangwu), plus a debuggable APK: the netmap cache
-# is dropped through run-as before each start.
+# (tool/motion/peer -hostname bangwu), and adb root (google_apis emulator): the
+# node key is pushed into the app's files and its netmap cache dropped with it.
 # Usage: CONTROL_URL=http://10.0.2.2:8080 SEED_STATE=/tmp/seed/tailscaled.state \
 #          tool/netready_android.sh <apk> [application-id] [out-dir]
 set -euo pipefail
@@ -33,7 +33,7 @@ fail() {
   echo "FAIL: $*" | tee -a "$summary"
   timeout 30 adb logcat -d > "$out/logcat-fail.txt" 2>&1 || true
   # The node's own log says why it never reached Running.
-  timeout 30 adb shell run-as "$app" sh -c 'cat files/tsnet/tailscaled.log*.txt' \
+  timeout 30 adb shell "cat /data/data/$app/files/tsnet/tailscaled.log*.txt" \
     > "$out/tsnet-fail.txt" 2> /dev/null || true
   timeout 30 adb pull /sdcard/ui.xml "$out/ui-fail.xml" > /dev/null 2>&1 || true
   timeout 60 adb uninstall "$app" > /dev/null 2>&1 || true
@@ -69,34 +69,27 @@ hostname=${SEED_HOSTNAME:-taildeck}
 [ -s "$seed" ] || fail "no seeded node state at $seed (run tool/seed_state.dart first)"
 mkdir -p "$out/files"
 
-# run-as takes the file as one base64 argument; a bare cat would let the pty
-# translate the bytes.
-push_file() { # <local> <app-relative>
-  local data chunk
-  data=$(base64 -w0 "$1")
-  adb shell "run-as $app sh -c ': > $2'" > /dev/null 2>&1 || return 1
-  while [ -n "$data" ]; do
-    chunk=${data:0:1200}
-    data=${data:1200}
-    adb shell "run-as $app sh -c 'printf %s $chunk | base64 -d >> $2'" > /dev/null 2>&1 || return 1
-  done
-}
-
-adb shell run-as "$app" mkdir -p files/tsnet > /dev/null 2>&1 \
-  || fail "run-as cannot write the app's files; this gate needs a debuggable APK"
+# Root, not run-as: pushing a 2.5 kB state file through run-as means base64 over
+# the pty, and the debug emulator image allows adb root.
+adb root > /dev/null 2>&1 || true
+adb wait-for-device
+[ "$(adb shell id -u 2> /dev/null | tr -d '\r')" = "0" ] \
+  || fail "adb root is required to seed the app's files (needs a google_apis emulator)"
+data=/data/data/$app
+adb shell "mkdir -p $data/files/tsnet" > /dev/null 2>&1 || fail "could not create $data/files"
 note "app installed, activity $component"
-push_file "$seed" files/tsnet/tailscaled.state || fail "could not push the node key"
-size=$( (timeout 30 adb shell run-as "$app" sh -c 'wc -c < files/tsnet/tailscaled.state' || echo short) 2> /dev/null | tr -d '\r ')
-[ "$size" = "$(stat -c%s "$seed")" ] \
-  || fail "the node key landed at ${size:-nothing} bytes, want $(stat -c%s "$seed")"
-note "node key pushed: $size bytes"
-
+adb push "$seed" "$data/files/tsnet/tailscaled.state" > "$out/push.txt" 2>&1 \
+  || fail "could not push the node key; see push.txt"
 printf '{"hostname":"%s","controlURL":"%s","signedIn":true,"herdrNode":"bangwu","herdrUser":"root","herdrPort":22,"herdrAuth":"tailscale"}' \
   "$hostname" "$control_url" > "$out/files/config.json"
-push_file "$out/files/config.json" files/config.json || fail "could not push the config"
-timeout 30 adb shell run-as "$app" cat files/config.json 2> /dev/null | grep -q '"herdrNode":"bangwu"' \
-  || fail "the saved config did not land"
-note "seeded node key from $seed, herdr target bangwu"
+adb push "$out/files/config.json" "$data/files/config.json" >> "$out/push.txt" 2>&1 \
+  || fail "could not push the config; see push.txt"
+appuid=$(adb shell stat -c %u "$data" 2> /dev/null | tr -d '\r')
+adb shell "chown -R $appuid:$appuid $data/files" > /dev/null 2>&1 || fail "could not chown $data/files"
+size=$(adb shell stat -c %s "$data/files/tsnet/tailscaled.state" 2> /dev/null | tr -d '\r')
+[ "$size" = "$(stat -c%s "$seed")" ] \
+  || fail "the node key landed at ${size:-nothing} bytes, want $(stat -c%s "$seed")"
+note "node key pushed: $size bytes, herdr target bangwu"
 
 
 dump_page() {
@@ -123,7 +116,7 @@ cold_start() { # <tag> <query>
   adb shell am force-stop "$app" > /dev/null 2>&1 || true
   # Without this the node answers from its on-disk netmap in ~70 ms and the
   # window this gate exists for never opens.
-  adb shell run-as "$app" rm -rf files/tsnet/profile-data > /dev/null 2>&1 || true
+  adb shell rm -rf "$data/files/tsnet/profile-data" > /dev/null 2>&1 || true
   curl -fsS -X POST "$hold_url" > /dev/null 2>&1 \
     || fail "no held-netmap control plane at $hold_url (start tool/motion/control -hold-map)"
   adb logcat -c > /dev/null 2>&1 || true
