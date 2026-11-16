@@ -1,10 +1,18 @@
 #!/usr/bin/env bash
 # Tab switch gate: ten switches on a running emulator, each captured mid-flight
 # and at rest. A switch may never blend two pages: the app logs what it really
-# paints (?tabprobe=1). Mid-animation the accessibility tree holds zero or one
-# page header (a fade-through is legitimately between pages); at rest it must
-# settle to exactly the target header, never two. Any Flutter exception fails
-# the run, and so does a dismissed app: pid and focus are checked every step.
+# paints (?tabprobe=1). That probe log says when a switch has arrived (p=1.00,
+# painted=1, blend=0), so the accessibility tree is read only after the app
+# itself calls the page final. The tree then has to expose one page, and the
+# target one. Headers are read by each node's top edge inside the title band: a
+# page whose body is one merged semantics node carries its title over the whole
+# screen, and that node's centre sits below any such band.
+#
+# A dump taken before the tree is published, or while a spinner keeps
+# uiautomator from idling, comes back empty or stale, so a switch that has not
+# arrived yet, or a tree with no header in it, is waited out. Two headers, or a
+# page that never becomes the target, fail at once. A failure names the switch,
+# the probe sample and the tree it saw, and leaves the dump behind.
 #
 # The build must be a debug one: it carries the demo data the preview shell
 # needs, the probe and ?slow=, which stretches the transition so a still can
@@ -26,10 +34,23 @@ mkdir -p "$out"
 summary="$out/summary.txt"
 : > "$summary"
 note() { echo "$*" | tee -a "$summary"; }
+
+shot() { adb exec-out screencap -p > "$out/$1.png" 2> /dev/null || rm -f "$out/$1.png"; }
+
+# What the failing step saw, on disk and in the artifact: the dump, every label
+# in the title band, the current probe samples and a still.
+dump_fail() { # <label>
+  local label=$1
+  adb logcat -d > "$out/logcat-fail.txt" 2>&1 || true
+  adb shell uiautomator dump /sdcard/ui.xml > "$out/uiautomator-fail.txt" 2>&1 || true
+  adb pull /sdcard/ui.xml "$out/ui-fail-$label.xml" > /dev/null 2>&1 || true
+  python3 "$here/ui.py" "$out/ui-fail-$label.xml" toptexts "${ymax:-720}" \
+    > "$out/ui-fail-$label.txt" 2> /dev/null || true
+  shot "fail-$label"
+}
 fail() {
   echo "FAIL: $*" | tee -a "$summary"
-  adb logcat -d > "$out/logcat-fail.txt" 2>&1 || true
-  adb pull /sdcard/ui.xml "$out/ui-fail.xml" > /dev/null 2>&1 || true
+  dump_fail "${step:-run}"
   exit 1
 }
 
@@ -56,17 +77,69 @@ sleep 2
 activity=$(adb shell cmd package resolve-activity --brief "$app" 2>/dev/null | tail -n 1 | tr -d '\r')
 [ -n "$activity" ] || fail "no launcher activity for $app"
 
-shot() { adb exec-out screencap -p > "$out/$1.png" 2> /dev/null || rm -f "$out/$1.png"; }
-
 ui() {
   local attempt
   for attempt in 1 2 3; do
-    adb shell uiautomator dump /sdcard/ui.xml > /dev/null 2>&1 || true
+    # A stale dump must not stand in for this one: a failed pull would
+    # otherwise leave the previous tree in place.
+    rm -f "$out/ui.xml"
+    adb shell uiautomator dump /sdcard/ui.xml > "$out/uiautomator.txt" 2>&1 || true
     adb pull /sdcard/ui.xml "$out/ui.xml" > /dev/null 2>&1 || true
     if python3 "$here/ui.py" "$out/ui.xml" "$@" 2> /dev/null; then return 0; fi
     sleep 0.5
   done
   return 1
+}
+
+# The probe is the app's own record of what it painted: one line per sampled
+# frame, "taildeck tabprobe: from=0 to=3 p=1.00 painted=1 blend=0 tabs=3".
+probes() { adb logcat -d -s flutter 2> /dev/null | grep 'taildeck tabprobe:' || true; }
+probe_count() { probes | wc -l | tr -d ' '; }
+probe_since() { probes | tail -n +"$(( $1 + 1 ))" || true; }
+
+# A switch has arrived when a sample after the tap reports the target page at
+# p=1.00 with one page painted and no blend.
+arrival() { # <base-count> <target>
+  probe_since "$1" | awk -v to="to=$2" '
+    {
+      for (i = 1; i <= NF; i++) {
+        if ($i == to) seen = 1
+        if ($i == "p=1.00") done = 1
+        if ($i == "painted=1") one = 1
+        if ($i ~ /^blend=[1-9]/) blend = 1
+      }
+      if (seen && done && one && !blend) hit = $0
+      seen = done = one = blend = 0
+    }
+    END { if (hit) print hit }'
+}
+
+wait_arrival() { # <base-count> <target> <limit-seconds>
+  local i=0 limit=$3 line
+  [ "$require_probe" = 1 ] || return 0
+  while [ "$i" -lt "$limit" ]; do
+    line=$(arrival "$1" "$2")
+    [ -z "$line" ] || { echo "$line"; return 0; }
+    sleep 1
+    i=$((i + 1))
+  done
+  return 1
+}
+
+# How the probe saw the frames since the tap: the check is that no frame
+# blended two pages, whatever a still happens to catch.
+mid_flight() { # <base-count> <what>
+  local samples painted blended
+  [ "$require_probe" = 1 ] || return 0
+  samples=$(probe_since "$1")
+  [ -n "$samples" ] || { note "$2 mid-flight: no probe sample yet"; return 0; }
+  blended=$(grep -cE ' blend=[1-9]' <<< "$samples" || true)
+  painted=$(grep -oE ' painted=[0-9]+' <<< "$samples" | sed 's/ painted=//' | sort -u | paste -sd, -)
+  if [ "${blended:-0}" -ne 0 ]; then
+    tail -n 10 <<< "$samples" >> "$summary"
+    fail "$2 painted a blended frame mid-animation ($blended samples)"
+  fi
+  note "$2 mid-flight: painted=$painted blend=0, $(wc -l <<< "$samples") samples"
 }
 
 # The screen size and the four dock tap points, read from their labels once.
@@ -85,7 +158,7 @@ dock() {
   done
   [ -n "${point:-}" ] || {
     shot dock-fail
-    ui texts "$SH" > "$out/dock-fail.txt" 2> /dev/null || true
+    ui toptexts "$SH" > "$out/dock-fail.txt" 2> /dev/null || true
     fail "no 'Services' in the dock after 30 s; the shell did not start"
   }
   DOCK_Y=${point#* }
@@ -98,9 +171,9 @@ dock() {
 }
 
 # The page must be ours, in front. Without this an empty accessibility tree
-# (app gone, screen off) would read as "zero headers", which is legal only
-# while a switch is in flight. The shared check also reads the focused app and
-# the resumed activity: mCurrentFocus names the launcher for a moment after a
+# (app gone, screen off) would read as "no page", which is legal only while a
+# switch is in flight. The shared check also reads the focused app and the
+# resumed activity: mCurrentFocus names the launcher for a moment after a
 # switch on this emulator while the app's window is already ours.
 alive() { # <step>
   gate_in_front "$app" && return 0
@@ -115,17 +188,8 @@ header_count() { # <space-separated headers>
   echo "${n:-0}"
 }
 
-# The tab's own header, or the demo tailnet name on the node list.
-expect_header() { # <seen> <tab index> <what>
-  if [ "$1" = "${titles[$2]}" ] ||
-    { [ "$2" = 0 ] && [ "$1" = markbang.github ]; }; then
-    return 0
-  fi
-  fail "$3 left [$1] instead of only '${titles[$2]}'"
-}
-
-# One label per page header still on screen: the dock sits below the band, so a
-# dump above it holds the headers and nothing that merely repeats their names.
+# One label per page header in the title band. The dock sits below it, so a
+# dump of the band holds the headers and nothing that merely repeats them.
 headers() { # <texts-file>
   awk -v titles="${titles[*]}" '
     BEGIN { n = split(titles, t, " ") }
@@ -135,25 +199,41 @@ headers() { # <texts-file>
   ' "$1" | sort -u | tr '\n' ' ' | sed 's/ *$//'
 }
 
-# At rest the page settles to exactly one header. A slow emulator can still be
-# mid-fade when the still was taken, so poll instead of trusting one dump; two
-# headers are a failure either way.
-settle_headers() { # <index> <tag> <target tab>
-  local attempt found=""
-  for attempt in 1 2 3 4 5 6; do
-    if ui texts "$ymax" > "$out/headers-$2.txt" 2> /dev/null; then
-      found=$(headers "$out/headers-$2.txt")
-      [ "$(header_count "$found")" -eq 1 ] && { echo "$found"; return 0; }
-      # A data page draws its tailnet loading card instead of a header until the
-      # node is up; that card is the page itself, so it settles the tab.
-      if [ -z "$found" ] && grep -q 'Connecting to the tailnet' "$out/headers-$2.txt"; then
-        echo "${titles[$3]}"
-        return 0
-      fi
-    fi
+# The tab's own header, or the demo tailnet name on the node list.
+page_is() { # <seen> <tab index>
+  [ "$1" = "${titles[$2]}" ] && return 0
+  [ "$2" = 0 ] && [ "$1" = markbang.github ] && return 0
+  return 1
+}
+
+# At rest the page is the target and only the target. The wait is for the app
+# to arrive (probe) and for the tree to catch up (a dump that still shows the
+# page being left, or none at all, is a tree that has not published yet); the
+# assertion runs on what the tree finally says. Two headers end the wait at
+# once and fail with it. Sets settled and settle_error.
+settle() { # <index> <tag> <target> <base-count>
+  local tag=$2 target=$3 base=$4 attempt line count
+  settled=""
+  settle_error=""
+  if ! line=$(wait_arrival "$base" "$target" 25); then
+    settle_error="switch $1 never arrived on ${names[$target]}: no probe sample reached p=1.00 painted=1 to=$target in 25 s"
+    return 1
+  fi
+  [ -z "$line" ] || note "switch $1 arrival: $line"
+  for attempt in 1 2 3 4 5 6 7 8; do
+    ui toptexts "$ymax" > "$out/headers-$tag.txt" 2>> "$out/uiautomator.txt" || true
+    settled=$(headers "$out/headers-$tag.txt")
+    count=$(header_count "$settled")
+    [ "$count" -lt 2 ] || break
+    if page_is "$settled" "$target"; then return 0; fi
     sleep 1
   done
-  echo "$found"
+  count=$(header_count "$settled")
+  if [ "$count" -ne 1 ]; then
+    settle_error="switch $1 exposed [$settled] at rest; exactly one page must be on screen"
+    return 1
+  fi
+  settle_error="switch $1 left [$settled] where only '${titles[$target]}' may be"
   return 1
 }
 
@@ -178,6 +258,7 @@ launch() {
 geometry
 launch
 dock
+step=setup
 note "screen ${W}x${SH}, dock y=$DOCK_Y"
 shot rest-00
 ui tap Nodes > /dev/null 2>&1 || true
@@ -188,24 +269,23 @@ ymax=$((SH * 3 / 10))
 last=0
 for i in $(seq 1 10); do
   target=${sequence[$((i - 1))]}
+  tag=$(printf %02d "$i")
+  step="switch-$tag-mid"
+  base=$(probe_count)
   # shellcheck disable=SC2086
   adb shell input tap ${TAP[$target]} > /dev/null 2>&1 || true
   sleep 0.9
-  shot "mid-$(printf %02d "$i")"
-  # Mid-flight: zero or one header. Two means two pages are on screen at once.
-  ui texts "$ymax" > "$out/mid-headers-$(printf %02d "$i").txt" 2> /dev/null || true
-  mid_found=$(headers "$out/mid-headers-$(printf %02d "$i").txt")
+  shot "mid-$tag"
+  mid_flight "$base" "switch $i"
   alive "switch $i mid-flight"
-  [ "$(header_count "$mid_found")" -le 1 ] ||
-    fail "switch $i painted two headers mid-animation [$mid_found]"
-  note "switch $i mid-flight: headers [$mid_found]"
-  sleep $((slow + 2))
-  shot "rest-$(printf %02d "$i")"
+  step="switch-$tag-rest"
+  if ! settle "$i" "$tag" "$target" "$base"; then
+    probe_since "$base" | tail -n 10 >> "$summary"
+    fail "$settle_error"
+  fi
+  shot "rest-$tag"
   alive "switch $i at rest"
-  found=$(settle_headers "$i" "$(printf %02d "$i")" "$target") ||
-    fail "switch $i never settled to one header at rest [${found:-none}]"
-  note "switch $i -> ${names[$target]}: headers [$found] at rest"
-  expect_header "$found" "$target" "switch $i"
+  note "switch $i -> ${names[$target]}: headers [$settled] at rest"
   last=$target
 done
 
@@ -215,6 +295,7 @@ adb shell screenrecord --time-limit 25 --bit-rate 4000000 --size 540x1200 \
   /sdcard/tabs.mp4 > /dev/null 2>&1 &
 recorder=$!
 sleep 0.6
+base=$(probe_count)
 for target in "${sequence[@]}"; do
   # shellcheck disable=SC2086
   adb shell input tap ${TAP[$target]} > /dev/null 2>&1 || true
@@ -227,10 +308,12 @@ adb pull /sdcard/tabs.mp4 "$out/tabs.mp4" > /dev/null 2>&1 || true
 
 shot rest-final
 alive "after rapid taps"
-found=$(settle_headers final final) ||
-  fail "rapid taps never settled to one header at rest [${found:-none}]"
-note "after rapid taps: headers [$found], last tap ${names[$last]}"
-expect_header "$found" "$last" "rapid taps"
+step=rapid-taps
+if ! settle final rapid "$last" "$base"; then
+  probe_since "$base" | tail -n 10 >> "$summary"
+  fail "$settle_error"
+fi
+note "after rapid taps: headers [$settled], last tap ${names[$last]}"
 
 adb logcat -d > "$out/logcat.txt" 2>&1 || true
 probes=$(grep -c "taildeck tabprobe:" "$out/logcat.txt" 2> /dev/null || true)
@@ -258,4 +341,4 @@ ffmpeg -loglevel error -y -i "$out/tabs.mp4" -vf "fps=8,scale=270:-2" \
   "$out/frames-%03d.png" 2> /dev/null || true
 [ -s "$out/mid-02.png" ] && convert "$out/mid-02.png" -resize 360x "$out/frame-mid.png" 2> /dev/null || true
 
-note "ok: 10 switches, at most one header mid-flight, exactly one at rest, no blended frame, no Flutter exception"
+note "ok: 10 switches, no blended frame, one page at rest each time, no Flutter exception"

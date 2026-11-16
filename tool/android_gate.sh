@@ -30,6 +30,8 @@ gate_ui() { # <out-dir> <tool-dir> <ui.py args...>
   local out=$1 tools=$2 attempt
   shift 2
   for attempt in 1 2 3; do
+    # A failed pull must not leave the previous step's tree in place.
+    rm -f "$out/ui.xml"
     adb shell uiautomator dump /sdcard/ui.xml > /dev/null 2>&1 || true
     adb pull /sdcard/ui.xml "$out/ui.xml" > /dev/null 2>&1 || true
     python3 "$tools/ui.py" "$out/ui.xml" "$@" 2> /dev/null && return 0
