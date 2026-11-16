@@ -28,14 +28,18 @@ AgentsPhase agentsPhaseOf({
   required HerdrLink link,
   required bool tailnetReady,
   required bool hasTarget,
+  required bool staleFailure,
 }) {
   if (herdrReady) return AgentsPhase.ready;
   if (waking || link == HerdrLink.connecting) return AgentsPhase.connecting;
   if (!tailnetReady) return AgentsPhase.tailnet;
   return switch (link) {
-    HerdrLink.failed ||
-    HerdrLink.notInstalled ||
-    HerdrLink.notRunning => AgentsPhase.failed,
+    // A failure no dial of this visit made belongs to an earlier attempt: the
+    // page wakes the target and shows progress, never another attempt's error.
+    HerdrLink.failed || HerdrLink.notInstalled || HerdrLink.notRunning =>
+      staleFailure
+          ? (hasTarget ? AgentsPhase.connecting : AgentsPhase.setup)
+          : AgentsPhase.failed,
     HerdrLink.unavailable => AgentsPhase.tailnet,
     _ => hasTarget ? AgentsPhase.idle : AgentsPhase.setup,
   };

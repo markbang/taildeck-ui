@@ -138,6 +138,7 @@ class TaildeckBackend extends ChangeNotifier {
   Duration? _netmapAt;
   Duration? _selfIpAt;
   bool _herdrWaking = false;
+  bool _herdrWakePending = false;
   bool _cancelStart = false;
   String _pingIp = '';
   bool _serviceRunning = false;
@@ -670,8 +671,37 @@ class TaildeckBackend extends ChangeNotifier {
   /// failure, with the same loading and error states as launch.
   Future<void> retryHerdr() async {
     if (_herdrNode.isEmpty || !tailnetReady) return;
+    _herdrWakePending = false;
     _herdrAutoTried = true;
     await _connectHerdrStartup();
+  }
+
+  /// The Agents tab opened: dial the saved target once when nothing is live.
+  /// A wake with the netmap not in yet waits for it, and a dial that fails is
+  /// left to the page's Retry, so nothing dials again on its own.
+  void wakeHerdr() {
+    final herdr = _herdr;
+    if (herdr == null || _herdrNode.isEmpty) {
+      _herdrWakePending = false;
+      return;
+    }
+    if (herdr.ready ||
+        herdr.waking ||
+        herdr.link == HerdrLink.connecting ||
+        _herdrWaking) {
+      _herdrWakePending = false;
+      return;
+    }
+    if (!tailnetReady) {
+      if (!_herdrWakePending) {
+        _herdrWakePending = true;
+        notifyListeners();
+      }
+      return;
+    }
+    _herdrWakePending = false;
+    _herdrAutoTried = true;
+    unawaited(_connectHerdrStartup());
   }
 
   /// Forgets trusted host keys, so the next connection trusts them again.
@@ -881,6 +911,7 @@ class TaildeckBackend extends ChangeNotifier {
     _tailnet = '';
     _resetNetstate();
     _herdrAutoTried = false;
+    _herdrWakePending = false;
     unawaited(_herdr?.disconnect() ?? Future<void>.value());
     _hasPersistedLogin = false;
     await _persist(signedIn: false);
@@ -1038,7 +1069,10 @@ class TaildeckBackend extends ChangeNotifier {
       _logNetmapGap();
     }
     // herdr needs the peer table, which only a netmap status brings.
-    if (tailnetReady) _autoConnectHerdr();
+    if (tailnetReady) {
+      _autoConnectHerdr();
+      if (_herdrWakePending) wakeHerdr();
+    }
     notifyListeners();
   }
 
@@ -1147,6 +1181,8 @@ class TaildeckBackend extends ChangeNotifier {
     final herdr = _herdr;
     if (herdr == null || _herdrAutoTried || _herdrNode.isEmpty) return;
     if (herdr.ready || herdr.link == HerdrLink.connecting) return;
+    // A failure is the user's to retry, never the status poll's.
+    if (herdr.failureDial != 0) return;
     if (!tailnetReady) return;
     _herdrAutoTried = true;
     unawaited(_connectHerdrStartup());
