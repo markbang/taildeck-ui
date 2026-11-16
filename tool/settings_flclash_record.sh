@@ -84,6 +84,18 @@ tap_then_stills() { # <prefix> <'x y'> [settle seconds]
   sleep "${3:-1}"
 }
 
+# The same stills around a back press, for a shrinking page.
+back_then_stills() { # <prefix> [settle seconds]
+  adb exec-out screencap -p > /dev/null 2>&1 || true
+  ( adb shell input keyevent 4 > /dev/null 2>&1 || true ) &
+  local i
+  for i in 1 2 3 4 5 6; do
+    adb exec-out screencap -p > "$out/$1-$i.png" 2> /dev/null || true
+  done
+  wait
+  sleep "${2:-1}"
+}
+
 tap_point() { # 'x y' [settle seconds]
   # shellcheck disable=SC2086
   adb shell input tap $1 > /dev/null 2>&1 || true
@@ -135,6 +147,13 @@ launch_taildeck() { # [time dilation]
   # their frames; the emulator itself runs with real motion.
   adb shell "am start -W -a android.intent.action.VIEW -d 'taildeck://preview/?preview=1&tab=3&lang=en&splash=0&slow=$stretch' -n $component" \
     > "$out/launch-taildeck.txt" 2>&1 || true
+  # At ?slow=20 every animation lasts seconds, and a dump during the shell's
+  # own start-up is what ANRs the app on a loaded runner: let it paint first.
+  if [ "$stretch" -gt 10 ]; then
+    sleep 15
+    dismiss_system_dialogs
+    return 0
+  fi
   sleep 3
   dismiss_system_dialogs
   # The dock's "Settings" label is the readiness signal; the dumps can fail on
@@ -211,12 +230,16 @@ shot taildeck-back
 launch_taildeck 20
 slow_point=$(ui tap Theme 2> /dev/null) || slow_point=""
 if [ -n "$slow_point" ]; then
-  slow_push() { tap_then_stills taildeck-push-slow "$slow_point" 2; }
-  record taildeck-slow 14 slow_push
-  # The clip's third frame holds the push mid-flight, which one screencap
-  # cannot reach.
-  ffmpeg -loglevel error -y -i "$out/taildeck-slow.mp4" -vf "select='eq(n,2)'" \
-    -frames:v 1 "$out/taildeck-slow-mid.png" 2> /dev/null || true
+  slow_push() { tap_then_stills taildeck-expand "$slow_point" 9; }
+  record taildeck-slow 16 slow_push
+  # The clip holds the middle of the expansion, which one screencap cannot
+  # reach.
+  ffmpeg -loglevel error -y -i "$out/taildeck-slow.mp4" -vf "select='eq(n,4)'" \
+    -frames:v 1 "$out/taildeck-expand-mid.png" 2> /dev/null || true
+  slow_shrink() { adb shell input keyevent 4 > /dev/null 2>&1 || true; sleep 7; }
+  record taildeck-shrink 16 slow_shrink
+  ffmpeg -loglevel error -y -i "$out/taildeck-shrink.mp4" -vf "select='eq(n,3)'" \
+    -frames:v 1 "$out/taildeck-shrink-mid.png" 2> /dev/null || true
 fi
 back_key
 sleep 2
@@ -351,7 +374,9 @@ if launch_flclash; then
       shot flclash-theme
       wait_for "Theme mode" 15 && note "FlClash theme page: mode rows found" ||
         note "FlClash theme page: no 'Theme mode' in the dump"
-      back_key
+      record flclash-back 10 back_key
+      ffmpeg -loglevel error -y -i "$out/flclash-back.mp4" -vf "select='eq(n,1)'" \
+        -frames:v 1 "$out/flclash-back-mid.png" 2> /dev/null || true
       sleep 2
       shot flclash-back
       record flclash-drag 14 flclash_drag_step "$flclash_theme_point"
@@ -393,7 +418,8 @@ side_by_side() { # <name> <taildeck clip> <flclash clip> [seconds]
 }
 
 side_by_side settings-flclash-language taildeck-language flclash-language 5
-side_by_side settings-flclash-theme taildeck-slow flclash-push 9
+side_by_side settings-flclash-expand taildeck-slow flclash-push 9
+side_by_side settings-flclash-shrink taildeck-shrink flclash-back 9
 side_by_side settings-flclash-drag taildeck-drag flclash-drag 6
 
 # Still pairs for the pull request.
@@ -401,7 +427,8 @@ for pair in \
   "settings:taildeck-settings:flclash-tools" \
   "language:taildeck-language-open:flclash-language-open" \
   "theme:taildeck-theme:flclash-theme" \
-  "push:taildeck-slow-mid:flclash-push-3"; do
+  "expand:taildeck-expand-3:flclash-push-3" \
+  "shrink:taildeck-shrink-mid:flclash-back-mid"; do
   name=${pair%%:*}
   rest=${pair#*:}
   td=${rest%%:*}
