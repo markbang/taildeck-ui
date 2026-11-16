@@ -58,109 +58,116 @@ class TerminalToolbar extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final reduce = context.disableAnimations;
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        AnimatedSize(
-          duration: reduce ? Duration.zero : const Duration(milliseconds: 180),
-          curve: Curves.easeOutCubic,
-          alignment: Alignment.bottomCenter,
-          child: expanded
-              ? Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
-                  child: _FrostedPanel(
-                    palette: palette,
-                    child: TerminalKeyBar(
-                      pages: [
-                        const ['left', 'up', 'down', 'right'],
-                        for (final page in pages) page,
-                      ],
-                      mods: mods,
-                      onKey: onKey,
-                      onModifier: onModifier,
+    return Semantics(
+      container: true,
+      explicitChildNodes: true,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          AnimatedSize(
+            duration: reduce
+                ? Duration.zero
+                : const Duration(milliseconds: 180),
+            curve: Curves.easeOutCubic,
+            alignment: Alignment.bottomCenter,
+            child: expanded
+                ? Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
+                    child: _FrostedPanel(
                       palette: palette,
-                      floating: true,
+                      child: TerminalKeyBar(
+                        pages: [
+                          const ['left', 'up', 'down', 'right'],
+                          for (final page in pages) page,
+                        ],
+                        mods: mods,
+                        onKey: onKey,
+                        onModifier: onModifier,
+                        palette: palette,
+                        floating: true,
+                      ),
                     ),
-                  ),
-                )
-              : const SizedBox(width: double.infinity),
-        ),
-        Padding(
-          padding: EdgeInsets.fromLTRB(12, 0, 12, 8 + bottomInset),
-          child: _FrostedPanel(
-            palette: palette,
-            child: SizedBox(
-              height: 48,
-              child: Row(
-                children: [
-                  _CapsuleItem(
-                    label: 'Ctrl',
-                    active: mods.isArmed(TerminalMod.ctrl) ||
-                        mods.isLocked(TerminalMod.ctrl),
-                    onTap: () => onModifier(TerminalMod.ctrl),
-                    palette: palette,
-                    semanticLabel: l10n.terminalKeyName('ctrl'),
-                    semanticValue: mods.isLocked(TerminalMod.ctrl)
-                        ? l10n.terminalKeyLocked
-                        : mods.isArmed(TerminalMod.ctrl)
-                        ? l10n.terminalKeyArmed
-                        : null,
-                  ),
-                  _CapsuleItem(
-                    label: 'Esc',
-                    onTap: () => onKey(terminalKeyById('esc')!),
-                    palette: palette,
-                    semanticLabel: l10n.terminalKeyName('esc'),
-                  ),
-                  _CapsuleItem(
-                    label: 'Tab',
-                    onTap: () => onKey(terminalKeyById('tab')!),
-                    palette: palette,
-                    semanticLabel: l10n.terminalKeyName('tab'),
-                  ),
-                  _CapsuleItem(
-                    glyph: Glyphs2.dpad,
-                    active: expanded,
-                    onTap: onToggleExpanded,
-                    palette: palette,
-                    semanticLabel: l10n.terminalArrowKeys,
-                    semanticValue: expanded ? l10n.terminalKeyOn : null,
-                  ),
-                  _CapsuleItem(
-                    glyph: Glyphs2.bolt,
-                    onTap: onSnippets,
-                    palette: palette,
-                    semanticLabel: l10n.terminalSnippets,
-                  ),
-                  _CapsuleItem(
-                    glyph: Glyphs.paste,
-                    onTap: onPaste,
-                    palette: palette,
-                    semanticLabel: l10n.terminalPasteButton,
-                  ),
-                  _CapsuleItem(
-                    flex: 2,
-                    glyph: Glyphs2.compose,
-                    label: l10n.terminalCompose,
-                    onTap: onCompose,
-                    palette: palette,
-                    semanticLabel: l10n.terminalCompose,
-                  ),
-                  _CapsuleItem(
-                    glyph: Glyphs2.keyboard,
-                    active: keyboardVisible,
-                    onTap: onKeyboard,
-                    palette: palette,
-                    semanticLabel: keyboardVisible
-                        ? l10n.terminalHideKeyboard
-                        : l10n.terminalShowKeyboard,
-                  ),
-                ],
+                  )
+                : const SizedBox(width: double.infinity),
+          ),
+          Padding(
+            padding: EdgeInsets.fromLTRB(12, 0, 12, 8 + bottomInset),
+            child: _FrostedPanel(
+              palette: palette,
+              child: SizedBox(
+                height: 48,
+                child: Row(
+                  children: [
+                    _CapsuleItem(
+                      label: 'Ctrl',
+                      active:
+                          mods.isArmed(TerminalMod.ctrl) ||
+                          mods.isLocked(TerminalMod.ctrl),
+                      onTap: () => onModifier(TerminalMod.ctrl),
+                      palette: palette,
+                      semanticLabel: l10n.terminalKeyName('ctrl'),
+                      semanticValue: mods.isLocked(TerminalMod.ctrl)
+                          ? l10n.terminalKeyLocked
+                          : mods.isArmed(TerminalMod.ctrl)
+                          ? l10n.terminalKeyArmed
+                          : null,
+                    ),
+                    _CapsuleItem(
+                      label: 'Esc',
+                      onTap: () => onKey(terminalKeyById('esc')!),
+                      palette: palette,
+                      semanticLabel: l10n.terminalKeyName('esc'),
+                    ),
+                    _CapsuleItem(
+                      label: 'Tab',
+                      onTap: () => onKey(terminalKeyById('tab')!),
+                      palette: palette,
+                      semanticLabel: l10n.terminalKeyName('tab'),
+                    ),
+                    _CapsuleItem(
+                      glyph: Glyphs2.dpad,
+                      active: expanded,
+                      onTap: onToggleExpanded,
+                      palette: palette,
+                      semanticLabel: l10n.terminalArrowKeys,
+                      semanticValue: expanded ? l10n.terminalKeyOn : null,
+                    ),
+                    _CapsuleItem(
+                      glyph: Glyphs2.bolt,
+                      onTap: onSnippets,
+                      palette: palette,
+                      semanticLabel: l10n.terminalSnippets,
+                    ),
+                    _CapsuleItem(
+                      glyph: Glyphs.paste,
+                      onTap: onPaste,
+                      palette: palette,
+                      semanticLabel: l10n.terminalPasteButton,
+                    ),
+                    _CapsuleItem(
+                      flex: 2,
+                      glyph: Glyphs2.compose,
+                      label: l10n.terminalCompose,
+                      onTap: onCompose,
+                      palette: palette,
+                      semanticLabel: l10n.terminalCompose,
+                    ),
+                    _CapsuleItem(
+                      glyph: Glyphs2.keyboard,
+                      active: keyboardVisible,
+                      onTap: onKeyboard,
+                      palette: palette,
+                      semanticLabel: keyboardVisible
+                          ? l10n.terminalHideKeyboard
+                          : l10n.terminalShowKeyboard,
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
@@ -183,7 +190,11 @@ class _FrostedPanel extends StatelessWidget {
           ),
         ),
         shadows: const [
-          BoxShadow(color: Color(0x40000000), blurRadius: 22, offset: Offset(0, 8)),
+          BoxShadow(
+            color: Color(0x40000000),
+            blurRadius: 22,
+            offset: Offset(0, 8),
+          ),
         ],
       ),
       child: ClipRRect(
@@ -224,6 +235,7 @@ class _CapsuleItem extends StatelessWidget {
     return Expanded(
       flex: flex,
       child: Semantics(
+        container: true,
         button: true,
         selected: active,
         label: semanticLabel,

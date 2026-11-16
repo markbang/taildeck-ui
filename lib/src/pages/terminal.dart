@@ -212,9 +212,10 @@ class _TerminalPageState extends State<TerminalPage>
       _insetValue = target;
       return;
     }
-    _insetTween = Tween<double>(begin: begin, end: target).animate(
-      CurvedAnimation(parent: _inset, curve: Curves.easeOutCubic),
-    );
+    _insetTween = Tween<double>(
+      begin: begin,
+      end: target,
+    ).animate(CurvedAnimation(parent: _inset, curve: Curves.easeOutCubic));
     _inset
       ..reset()
       ..forward().whenComplete(() {
@@ -1003,120 +1004,124 @@ class _TitleBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    return SizedBox(
-      height: 42,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(8, 0, 8, 0),
-        child: Row(
-          children: [
-            Semantics(
-              button: true,
-              label: l10n.close,
-              onTap: onClose,
-              excludeSemantics: true,
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
+    return Semantics(
+      container: true,
+      explicitChildNodes: true,
+      child: SizedBox(
+        height: 42,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(8, 0, 8, 0),
+          child: Row(
+            children: [
+              Semantics(
+                button: true,
+                label: l10n.close,
                 onTap: onClose,
-                child: SizedBox(
-                  height: 40,
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 10,
-                        height: 10,
-                        decoration: BoxDecoration(
-                          color: palette.error,
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                      const SizedBox(width: 9),
-                      Container(
-                        width: 24,
-                        height: 24,
-                        decoration: ShapeDecoration(
-                          color: palette.surface,
-                          shape: AppShape.all(7).copyWith(
-                            side: BorderSide(
-                              color: palette.border,
-                              width: 0.5,
-                            ),
+                excludeSemantics: true,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: onClose,
+                  child: SizedBox(
+                    height: 40,
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 10,
+                          height: 10,
+                          decoration: BoxDecoration(
+                            color: palette.error,
+                            shape: BoxShape.circle,
                           ),
                         ),
-                        child: Center(
-                          child: _AppMark(palette: palette, size: 14),
+                        const SizedBox(width: 9),
+                        Container(
+                          width: 24,
+                          height: 24,
+                          decoration: ShapeDecoration(
+                            color: palette.surface,
+                            shape: AppShape.all(7).copyWith(
+                              side: BorderSide(
+                                color: palette.border,
+                                width: 0.5,
+                              ),
+                            ),
+                          ),
+                          child: Center(
+                            child: _AppMark(palette: palette, size: 14),
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 6),
-                    ],
+                        const SizedBox(width: 6),
+                      ],
+                    ),
                   ),
                 ),
               ),
-            ),
-            Expanded(
-              child: Text(
-                title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.center,
-                style: mono.copyWith(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: palette.foreground,
+              Expanded(
+                child: Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: mono.copyWith(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: palette.foreground,
+                  ),
                 ),
               ),
-            ),
-            if (agents != null)
-              Builder(
-                builder: (context) {
-                  final herdr = BackendScope.of(context).herdr;
-                  if (herdr == null) return const SizedBox.shrink();
-                  return ListenableBuilder(
-                    listenable: herdr,
-                    builder: (context, _) => SizedBox(
-                      width: herdr.ready ? 34 : 0,
-                      child: herdr.ready
-                          ? Semantics(
-                              button: true,
-                              label: l10n.agentsTitle,
-                              onTap: agents,
-                              excludeSemantics: true,
-                              child: GestureDetector(
-                                behavior: HitTestBehavior.opaque,
+              if (agents != null)
+                Builder(
+                  builder: (context) {
+                    final herdr = BackendScope.of(context).herdr;
+                    if (herdr == null) return const SizedBox.shrink();
+                    return ListenableBuilder(
+                      listenable: herdr,
+                      builder: (context, _) => SizedBox(
+                        width: herdr.ready ? 34 : 0,
+                        child: herdr.ready
+                            ? Semantics(
+                                button: true,
+                                label: l10n.agentsTitle,
                                 onTap: agents,
-                                child: SizedBox(
-                                  width: 34,
-                                  height: 40,
-                                  child: Center(
-                                    child: GlyphIcon(
-                                      Glyphs2.agents,
-                                      size: 17,
-                                      color: palette.foreground,
+                                excludeSemantics: true,
+                                child: GestureDetector(
+                                  behavior: HitTestBehavior.opaque,
+                                  onTap: agents,
+                                  child: SizedBox(
+                                    width: 34,
+                                    height: 40,
+                                    child: Center(
+                                      child: GlyphIcon(
+                                        Glyphs2.agents,
+                                        size: 17,
+                                        color: palette.foreground,
+                                      ),
                                     ),
                                   ),
                                 ),
-                              ),
-                            )
-                          : const SizedBox.shrink(),
-                    ),
-                  );
-                },
-              ),
-            if (reconnect != null)
-              _ReconnectButton(
-                label: l10n.reconnect,
-                color: palette.accent,
+                              )
+                            : const SizedBox.shrink(),
+                      ),
+                    );
+                  },
+                ),
+              if (reconnect != null)
+                _ReconnectButton(
+                  label: l10n.reconnect,
+                  color: palette.accent,
+                  mono: mono,
+                  onTap: reconnect!,
+                ),
+              const SizedBox(width: 4),
+              _SshBadge(
+                status: status,
+                color: statusColor,
+                palette: palette,
                 mono: mono,
-                onTap: reconnect!,
+                onTap: reconnect,
               ),
-            const SizedBox(width: 4),
-            _SshBadge(
-              status: status,
-              color: statusColor,
-              palette: palette,
-              mono: mono,
-              onTap: reconnect,
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -1241,7 +1246,10 @@ class _SshBadge extends StatelessWidget {
           decoration: ShapeDecoration(
             color: color.withValues(alpha: 0.12),
             shape: StadiumBorder(
-              side: BorderSide(color: color.withValues(alpha: 0.28), width: 0.5),
+              side: BorderSide(
+                color: color.withValues(alpha: 0.28),
+                width: 0.5,
+              ),
             ),
           ),
           child: Row(
