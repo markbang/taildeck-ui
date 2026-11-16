@@ -79,8 +79,10 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # A reusable call runs inside the caller's run: a shared group would cancel
+  # the release that called it, so only a PR run supersedes itself.
+  group: android-smoke-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   GOPROXY: https://proxy.golang.org,direct
