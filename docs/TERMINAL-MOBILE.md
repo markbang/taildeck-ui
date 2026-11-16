@@ -131,7 +131,8 @@ Ctrl-armed tap as `<16;`. Clips: `tap-focus.mp4` (the whole gate),
 `set mouse=a` on a twelve-line file; a tap moves the cursor, which vim writes
 to `/tmp/tapvim-cursor` on every move so the gate fails when the line does not
 change) and `tap-htop.mp4` with `tap-htop-before.png` / `tap-htop-after.png`
-(a tap on one process row, then on another).
+(a tap on one process row, then on another; the app is force-stopped and the
+SSH session reopened first, so htop never depends on vim quitting).
 
 `tool/terminal_sheet_record.sh`, called from the same job, records the sheet
 before and after: it installs the published v0.2.18 APK, records the old header,
