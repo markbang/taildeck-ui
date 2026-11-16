@@ -69,6 +69,14 @@ value_point() { # <text>: the row's value at its end, where a select opens from
   echo "$((x2 - 40)) $(((y1 + y2) / 2))"
 }
 
+# Four stills as fast as screencap allows, to catch a transition mid-flight.
+mid_stills() { # <prefix>
+  local i
+  for i in 1 2 3 4; do
+    adb exec-out screencap -p > "$out/$1-$i.png" 2> /dev/null || true
+  done
+}
+
 tap_point() { # 'x y' [settle seconds]
   # shellcheck disable=SC2086
   adb shell input tap $1 > /dev/null 2>&1 || true
@@ -90,7 +98,7 @@ record() { # <name> <seconds> <command...>
   local name=$1 seconds=$2
   shift 2
   adb shell rm -f "/sdcard/$name.mp4" > /dev/null 2>&1 || true
-  adb shell screenrecord --time-limit "$seconds" --bit-rate 8000000 --size 540x1200 \
+  adb shell screenrecord --time-limit "$seconds" --bit-rate 12000000 \
     "/sdcard/$name.mp4" > /dev/null 2>&1 &
   local recorder=$!
   sleep 0.8
@@ -119,6 +127,8 @@ launch_taildeck() {
   # their frames; the emulator itself runs with real motion.
   adb shell "am start -W -a android.intent.action.VIEW -d 'taildeck://preview/?preview=1&tab=3&lang=en&splash=0&slow=$slow' -n $component" \
     > "$out/launch-taildeck.txt" 2>&1 || true
+  sleep 3
+  dismiss_system_dialogs
   # The dock's "Settings" label is the readiness signal; the dumps can fail on
   # a busy boot, so keep trying and keep what the screen showed.
   local attempt
@@ -135,16 +145,32 @@ launch_taildeck() {
   note "Taildeck: no dock after 40 s, carrying on"
 }
 
+dismiss_system_dialogs() {
+  adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS > /dev/null 2>&1 || true
+  for label in Allow 允许 OK; do
+    if point=$(ui tap "$label" 2> /dev/null); then
+      # shellcheck disable=SC2086
+      adb shell input tap $point > /dev/null 2>&1 || true
+      sleep 1
+    fi
+  done
+}
+
 # FlClash's page push is 300 ms; Taildeck's is spring-settled, so both clips
 # run long enough to hold the transition and then the page at rest. The row's
 # point is resolved before the clip starts, so the tap lands in its first
 # second.
 theme_point= drag_point=
-theme_step() { tap_point "$theme_point" $((slow + 2)); }
+theme_step() {
+  # shellcheck disable=SC2086
+  adb shell input tap $theme_point > /dev/null 2>&1 || true
+  mid_stills taildeck-push
+  sleep $((slow + 2))
+}
 
 drag_step() {
   tap_point "$1" $((slow + 2))
-  adb shell input swipe 60 $((SH / 2)) $((W * 3 / 4)) $((SH / 2)) 600 > /dev/null 2>&1 || true
+  adb shell input swipe "$((W / 6))" "$((SH / 2))" "$((W * 3 / 4))" "$((SH / 2))" 600 > /dev/null 2>&1 || true
   sleep $((slow + 1))
 }
 
@@ -195,17 +221,6 @@ exceptions=$(adb logcat -d 2> /dev/null | grep -hE -e 'EXCEPTION CAUGHT BY' -e '
 note "Taildeck: alive, no Flutter exception"
 
 # ---- FlClash -------------------------------------------------------------
-
-dismiss_system_dialogs() {
-  adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS > /dev/null 2>&1 || true
-  for label in Allow 允许 OK; do
-    if point=$(ui tap "$label" 2> /dev/null); then
-      # shellcheck disable=SC2086
-      adb shell input tap $point > /dev/null 2>&1 || true
-      sleep 1
-    fi
-  done
-}
 
 # FlClash opens on its disclaimer once per install; Agree then asks for the
 # no-service statement typed back before Confirm enables. The emulator's
@@ -265,10 +280,15 @@ open_tools() {
   ui has Language > /dev/null 2>&1 || ui has Theme > /dev/null 2>&1
 }
 
-flclash_theme_step() { tap_point "$1" 3; }
+flclash_theme_step() {
+  # shellcheck disable=SC2086
+  adb shell input tap $1 > /dev/null 2>&1 || true
+  mid_stills flclash-push
+  sleep 3
+}
 flclash_drag_step() {
   tap_point "$1" 3
-  adb shell input swipe 60 $((SH / 2)) $((W * 3 / 4)) $((SH / 2)) 600 > /dev/null 2>&1 || true
+  adb shell input swipe "$((W / 6))" "$((SH / 2))" "$((W * 3 / 4))" "$((SH / 2))" 600 > /dev/null 2>&1 || true
   sleep 3
 }
 
@@ -313,21 +333,39 @@ fi
 
 # ---- side by side --------------------------------------------------------
 
-side_by_side() { # <name> <taildeck clip> <flclash clip> [start seconds]
-  local name=$1 td=$2 fl=$3 start=${4:-0}
+# The encoder on a loaded emulator can hold the first frames back for a few
+# seconds, so both clips start a moment before their first real change.
+scene_time() { # <clip>: seconds of its first frame that differs much
+  local time
+  time=$(ffmpeg -loglevel error -i "$1" -vf "select='gt(scene,0.06)',metadata=print:file=-" \
+    -f null - 2> /dev/null | sed -n 's/.*pts_time:\([0-9.]*\).*/\1/p' | head -n 1)
+  awk -v t="${time:-0}" 'BEGIN { printf "%.2f", (t > 0.35 ? t - 0.35 : 0) }'
+}
+
+side_by_side() { # <name> <taildeck clip> <flclash clip> [seconds]
+  local name=$1 td=$2 fl=$3 length=${4:-6}
   [ -s "$out/$td.mp4" ] && [ -s "$out/$fl.mp4" ] || { note "no pair for $name"; return 0; }
-  ffmpeg -loglevel error -y -ss "$start" -t 8 -i "$out/$td.mp4" -ss "$start" -t 8 -i "$out/$fl.mp4" \
+  local td_start fl_start
+  td_start=$(scene_time "$out/$td.mp4")
+  fl_start=$(scene_time "$out/$fl.mp4")
+  note "$name: Taildeck from ${td_start}s, FlClash from ${fl_start}s"
+  ffmpeg -loglevel error -y -ss "$td_start" -t "$length" -i "$out/$td.mp4" \
+    -ss "$fl_start" -t "$length" -i "$out/$fl.mp4" \
     -filter_complex '[0:v]scale=540:-2,setsar=1[l];[1:v]scale=540:-2,setsar=1[r];[l][r]hstack=inputs=2,drawtext=text=Taildeck:x=14:y=14:fontsize=24:fontcolor=white:box=1:boxcolor=black@0.5,drawtext=text=FlClash:x=554:y=14:fontsize=24:fontcolor=white:box=1:boxcolor=black@0.5' \
     -an "$out/$name.mp4" 2> /dev/null || true
   [ -s "$out/$name.mp4" ] && note "side by side $name: $out/$name.mp4" || note "side by side $name: none"
 }
 
-side_by_side settings-flclash-language taildeck-language flclash-language 1
-side_by_side settings-flclash-theme taildeck-push flclash-push 1
-side_by_side settings-flclash-drag taildeck-drag flclash-drag 2
+side_by_side settings-flclash-language taildeck-language flclash-language 5
+side_by_side settings-flclash-theme taildeck-push flclash-push 5
+side_by_side settings-flclash-drag taildeck-drag flclash-drag 6
 
 # Still pairs for the pull request.
-for pair in "settings:taildeck-settings:flclash-tools" "theme:taildeck-theme:flclash-theme" "language:taildeck-language-open:flclash-language-open"; do
+for pair in \
+  "settings:taildeck-settings:flclash-tools" \
+  "language:taildeck-language-open:flclash-language-open" \
+  "theme:taildeck-theme:flclash-theme" \
+  "push:taildeck-push-3:flclash-push-3"; do
   name=${pair%%:*}
   rest=${pair#*:}
   td=${rest%%:*}
