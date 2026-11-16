@@ -27,14 +27,16 @@ mkdir -p "$out"
 summary="$out/summary.txt"
 : > "$summary"
 
+# Every adb call in a loop gets a bound: a stuck adb once held this job open
+# until its timeout instead of failing the run.
 fail() {
   echo "FAIL: $*" | tee -a "$summary"
-  adb logcat -d > "$out/logcat-fail.txt" 2>&1 || true
+  timeout 30 adb logcat -d > "$out/logcat-fail.txt" 2>&1 || true
   # The node's own log says why it never reached Running.
-  adb shell run-as "$app" sh -c 'cat files/tsnet/tailscaled.log*.txt' \
+  timeout 30 adb shell run-as "$app" sh -c 'cat files/tsnet/tailscaled.log*.txt' \
     > "$out/tsnet-fail.txt" 2> /dev/null || true
-  adb pull /sdcard/ui.xml "$out/ui-fail.xml" > /dev/null 2>&1 || true
-  adb uninstall "$app" > /dev/null 2>&1 || true
+  timeout 30 adb pull /sdcard/ui.xml "$out/ui-fail.xml" > /dev/null 2>&1 || true
+  timeout 60 adb uninstall "$app" > /dev/null 2>&1 || true
   exit 1
 }
 note() { echo "$*" | tee -a "$summary"; }
@@ -99,8 +101,8 @@ screen_size() {
 # One dump per check: a page is read once and scanned for every string it may
 # not show, so the window costs one dump, not one per string.
 dump_page() {
-  adb shell uiautomator dump /sdcard/ui.xml > /dev/null 2>&1 || true
-  adb pull /sdcard/ui.xml "$out/ui.xml" > /dev/null 2>&1 || true
+  timeout 60 adb shell uiautomator dump /sdcard/ui.xml > /dev/null 2>&1 || true
+  timeout 30 adb pull /sdcard/ui.xml "$out/ui.xml" > /dev/null 2>&1 || true
   [ -s "$out/ui.xml" ]
 }
 
@@ -131,7 +133,9 @@ tap_text "Connect" || {
   sleep 1
   tap_text "Connect" || fail "no Connect button"
 }
-wait_home "$app" "$out" "$here" Services 120 || fail "sign-in did not reach the shell; see ui.xml"
+# Not wait_home: a loaded emulator can take longer than its three dumps to
+# paint the shell after the route is logged.
+wait_for "Services" 180 || fail "sign-in did not reach the shell; see ui.xml"
 note "signed in against $control_url"
 
 adb shell am force-stop "$app" > /dev/null 2>&1 || true
@@ -180,7 +184,7 @@ cold_start() { # <tag> <query>
 # Filter on the device and cap the tail: a host-side filter still sends the
 # whole 2 MB buffer over adb on every poll, which is what made this gate
 # outrun its time budget.
-flutter_log() { adb shell logcat -d -s flutter:I -t 400 2> /dev/null; }
+flutter_log() { timeout 30 adb shell logcat -d -s flutter:I -t 400 2> /dev/null; }
 log_has() { flutter_log | grep -q "$1"; }
 
 # Samples the page until the ready line is in logcat, and counts the runs that
