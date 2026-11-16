@@ -8,6 +8,7 @@ Usage: ui.py dump.xml tap <needle>     -> prints "x y" for the smallest match
        ui.py dump.xml texts <ymax>     -> every labelled node above ymax
        ui.py dump.xml edits            -> prints every text-field point, top first
        ui.py dump.xml edit <index>     -> prints "x y" for one of those fields
+       ui.py dump.xml all <needle>     -> every match's bounds, top first
 """
 import re
 import sys
@@ -102,6 +103,10 @@ def main():
         return 0
     needle = sys.argv[3]
     found = matches(path, needle)
+    if command == "all":
+        for box, _label in found:
+            print(*box)
+        return 0 if found else 1
     if command == "has":
         return 0 if found else 1
     if not found:
