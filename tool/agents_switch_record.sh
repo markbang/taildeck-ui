@@ -8,8 +8,10 @@
 # The page logs one `taildeck agents: <phase>` line per phase change, and the
 # shell logs its route, so the order evidence is read from logcat: a stale
 # failure logs `failed` for the reopened page, the fix logs `connecting` first.
-# The clip's frames are then compared with the settled error card. uiautomator
-# is not used: the tailnet spinner never lets a dump reach the idle state.
+# Screenshots are then taken every moment of the switch, with their capture
+# times, and compared with each settled card: a card may not appear in the
+# seconds the wake dials. uiautomator is not used to sample the switch (the
+# spinner never lets a dump reach the idle state), only once a card is at rest.
 #
 # Needs CONTROL_URL, a node key seeded against that control plane
 # (tool/seed_state.dart, SEED_STATE) and a peer named bangwu on it
@@ -92,6 +94,21 @@ target() { # <node> <port>
 }
 
 shot() { adb exec-out screencap -p > "$out/$1.png" 2> /dev/null || rm -f "$out/$1.png"; }
+
+# A still every moment of a switch, with the epoch ms it was taken: the paint
+# order a person would see, not a state sampled afterwards.
+capture() { # <dir> <count>
+  local dir=$1 count=$2 i file
+  mkdir -p "$dir"
+  : > "$dir/times.txt"
+  for i in $(seq 1 "$count"); do
+    file=$(printf '%s/frame-%03d.png' "$dir" "$i")
+    adb exec-out screencap -p > "$file" 2> /dev/null || rm -f "$file"
+    if [ -s "$file" ]; then
+      echo "$(date +%s%3N)" >> "$dir/times.txt"
+    fi
+  done
+}
 logs() { timeout 60 adb logcat -d 2> /dev/null | grep -a 'I flutter :'; }
 phases() { logs | grep -aoE 'taildeck agents: [a-z]+' | awk '{print $3}' | tr '\n' ' ' | sed 's/ *$//'; }
 # Waits for a phrase in the app's own log; the route and phase lines arrive
@@ -167,19 +184,18 @@ launch() { # <tag> <tab>
 
 # One switch: tap the tab, note the phase the page logs first, record the first
 # seconds of it and keep a still of the rest.
-switch_to_agents() { # <tag> <point> <clip?>
-  local tag=$1 point=$2 clip=${3:-} rec=0
-  if [ -n "$clip" ]; then
-    # /data/local/tmp, not /sdcard: the gate runs as root (adb root) and the
-    # sdcard's FUSE mount does not always take a root write.
-    adb shell "rm -f /data/local/tmp/$tag.mp4" > /dev/null 2>&1 || true
-    adb shell screenrecord --time-limit 9 --bit-rate 6000000 --size 540x1200 \
-      "/data/local/tmp/$tag.mp4" > "$out/$tag-recorder.txt" 2>&1 &
-    rec=$!
-    sleep 0.8
+switch_to_agents() { # <tag> <point> <frames?>
+  local tag=$1 point=$2 frames=${3:-} cap=0 started
+  if [ -n "$frames" ]; then
+    capture "$out/$tag-frames" 40 &
+    cap=$!
+    # Two frames land before the tap, so the frames list has a lead-in.
+    sleep 1.2
   fi
   adb logcat -c > /dev/null 2>&1 || true
   sleep 0.2
+  started=$(date +%s%3N)
+  echo "$started" > "$out/$tag-tap.txt"
   tap_dock $point
   # The page only logs a phase when its tab opens or its state changes. A
   # loaded emulator can take seconds to deliver the tap.
@@ -189,16 +205,42 @@ switch_to_agents() { # <tag> <point> <clip?>
   shot "$tag-early"
   sleep 6
   shot "$tag-rest"
-  if [ -n "$clip" ]; then
-    wait "$rec" 2> /dev/null || true
-    sleep 1
-    adb shell "ls -l /data/local/tmp/$tag.mp4" >> "$out/$tag-recorder.txt" 2>&1 || true
-    adb pull "/data/local/tmp/$tag.mp4" "$out/$tag.mp4" >> "$out/$tag-recorder.txt" 2>&1 || true
-    [ -s "$out/$tag.mp4" ] || {
-      note "$tag: recorder said: $(head -3 "$out/$tag-recorder.txt" | tr '\n' ' ')"
-      fail "$tag: no clip"
-    }
+  if [ -n "$frames" ]; then
+    wait "$cap" 2> /dev/null || true
+    [ "$(wc -l < "$out/$tag-frames/times.txt")" -ge 8 ] \
+      || fail "$tag: only $(wc -l < "$out/$tag-frames/times.txt") frames were captured"
   fi
+}
+
+# The frames of a series against the cards the run can show.
+check_frames() { # <tag> <lead-ms> <error-still...>
+  local tag=$1 lead=$2 frames idx=0 file
+  shift 2
+  mkdir -p "$out/$tag-frames/raw"
+  # One raw gray frame per still, in capture order.
+  local list="$out/$tag-frames/list.txt"
+  : > "$list"
+  for file in "$out/$tag-frames"/frame-*.png; do
+    idx=$((idx + 1))
+    ffmpeg -loglevel error -y -i "$file" -vf "scale=48:48,format=gray" \
+      -f rawvideo "$out/$tag-frames/raw/$(printf %03d "$idx").raw" 2> /dev/null \
+      || fail "$tag: could not read $file"
+    cat "$out/$tag-frames/raw/$(printf %03d "$idx").raw" >> "$list"
+  done
+  local refs=()
+  local still
+  for still in "$@"; do
+    ffmpeg -loglevel error -y -i "$still" -vf "scale=48:48,format=gray" \
+      -f rawvideo "$out/$tag-frames/ref.raw" 2> /dev/null || fail "$tag: could not read $still"
+    cp "$out/$tag-frames/ref.raw" "$out/$tag-frames/ref-$(basename "$still").raw"
+    refs+=(--error "$out/$tag-frames/ref-$(basename "$still").raw")
+  done
+  python3 "$here/agents_switch_check.py" --frames "$list" \
+    --times "$out/$tag-frames/times.txt" --tap "$(cat "$out/$tag-tap.txt")" \
+    --lead "$lead" "${refs[@]}" >> "$summary" 2>&1 \
+    || fail "$tag: a card painted before the connecting skeleton (see summary.txt)"
+  montage "$out/$tag-frames"/frame-0[0-2]*.png -tile 6x -geometry +2+2 \
+    -background '#101214' "$out/$tag-contact.png" 2> /dev/null || true
 }
 
 # The page's own line per phase change is the precise order evidence: a stale
@@ -236,7 +278,7 @@ tap_dock "$nx" "$ny"
 sleep 2
 # Leaving the page starts the next visit clean.
 adb logcat -c > /dev/null 2>&1 || true
-switch_to_agents slow "$ax $ay" clip
+switch_to_agents slow "$ax $ay" frames
 assert_phases slow "connecting failed"
 [ -s "$out/slow-early.png" ] || fail "slow: no still of the first second"
 case "$(rest_has 'Retry')" in
@@ -245,23 +287,9 @@ case "$(rest_has 'Retry')" in
   *) note "slow: no dump after the switch; the clip carries it" ;;
 esac
 
-# Frames: the error card may not paint in the three seconds after the tap that
-# the wake's four-second dial owns.
-ffmpeg -loglevel error -y -i "$out/slow.mp4" -vf "fps=12,scale=48:48,format=gray" \
-  -f rawvideo "$out/clip.raw" 2> /dev/null || fail "slow: could not decode the clip"
-ffmpeg -loglevel error -y -i "$out/slow-stale-error.png" -vf "scale=48:48,format=gray" \
-  -f rawvideo "$out/error-stale.raw" 2> /dev/null || fail "slow: could not encode the card still"
-ffmpeg -loglevel error -y -i "$out/slow-rest.png" -vf "scale=48:48,format=gray" \
-  -f rawvideo "$out/error-wake.raw" 2> /dev/null || fail "slow: could not encode the rest still"
-mkdir -p "$out/frames"
-ffmpeg -loglevel error -y -i "$out/slow.mp4" -vf "fps=12,scale=270:-2" \
-  "$out/frames/frame-%03d.png" 2> /dev/null || true
-python3 "$here/agents_switch_check.py" --frames "$out/clip.raw" \
-  --error "$out/error-stale.raw" --error "$out/error-wake.raw" \
-  --tap 0.8 --lead 36 >> "$summary" 2>&1 \
-  || fail "slow: the error card painted before the connecting skeleton (see summary.txt)"
-montage "$out"/frames/frame-*.png -tile 8x -geometry +3+3 -background '#101214' \
-  "$out/frames.png" 2> /dev/null || true
+# Frames: neither the card left by the launch dial nor the one this visit's
+# dial makes may paint in the three seconds the wake's dial owns.
+check_frames slow 3000 "$out/slow-stale-error.png" "$out/slow-rest.png"
 
 # Nothing dials again by itself after that failure.
 sleep 5
@@ -273,7 +301,7 @@ note "slow: no second dial after the failure"
 target ghost 22
 launch fast 0
 sleep 8
-switch_to_agents fast "$ax $ay"
+switch_to_agents fast "$ax $ay" frames
 assert_phases fast "connecting failed"
 sleep 1
 case "$(rest_has "Can't find node ghost")" in
@@ -281,6 +309,9 @@ case "$(rest_has "Can't find node ghost")" in
   missing) fail "fast: the unknown host did not reach the card" ;;
   *) note "fast: no dump at rest; the still carries the card" ;;
 esac
+# This failure lands within the first second, so only the log can order it; the
+# frames still show the card arriving and the still carries its words.
+check_frames fast 0 "$out/fast-rest.png"
 
 note "ok: no stale failure painted; the wake's own failure shows with Retry"
 adb uninstall "$app" > /dev/null 2>&1 || true
