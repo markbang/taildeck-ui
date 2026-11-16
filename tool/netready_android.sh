@@ -85,9 +85,12 @@ push_file() { # <local> <app-relative>
 
 adb shell run-as "$app" mkdir -p files/tsnet > /dev/null 2>&1 \
   || fail "run-as cannot write the app's files; this gate needs a debuggable APK"
+note "app installed, activity $component"
 push_file "$seed" files/tsnet/tailscaled.state || fail "could not push the node key"
-size=$(timeout 30 adb shell run-as "$app" sh -c 'wc -c < files/tsnet/tailscaled.state' | tr -d '\r ')
-[ "$size" = "$(stat -c%s "$seed")" ] || fail "the node key landed short ($size bytes)"
+size=$( (timeout 30 adb shell run-as "$app" sh -c 'wc -c < files/tsnet/tailscaled.state' || echo short) 2> /dev/null | tr -d '\r ')
+[ "$size" = "$(stat -c%s "$seed")" ] \
+  || fail "the node key landed at ${size:-nothing} bytes, want $(stat -c%s "$seed")"
+note "node key pushed: $size bytes"
 
 printf '{"hostname":"%s","controlURL":"%s","signedIn":true,"herdrNode":"bangwu","herdrUser":"root","herdrPort":22,"herdrAuth":"tailscale"}' \
   "$hostname" "$control_url" > "$out/files/config.json"
