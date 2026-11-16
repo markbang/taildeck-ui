@@ -249,13 +249,16 @@ open_peer() { # <node label>: from a node page back to the list
   open_session "$1"
 }
 
-send_command() { # <text>
+send_command() { # <text>, through the toolbar's keyboard button
   local point
-  point=$(ui tap "Command input") || point=$(ui edit 0) || { note "no input line"; return 1; }
+  point=$(ui tap 'Show keyboard') || { note "no Show keyboard button"; return 1; }
   tap_xy "$point"
+  sleep 1.5
   type_text "$1"
   adb shell input keyevent 66 > /dev/null 2>&1 || true
   sleep 3
+  adb shell input keyevent KEYCODE_BACK > /dev/null 2>&1 || true
+  sleep 1
 }
 
 # ---- snippets ------------------------------------------------------------

@@ -364,4 +364,72 @@ abstract final class Glyphs2 {
       GlyphVertex(15.4, 16.2),
     ], role: GlyphRole.line),
   ]);
+
+  static const keyboard = Glyph([
+    GlyphBox(2.6, 6.2, 21.4, 17.8, 3, role: GlyphRole.line),
+    GlyphPolyline([
+      GlyphVertex(6.6, 10.2),
+      GlyphVertex(7.4, 10.2),
+    ], role: GlyphRole.line),
+    GlyphPolyline([
+      GlyphVertex(11.6, 10.2),
+      GlyphVertex(12.4, 10.2),
+    ], role: GlyphRole.line),
+    GlyphPolyline([
+      GlyphVertex(16.6, 10.2),
+      GlyphVertex(17.4, 10.2),
+    ], role: GlyphRole.line),
+    GlyphPolyline([
+      GlyphVertex(7.4, 14.2),
+      GlyphVertex(16.6, 14.2),
+    ], role: GlyphRole.line),
+  ]);
+
+  /// The d-pad that opens the arrow keys.
+  static const dpad = Glyph([
+    GlyphPolyline([
+      GlyphVertex(12, 3.4),
+      GlyphVertex(12, 20.6),
+    ], role: GlyphRole.line),
+    GlyphPolyline([
+      GlyphVertex(3.4, 12),
+      GlyphVertex(20.6, 12),
+    ], role: GlyphRole.line),
+    GlyphPolyline([
+      GlyphVertex(9.2, 6.2),
+      GlyphVertex(12, 3.4, 0.6),
+      GlyphVertex(14.8, 6.2),
+    ], role: GlyphRole.line),
+    GlyphPolyline([
+      GlyphVertex(9.2, 17.8),
+      GlyphVertex(12, 20.6, 0.6),
+      GlyphVertex(14.8, 17.8),
+    ], role: GlyphRole.line),
+    GlyphPolyline([
+      GlyphVertex(6.2, 9.2),
+      GlyphVertex(3.4, 12, 0.6),
+      GlyphVertex(6.2, 14.8),
+    ], role: GlyphRole.line),
+    GlyphPolyline([
+      GlyphVertex(17.8, 9.2),
+      GlyphVertex(20.6, 12, 0.6),
+      GlyphVertex(17.8, 14.8),
+    ], role: GlyphRole.line),
+  ]);
+
+  /// A pen, for the Compose sheet.
+  static const compose = Glyph([
+    GlyphPolyline([
+      GlyphVertex(4.4, 19.6),
+      GlyphVertex(5.2, 14.6),
+      GlyphVertex(15.8, 4, 1.4),
+      GlyphVertex(20, 8.2, 1.4),
+      GlyphVertex(9.4, 18.8),
+      GlyphVertex(4.4, 19.6, 0.8),
+    ], role: GlyphRole.line),
+    GlyphPolyline([
+      GlyphVertex(13.4, 6.6),
+      GlyphVertex(17.4, 10.6),
+    ], role: GlyphRole.line),
+  ]);
 }

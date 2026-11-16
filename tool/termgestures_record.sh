@@ -443,9 +443,9 @@ ime_state() {
 
 show_keyboard() {
   local point x y
-  point=$(ui tap 'Command input') || point=$(ui tap 'Type a command') || point=""
+  point=$(ui tap 'Show keyboard') || point=""
   if [ -z "$point" ]; then
-    note "keyboard: no input line"
+    note "keyboard: no Show keyboard button"
     return 0
   fi
   adb shell dumpsys input_method > "$out/input-method.txt" 2> /dev/null || true

@@ -4,6 +4,18 @@
 
 来源读取于 2026-11-14 与 2026-11-15。下文里的**键行**指终端与软键盘之间那一条，**页**指键行里的一屏按键。
 
+## 目标：整页终端 sheet（2026-11-16）
+
+手机终端是一张整页 sheet，不再是“导航栏 + 网格 + 输入行 + 快捷命令 + 键行”的堆叠：
+
+- 顶部一条 4 dp 抓取条，下面 42 dp 的窄标题栏：左侧关闭圆点 + 应用图标（点按离开页面，会话仍在后台），中间是会话标题（`用户: 节点`，例如 `bang: documentation`），右侧一枚小 SSH 徽章，带状态点，断开后点它重连。没有大导航栏，也没有 “Connected” 胶囊。
+- 网格铺满其余空间，深色（或浅色）背景铺满整屏；等宽字体，CJK 对齐，行高舒适。
+- 底部只有一条悬浮的磨砂胶囊工具栏，浮在网格上，网格按工具栏加安全区留出底部内边距：Ctrl、Esc、Tab、方向盘按钮（展开方向键与自定义键页）、片段列表、剪贴板粘贴、编写（Compose），最右是键盘按钮。
+- 没有输入行，也没有快捷命令/片段一排 chip。片段收进工具栏的列表按钮；长命令与中文输入走 Compose：多行输入，发送时写入文字并按行各补一次回车（复用 terminal_send 语义；“只插入不回车”的开关保留）。
+- 点击终端不聚焦输入、不弹键盘：一次点击只作为鼠标点击（SGR 1006）发给开启了鼠标上报的程序，没开就什么都不做。键盘只由工具栏键盘按钮打开/关闭（系统返回键仍可关闭）。键盘弹出/收起是一个动画的平滑缩放，光标保持可见。
+- 0.2.15 的键页自定义、震动、片段增删改、会话条、主题/字体/光标形状都保留。
+
+
 ## 参考应用的做法
 
 | 应用 | 扩展键 | 粘滞修饰键 | 翻页 / 更多键 | 自定义 |
@@ -29,35 +41,36 @@ herdr 是桌面终端复用器，没有触摸层：`herdrdev/herdr-core` 与 `he
 
 | 功能 | 参考 | 计划 / 实现 | 状态 |
 | --- | --- | --- | --- |
-| 键行位置 | Termius 把 add-on 贴在系统键盘上方，输入时保留 | 固定在终端页底部，输入行之下、软键盘之上。页面统一按 `MediaQuery.viewInsets` 垫高（它上面没有会自行缩放的 `Scaffold`），终端网格随键行一起缩小，光标不会被挡住。桌面窗口接的是硬件键盘，键行不显示 | 已实现 |
-| 按键 | Termius：修饰键、方向键、功能键、符号。Termux：固定的两行默认值 | 第 1 页：Esc、Tab、Ctrl、Alt、←、↑、↓、→。第 2 页：Home、End、PgUp、PgDn、`\|`、`~`、`/`、`-`。第 3 页：`_`、`:`、`*`、`&`、`=`、`?`、`'`、`\` | 已实现 |
+| 工具栏位置 | Termius 把 add-on 贴在系统键盘上方，输入时保留 | 终端 sheet 底部一条悬浮的磨砂胶囊，浮在网格上；网格按胶囊加安全区留内边距。页面统一按 `MediaQuery.viewInsets` 垫高（它上面没有会自行缩放的 `Scaffold`），每次变化用一个 200 ms 的补间做动画，动画期间模拟器不改行数，停下来才 resize，所以一次键盘动作只 resize 一次而不是每帧一次。桌面窗口接的是硬件键盘，工具栏不显示 | 已实现 |
+| 按键 | Termius：修饰键、方向键、功能键、符号。Termux：固定的两行默认值 | 胶囊本身带 Ctrl、Esc、Tab。方向盘展开的面板第一页固定是 ←、↑、↓、→，后面跟着设置里的页：第 1 页 Esc、Tab、Ctrl、Alt、←、↑、↓、→；第 2 页 Home、End、PgUp、PgDn、`\|`、`~`、`/`、`-`；第 3 页 `_`、`:`、`*`、`&`、`=`、`?`、`'`、`\` | 已实现 |
 | 编码 | — | 所有按键都走 libghostty-vt 的编码器（`td_term_encode_key`），带上已激活的修饰键，Alt 和 Ctrl 发出去的就是程序期望的字节 | 已实现 |
-| 发送 | Termius、Blink 直接用键盘自己的回车；JuiceSSH 没有可发送的输入行 | 输入行就是缓冲区：点发送，或按软键盘的发送/完成键，先写出文字，再逐行各补一个 CR，于是三行粘贴会隔 20 毫秒依次执行三条命令。长按发送，或键行上的 `Ins` 键，改为只插入不回车，选择记在应用配置里。选区工具条的 bracketed paste 仍是原样粘贴 | 已实现 |
+| 发送 | Termius、Blink 直接用键盘自己的回车；JuiceSSH 没有可发送的输入行 | Compose 的发送先写出文字，再逐行各补一个 CR，于是三行命令会隔 20 毫秒依次执行。键页上的 `Ins` 键，或 Compose 里的开关，改为只插入不回车，选择记在应用配置里；片段自己的“发送后回车”仍按片段决定。选区工具条的 bracketed paste 仍是原样粘贴。软键盘输入不再进缓冲区：每个提交的字符就是一次按键 | 已实现 |
 | 粘滞修饰键 | Blink：按住修饰键连发组合。Termux：CTRL/ALT 是特殊键 | 单击激活 Ctrl/Alt 并高亮；下一个键（键行按键或键盘输入的字符）带上修饰键，随后自动取消高亮 | 已实现 |
 | 修饰键锁定 | JuiceSSH：Alt 可设为一直发 Esc | 双击锁定（高亮更实，保持激活）；再点一次清除 | 已实现 |
 | 翻页 | Termux：`extra-keys` 多行，滑到其余。JuiceSSH：弹出键盘左右滑 | 横向滑动翻页，另有可点的页码圆点，方便外接键盘和读屏 | 已实现 |
 | 自定义 | Termius：排序与自定义组。Termux：`extra-keys` 配置文件。Blink：`config` → Keyboard | 设置 → 终端 → 扩展键行：逐页勾选显示哪些键（同一个键只属于一页），可恢复默认，写入应用配置持久保存 | 已实现 |
 | 震动反馈 | JuiceSSH："Vibrate Device" | 每次按键触发 `HapticFeedback.lightImpact`，开关在 设置 → 终端 → "终端按键震动" | 已实现 |
 | 长按连发 | 硬件方向键按住会自动重复 | 按住键行上的 ←、↑、↓、→ 会连发：380 毫秒后开始，之后每 70 毫秒一次；松手不再补发 | 已实现 |
-| 点击聚焦 | Termius：终端输入获得焦点时键盘出现，只有 add-on 的隐藏键盘按钮或系统能收起它。herdr：点击先聚焦视图，再把点击发出去 | 每次点网格都会让输入行获得焦点并弹出软键盘，绝不收起。再点一次、点空白处、长按、双击都保持键盘。Android 已收起 IME 但输入框仍保有焦点时，点一下会重新走一次聚焦（一帧失焦、下一帧聚焦），因为焦点没变时 `TextInput.show` 会被忽略。只有键行上的键盘按钮和系统返回键能收起；按钮调 `TextInput.hide` 并保留焦点，硬件键盘仍能输入 | 已实现 |
+| 点击语义 | Termius：终端输入获得焦点时键盘出现。herdr：点击先聚焦视图，再把点击发出去 | 点网格没有本地动作：不聚焦、不弹键盘，只作为鼠标点击交给开启了鼠标上报的程序（见下一行）。长按与双击仍是本地选区。键盘只由工具栏键盘按钮打开和关闭（唯一入口），系统返回键仍可关闭；IME 的目标是一个 1×1 的隐藏输入框，点击碰不到它 | 已实现 |
 | 鼠标上报 | herdr：在跟踪鼠标的程序里，一次点击是先按下再松开，带按键与修饰键；Shift 留给本地；长按是本地选区 | 程序启用鼠标跟踪时，点一下会通过 `td_term_encode_mouse` 发一次左键按下和松开：点击像素与当前单元格尺寸算出单元格，键行上已激活的 Ctrl/Alt 作为 GhosttyMods 位一起发出，点击后清除。协议由模拟器按远端启用的模式选择（vim、htop、tmux 要的是 SGR 1006）；没开鼠标跟踪的终端不会收到任何字节。长按与双击是本地选区，从不发点击 | 已实现 |
 | 滚轮与拖动 | herdr：跟踪鼠标时滚轮变成 4/5 号键上报；拖动发移动 | 上下拖动翻看回滚、滚轮也翻回滚，都是本地的。把滚轮上报给跟踪鼠标的程序还没做 | 待做 |
 | 网格手势 | Termius 把手势放在网格上；Termux 靠在键行上滑 | 单指滑动发方向键：轴向由第一段位移决定，每 26 dp 一个键，每帧最多 3 个。设置 → 终端 → "滑动发送方向键" 可关闭，关闭后上下拖动改为翻看回滚 | 已实现 |
 | 选词 | Kotlin 的 `TerminalView` 长按选词；iOS 终端用双击 | 长按进入选区并选中手指下的词，双击同样（走 `td_term_select`），两端各有一个可拖动的把手；在网格上拖动可移动远端，单击清除选区并保持键盘 | 已实现 |
-| 复制、粘贴与链接 | Kotlin 的 action mode 有复制和粘贴；Termius 与 Blink 都放在选区上 | 选区上方的工具条：复制（`td_term_selection_text` → 系统剪贴板）、整段选区是一个 http(s) 链接时出现"打开链接"、粘贴（`td_term_encode_paste`，尊重 bracketed paste）。输入行右侧另有粘贴按钮 | 已实现 |
+| 复制、粘贴与链接 | Kotlin 的 action mode 有复制和粘贴；Termius 与 Blink 都放在选区上 | 选区上方的工具条：复制（`td_term_selection_text` → 系统剪贴板）、整段选区是一个 http(s) 链接时打开链接、粘贴（`td_term_encode_paste`，尊重 bracketed paste）。胶囊上也有粘贴按钮 | 已实现 |
+| 编写（Compose） | Termius、Blink 都用命令 sheet 输入长文本 | 多行 sheet，使用终端的等宽样式；发送走同一条发送路径（默认每行补回车，可切只插入）。系统的输入法组合（拼音、日文）在 sheet 里提交，中文不必经过单行输入框 | 已实现 |
 | 缩放 | Blink：在网格上捏合 | 捏合改变网格字号（8–24 pt）并持久保存；设置 → 终端 显示同一数值，可点 A− / A+ | 已实现 |
-| 键盘与旋转 | — | 软键盘弹出/收起、旋转都会改变网格大小，从而同时调整模拟器（`td_term_resize`）和 SSH PTY（`td_ssh_resize`）；行列跟着单元格算。调整之后视口回到实时屏幕，即使用户正在翻回滚，光标也仍在键行之上。高度不足 420 dp 的横屏会收起快捷命令条 | 已实现 |
-| 硬件键盘 | Blink 接了键盘就隐藏 Smart Keys | Ctrl、Alt、Meta 组合键和方向键、Esc、Tab 都从输入行的焦点节点走 `td_term_encode_key`。Android 报告接了物理键盘（`Configuration.keyboard`）时键行隐藏，除非在 设置 → 终端 里强制保留，或软键盘正在弹出。iOS 与桌面维持现状：桌面一直隐藏，iOS 无法探测 | 已实现 |
-| 片段、会话、自定义按键序列 | Termius snippets、Blink Snips | 不在本次改动 | 后续 |
+| 键盘与旋转 | — | 软键盘弹出/收起、旋转都会改变网格大小，从而同时调整模拟器（`td_term_resize`）和 SSH PTY（`td_ssh_resize`）；行列跟着单元格算。底部内边距是一个补间动画，网格平滑缩放而不是一帧跳动，动画停下后才 resize PTY。调整之后视口回到实时屏幕，光标仍在工具栏上方可见 | 已实现 |
+| 硬件键盘 | Blink 接了键盘就隐藏 Smart Keys | Ctrl、Alt、Meta 组合键和方向键、Esc、Tab 都从页面的焦点节点走 `td_term_encode_key`；IME 输入框持焦点时直接敲出的字符走输入框及其变更处理。手机上即使 Android 报告接了物理键盘也保留工具栏，因为键盘按钮是回到 IME 的唯一入口；桌面窗口本来就有硬件键盘，除非设置 → 终端 → “桌面窗口显示工具栏”或 `?keys=1` 要求，否则隐藏。iOS 无法判断，工具栏保留 | 已实现 |
+| 片段 | Termius snippets、Blink Snips | 设置 → 终端 → 命令片段，或胶囊里的片段按钮：名称、命令行、每条片段的“发送后回车”（关掉只输入不执行）。在列表里点一下发送，面板里编辑，上下调整顺序；应用配置里最多 40 条 | 已实现 |
+| 会话 | Termius 会话标签 | 每个 SSH 会话都留在 store 里，一个节点一个。模拟器属于会话而不是页面，回滚与备用屏幕程序都能保留。两个以上会话时标题栏下面有一条 `user@node` 的条，带在线/断开圆点；点一下切换，网格回到离开时的样子（vim 保留屏幕） | 已实现 |
+| 重连 | Termius 重连 | 断开的会话保留自己的页面，SSH 徽章变红，点徽章就用同一个节点、用户、端口和密钥或密码重新拨号；这些只保存在会话内存里，什么都不用重输，密码从不落盘 | 已实现 |
+| 主题与字体 | Termius、Blink、JuiceSSH 都有配色；Termius、Blink 有字体选择 | 五套配色（Taildeck 深色、午夜蓝、纸张浅色、Solarized 深色、Solarized 浅色）或“跟随外观”，后者在应用浅色主题下取浅色配色。主题会画整张 sheet——抓取条、标题栏、会话条、胶囊、Compose——并给出网格的默认前景与背景；远端自己设置的颜色保持原样。字体：DejaVu Sans Mono、系统等宽或 Roboto（非等宽）；网格重新量单元格，行列随之变化 | 已实现 |
 
 ## 验证
 
-`tool/termtap_record.sh`（工作流 `termtap-record`）就是点击门禁：安装 APK，登录录制机的测试控制面，在对等节点的 sshd 上打开真实会话，收起键盘后点网格——只要 `dumpsys input_method` 不是 `mInputShown=true`、终端窗口不是当前焦点、再点一次或点空白处把 IME 收起来了、点击之后输入的命令没有在 shell 上执行、键行键盘按钮没有收起 IME、或者收起后点一下没有重新弹出，这次运行就失败。同一次运行还在对等节点上启动一个小 Python 程序，打开鼠标跟踪（1000 + SGR 1006）并记录收到的字节；一次点击必须是 `<0;Cx;CyM` 再 `<0;Cx;Cym` 且两次单元格相同，按住 Ctrl 的点击必须是 `<16;`，否则失败。录屏：`tap-focus.mp4`（收起键盘、点击、键盘弹出、再点一次）、`tap-mouse.mp4` 与 `tap-mouse-ctrl.mp4`（探针收到的上报）、`tap-vim.mp4` 与 `tap-vim-before.png` / `tap-vim-after.png`（vim 以 `set mouse=a` 打开一个十二行的文件；先点一次把键盘叫回来，再点另一处让光标移到另一行，vim 每次移动都把行号写进 `/tmp/tapvim-cursor`，行号没变就算失败）、`tap-htop.mp4` 与 `tap-htop-before.png` / `tap-htop-after.png`（先点一行进程，再点另一行）。静帧：`tap-keyboard.png`。
+`tool/termtap_record.sh`（工作流 `termtap-record`）是点击与键盘门禁：安装 APK，登录录制机的测试控制面，在对等节点的 sshd 上打开真实会话，然后收起键盘、点网格，IME 一旦弹出就失败（点击只是鼠标点击）；点胶囊上的 `Show keyboard`，`dumpsys input_method` 不是 `mInputShown=true` 就失败；再点同一个按钮，IME 不收起就失败；再点一次网格，IME 回来就失败；通过 IME 输入一条带 Backspace 的命令，确认它真的在 shell 上执行；再展开方向盘，发 Ctrl 与方向键，打开片段列表和 Compose。同一次运行在对等节点上启动一个小 Python 程序，打开鼠标跟踪（1000 + SGR 1006）并记录收到的字节；一次点击必须是 `<0;Cx;CyM` 再 `<0;Cx;Cym` 且单元格相同，按住 Ctrl 的点击必须是 `<16;`，否则失败。录屏：`tap-no-keyboard.mp4`（点击后没有键盘）、`tap-keyboard.mp4`（按钮打开再关闭键盘）、`compose-send.mp4`（Compose 发中文）、`toolbar-controls.mp4`（Ctrl、方向键、片段、粘贴）、`tap-mouse.mp4` 与 `tap-mouse-ctrl.mp4`（探针收到的上报）、`tap-vim.mp4` 与 `tap-vim-before.png` / `tap-vim-after.png`（vim 以 `set mouse=a` 打开十二行文件，点另一处让光标移到另一行，vim 每次移动都把行号写进 `/tmp/tapvim-cursor`，行号没变就算失败）、`tap-htop.mp4` 与 `tap-htop-before.png` / `tap-htop-after.png`（先点一行进程，再点另一行）。静帧：`tap-keyboard.png`、`sheet-dark.png`、`sheet-light.png`。
 
-
-`tool/termgestures_record.sh`（工作流 `termgestures-record`）在 Android 模拟器上录下手势层：两个方向的滑动方向键、按住方向键连发、选词与两端把手、复制（工具条显示已复制，`term-copy.png`）、打开选区里的链接（Chrome 切到前台，`term-open-link.png`）、横屏（`term-landscape.png`，网格重排成 105×12）、软键盘压缩网格而光标仍在键行之上（`term-keyboard.png`，以及 `-keyboard-hidden.png`）、在设置里加字号并重启后保持（`term-font.png`）。
-
-`term-hardware.png`（Esc、Tab、Ctrl+C、方向键分别编码成 `^[`、`^I`、`^C`、`^[[D`、`^[[A`）和 `term-paste.png` 来自 Linux 桌面版，因为模拟器把注入的按键事件交给了 Gboard。旁边的录屏是 `docs/screenshots/term-*.mp4`。
+`tool/terminal_sheet_record.sh`（工作流 `terminal-sheet-record`）录制前后对照：先装已发布的 v0.2.18 APK，录下旧标题栏、输入行与快捷命令条，再装本次构建，录新标题栏、工具栏、点击不弹键盘、键盘按钮、Compose 发中文、方向盘、片段、粘贴与浅色主题。`sheet-structure.png` 把新静帧和“按描述画出的参考结构”放在一起，因为用户的原图不在仓库里。
 
 `tool/termsend_record.sh`（工作流 `termsend-record`）录制发送写出的字节。演示会话把每个字节按插入符记法回显，所以 CR 在网格上显示成 `^M`：`term-send-button.png` 是输入行的发送（`echo send^M`），`term-send-ime.png` 是软键盘的回车（`echo enter^M`），`term-send-ime-action.png` 是 Gboard 自己的发送键（`echo action^M`，键盘不把按键放进无障碍树，所以按颜色找触点），`term-send-insert.png` 与 `-insert-cr.png` 是长按发送改成只插入：先插入 `echo ins` 不回车，再单独发一个 CR。旁边的录屏是同名的 `term-send-*.mp4`。模拟器连不上 tailnet，这些命令没有真实 shell 执行，因此 `echo` 的实际输出、历史调用与补全未实机验证。
 
