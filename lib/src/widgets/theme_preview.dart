@@ -129,54 +129,62 @@ class MiniScreen extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final unit = constraints.maxWidth / 20;
+        final barHeight = floatingBar ? unit * 4.4 : unit * 5.2;
+        final barTop =
+            constraints.maxHeight -
+            (floatingBar ? unit * 1.6 : 0) -
+            barHeight;
+        // The cards the sketch has room for above its dock, so a thumbnail
+        // shows its foot without a row running under the bar.
+        var top = unit * 5.2;
+        final cards = <Widget>[];
+        for (final rows in const [3, 2, 2]) {
+          final height = unit * (2 * 0.9 + rows * 1.6 + (rows - 1) * 1.0) + 1;
+          if (top + height > barTop - unit) break;
+          cards.add(
+            Positioned(
+              top: top,
+              left: unit * 1.5,
+              right: unit * 1.5,
+              height: height,
+              child: _MiniCard(
+                color: card,
+                unit: unit,
+                rows: rows,
+                tint: scheme.primary,
+                ink: ink,
+                muted: muted,
+              ),
+            ),
+          );
+          top += height + unit * 1.4;
+        }
         return ColoredBox(
           color: page,
           child: Stack(
             children: [
-              Positioned.fill(
-                child: Padding(
-                  padding: EdgeInsets.fromLTRB(
-                    unit * 1.5,
-                    unit * 2,
-                    unit * 1.5,
-                    0,
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _Line(width: unit * 8, height: unit * 1.1, color: ink),
-                      SizedBox(height: unit * 0.8),
-                      _Line(
-                        width: unit * 4.5,
-                        height: unit * 0.6,
-                        color: muted.withValues(alpha: 0.6),
-                      ),
-                      SizedBox(height: unit * 1.8),
-                      for (final rows in const [3, 2, 2]) ...[
-                        _MiniCard(
-                          color: card,
-                          unit: unit,
-                          rows: rows,
-                          tint: scheme.primary,
-                          ink: ink,
-                          muted: muted,
-                        ),
-                        SizedBox(height: unit * 1.4),
-                      ],
-                    ],
-                  ),
+              Positioned(
+                top: unit * 2,
+                left: unit * 1.5,
+                child: _Line(width: unit * 8, height: unit * 1.1, color: ink),
+              ),
+              Positioned(
+                top: unit * 3.9,
+                left: unit * 1.5,
+                child: _Line(
+                  width: unit * 4.5,
+                  height: unit * 0.6,
+                  color: muted.withValues(alpha: 0.6),
                 ),
               ),
+              ...cards,
               Positioned(
                 left: floatingBar ? unit * 2 : 0,
                 right: floatingBar ? unit * 2 : 0,
-                bottom: floatingBar ? unit * 1.6 : 0,
+                top: barTop,
+                height: barHeight,
                 child: Container(
-                  height: floatingBar ? unit * 4.4 : unit * 5.2,
-                  decoration: ShapeDecoration(
-                    color: dock,
-                    shape: AppShape.full,
-                  ),
+                  decoration: ShapeDecoration(color: dock, shape: AppShape.full),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: [
@@ -253,6 +261,7 @@ class _MiniCard extends StatelessWidget {
         shape: AppShape.all(unit * 1.6),
       ),
       child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
           for (var row = 0; row < rows; row++) ...[
             if (row > 0) SizedBox(height: unit * 1),

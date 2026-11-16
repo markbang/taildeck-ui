@@ -62,12 +62,17 @@ tap_label() { # <text>
   sleep 0.8
 }
 
-tap_value() { # <text>: the row's value at its end, where a select opens from
+value_point() { # <text>: the row's value at its end, where a select opens from
   local box x1 y1 x2 y2
   box=$(ui bounds "$1") || return 1
   read -r x1 y1 x2 y2 <<< "$box"
-  adb shell input tap "$((x2 - 40))" "$(((y1 + y2) / 2))" > /dev/null 2>&1 || true
-  sleep 0.8
+  echo "$((x2 - 40)) $(((y1 + y2) / 2))"
+}
+
+tap_point() { # 'x y' [settle seconds]
+  # shellcheck disable=SC2086
+  adb shell input tap $1 > /dev/null 2>&1 || true
+  sleep "${2:-1}"
 }
 
 wait_for() { # <text> [seconds]
@@ -118,14 +123,14 @@ launch_taildeck() {
 }
 
 # FlClash's page push is 300 ms; Taildeck's is spring-settled, so both clips
-# are cut to the same length and shown side by side.
-open_theme_taildeck() {
-  tap_label Theme || return 1
-  sleep $((slow + 2))
-}
+# run long enough to hold the transition and then the page at rest. The row's
+# point is resolved before the clip starts, so the tap lands in its first
+# second.
+theme_point= drag_point=
+theme_step() { tap_point "$theme_point" $((slow + 2)); }
 
-drag_back_taildeck() {
-  open_theme_taildeck || return 1
+drag_step() {
+  tap_point "$1" $((slow + 2))
   adb shell input swipe 60 $((SH / 2)) $((W * 3 / 4)) $((SH / 2)) 600 > /dev/null 2>&1 || true
   sleep $((slow + 1))
 }
@@ -136,14 +141,16 @@ shot taildeck-settings
 wait_for Language 15 || fail "the settings list does not show the language select"
 note "Taildeck settings: list with the language row"
 
-record taildeck-language 9 tap_value Language
+language_point=$(value_point Language) || fail "no bounds for the language row"
+record taildeck-language 12 tap_point "$language_point"
 shot taildeck-language-open
 ui has English > /dev/null 2>&1 || fail "the language menu did not open"
 ui has 中文 > /dev/null 2>&1 || note "the language menu lists no zh entry"
 back_key
 sleep 1
 
-record taildeck-push 9 open_theme_taildeck
+theme_point=$(ui tap Theme) || fail "no Theme row on the settings list"
+record taildeck-push 12 theme_step
 shot taildeck-theme
 wait_for "Theme mode" 15 || fail "the theme page did not open"
 note "Taildeck theme page: preview and mode choices"
@@ -152,13 +159,16 @@ back_key
 sleep 2
 shot taildeck-back
 
-record taildeck-drag 12 drag_back_taildeck
+record taildeck-drag 14 drag_step "$theme_point"
 shot taildeck-drag-end
+ui has "Theme mode" > /dev/null 2>&1 && note "drag back left the theme page open" ||
+  note "drag back returned to the list"
 
-# The theme choice itself, for the still.
-open_theme_taildeck || true
-tap_label Light > /dev/null 2>&1 || note "no Light mode row"
-sleep 2
+# A theme choice, to show the preview and the mode rows repaint.
+light_point=$(ui tap Light 2> /dev/null) || light_point=""
+if [ -n "$light_point" ]; then
+  record taildeck-theme-light 8 tap_point "$light_point" $((slow + 1))
+fi
 shot taildeck-theme-light
 back_key
 sleep 1
@@ -181,17 +191,39 @@ dismiss_system_dialogs() {
   done
 }
 
+# FlClash opens on its disclaimer once per install: read to its end and agree.
+accept_flclash_disclaimer() {
+  local point attempt
+  for attempt in 1 2 3; do
+    point=$(ui tap Agree 2> /dev/null) || point=$(ui tap 同意 2> /dev/null) || return 0
+    for _ in 1 2 3 4 5; do
+      adb shell input swipe "$((W / 2))" "$((SH * 3 / 4))" "$((W / 2))" "$((SH / 2))" 200 > /dev/null 2>&1 || true
+      sleep 0.4
+    done
+    point=$(ui tap Agree 2> /dev/null) || point=$(ui tap 同意 2> /dev/null) || return 0
+    # shellcheck disable=SC2086
+    adb shell input tap $point > /dev/null 2>&1 || true
+    sleep 3
+    ui has Agree > /dev/null 2>&1 || return 0
+  done
+}
+
 launch_flclash() {
   adb shell am force-stop "$flclash" > /dev/null 2>&1 || true
   sleep 2
   adb shell monkey -p "$flclash" -c android.intent.category.LAUNCHER 1 > /dev/null 2>&1 || true
-  sleep 12
+  sleep 10
   dismiss_system_dialogs
+  accept_flclash_disclaimer
+  shot flclash-launch
+  ui texts "$SH" > "$out/flclash-launch.txt" 2> /dev/null || true
   # Its dock is the last of four slots whether or not its labels reach the
   # accessibility tree.
   if wait_for Tools 20 || wait_for 工具 5; then return 0; fi
-  adb shell input tap "$((W * 7 / 8))" "$((SH - 80))" > /dev/null 2>&1 || true
+  adb shell input tap "$((W * 7 / 8))" "$((SH - 160))" > /dev/null 2>&1 || true
   sleep 2
+  shot flclash-dock
+  ui texts "$SH" > "$out/flclash-dock.txt" 2> /dev/null || true
   ui has Language > /dev/null 2>&1 || ui has Theme > /dev/null 2>&1
 }
 
@@ -200,20 +232,17 @@ open_tools() {
     sleep 2
     return 0
   fi
-  adb shell input tap "$((W * 7 / 8))" "$((SH - 80))" > /dev/null 2>&1 || true
+  adb shell input tap "$((W * 7 / 8))" "$((SH - 160))" > /dev/null 2>&1 || true
   sleep 2
+  ui texts "$SH" > "$out/flclash-tools.txt" 2> /dev/null || true
   ui has Language > /dev/null 2>&1 || ui has Theme > /dev/null 2>&1
 }
 
-open_theme_flclash() {
-  tap_label Theme || return 1
-  sleep 2
-}
-
-drag_back_flclash() {
-  open_theme_flclash || return 1
+flclash_theme_step() { tap_point "$1" 3; }
+flclash_drag_step() {
+  tap_point "$1" 3
   adb shell input swipe 60 $((SH / 2)) $((W * 3 / 4)) $((SH / 2)) 600 > /dev/null 2>&1 || true
-  sleep 2
+  sleep 3
 }
 
 adb install -g "$flclash_apk" > "$out/install-flclash.txt" 2>&1 || note "FlClash install failed, see install-flclash.txt"
@@ -221,21 +250,32 @@ if launch_flclash; then
   shot flclash-home
   if open_tools; then
     shot flclash-tools
+    ui texts "$SH" > "$out/flclash-tools.txt" 2> /dev/null || true
     wait_for Language 15 && note "FlClash tools: language select found" ||
       note "FlClash tools: no language row in the dump"
-    record flclash-language 9 tap_value Language
+    language_point=$(value_point Language 2> /dev/null) || language_point=""
+    if [ -n "$language_point" ]; then
+      record flclash-language 12 tap_point "$language_point"
+    else
+      record flclash-language 12 tap_label Language
+    fi
     shot flclash-language-open
     back_key
     sleep 1
-    record flclash-push 9 open_theme_flclash
-    shot flclash-theme
-    wait_for "Theme mode" 15 && note "FlClash theme page: mode rows found" ||
-      note "FlClash theme page: no 'Theme mode' in the dump"
-    back_key
-    sleep 2
-    shot flclash-back
-    record flclash-drag 12 drag_back_flclash
-    shot flclash-drag-end
+    flclash_theme_point=$(ui tap Theme 2> /dev/null) || flclash_theme_point=""
+    if [ -n "$flclash_theme_point" ]; then
+      record flclash-push 12 flclash_theme_step "$flclash_theme_point"
+      shot flclash-theme
+      wait_for "Theme mode" 15 && note "FlClash theme page: mode rows found" ||
+        note "FlClash theme page: no 'Theme mode' in the dump"
+      back_key
+      sleep 2
+      shot flclash-back
+      record flclash-drag 14 flclash_drag_step "$flclash_theme_point"
+      shot flclash-drag-end
+    else
+      note "FlClash: no Theme row on its tools page"
+    fi
   else
     note "FlClash: no Tools tab"
   fi
