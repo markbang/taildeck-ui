@@ -71,37 +71,14 @@ jobs:
           set -o pipefail
           tool/build_native.sh android-x86_64 | tee /tmp/build_native.log
           tool/build_term.sh android-x86_64 | tee /tmp/build_term.log
-      - name: Configure Android signing
-        env:
-          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+      - name: Build a debug APK (x86_64)
+        # Debug, because the gate reads the page's own phase lines and the
+        # shell route from logcat; the state machine is the shipped one, and
+        # without TAILDECK_DEMO the build runs the real backend.
         run: |
-          for name in KEYSTORE_BASE64 KEYSTORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
-            if [ -z "${!name}" ]; then
-              echo "::error::$name is empty; the gate needs the release keystore (see docs/SIGNING.md)"
-              exit 1
-            fi
-          done
-          umask 077
-          echo "$KEYSTORE_BASE64" | base64 -d > android/app/release.jks
-          {
-            echo "storeFile=release.jks"
-            printf 'storePassword=%s\n' "$KEYSTORE_PASSWORD"
-            printf 'keyAlias=%s\n' "$KEY_ALIAS"
-            printf 'keyPassword=%s\n' "$KEY_PASSWORD"
-          } > android/key.properties
-          chmod 600 android/app/release.jks android/key.properties
-      - name: Build the release APK (x86_64)
-        # The shipped build, as in the recording: no demo data and no probe.
-        run: |
-          flutter build apk --release --target-platform android-x64 --split-per-abi
-          cp build/app/outputs/flutter-apk/app-x86_64-release.apk build/agents-switch.apk
+          flutter build apk --debug --target-platform android-x64
+          cp build/app/outputs/flutter-apk/app-debug.apk build/agents-switch.apk
           ls -l build/agents-switch.apk
-      - name: Drop the signing material
-        if: always()
-        run: rm -f android/app/release.jks android/key.properties
       - name: Start the test control plane and a peer named bangwu
         id: control
         run: |

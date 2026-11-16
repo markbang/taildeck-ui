@@ -4,6 +4,8 @@
 # the target and paint the connecting skeleton; the failure left by the earlier
 # dial may never paint, not even one frame, and only the dial this visit
 # started may turn into an error with Retry.
+# The build under test is a debug one: the gate reads the page's phase lines
+# and the shell route from logcat, and the state machine is the shipped one.
 # Needs CONTROL_URL, a node key seeded against that control plane
 # (tool/seed_state.dart, SEED_STATE) and a peer named bangwu on it
 # (tool/motion/peer -hostname bangwu -hang-port 3001). The slow variant dials
