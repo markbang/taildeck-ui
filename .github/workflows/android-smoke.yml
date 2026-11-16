@@ -105,24 +105,55 @@ jobs:
         id: mode
         env:
           FULL_INPUT: ${{ inputs.full-gate }}
+          GATES_INPUT: ${{ inputs.gates }}
         run: |
           full=${FULL_INPUT:-false}
-          # A pull request always runs the whole set; the release call and a
-          # ship-mode dispatch smoke the APK they were given.
+          gates=${GATES_INPUT:-all}
           case "${{ github.event_name }}" in
             pull_request)
               full=true
-              # The long 20x loops wait for a label or a manual run: a PR gets
-              # the fast on-device set in one boot (target: under 20 minutes).
-              echo "GATES=cold-start tabs back ping agents" >> "$GITHUB_ENV"
+              # A pull request gets the fast on-device set in one boot
+              # (target: under 20 minutes); the long 20x loops and the
+              # terminal interaction gate wait for a label or a manual run.
+              gates="cold-start tabs back ping agents"
               ;;
           esac
+          echo "GATES=$gates" >> "$GITHUB_ENV"
           source=false
           if [ "$full" = true ] || [ "${{ inputs.build }}" = true ]; then source=true; fi
           if [ -z "${{ inputs.apk-artifact }}" ] && [ -z "${{ inputs.apk-url }}" ]; then source=true; fi
-          echo "full=$full" >> "$GITHUB_OUTPUT"
-          echo "source=$source" >> "$GITHUB_OUTPUT"
-          echo "full gates: $full, build from source: $source"
+          # A gate that was not selected must not cost an APK build or a Go
+          # control plane: the pull-request set needs two APKs, not three, and
+          # no peers.
+          wants() {
+            case " $gates " in
+              *" all "*|*" $1 "*) return 0 ;;
+            esac
+            return 1
+          }
+          profile=false demo=false netready=false control=false
+          for gate in cold-start splash agents stills termtap routing; do
+            wants "$gate" && profile=true
+          done
+          for gate in tabs back ping node; do
+            wants "$gate" && demo=true
+          done
+          wants netready && netready=true
+          if [ "$full" = true ]; then
+            for gate in termtap routing netready; do
+              wants "$gate" && control=true
+            done
+          fi
+          if [ "$source" != true ]; then
+            # Ship mode smokes the APK it was given: nothing is built here.
+            profile=false demo=false netready=false
+          fi
+          for pair in full=$full source=$source profile=$profile demo=$demo \
+            netready=$netready control=$control; do
+            echo "${pair%%=*}=${pair#*=}" >> "$GITHUB_OUTPUT"
+            echo "  ${pair%%=*}=${pair#*=}"
+          done
+          echo "gates: $gates"
 
       - uses: actions/setup-java@v4
         if: steps.mode.outputs.source == 'true'
@@ -210,7 +241,7 @@ jobs:
           "$(ls -d "${ANDROID_SDK_ROOT:-$ANDROID_HOME}"/build-tools/*/ | sort -V | tail -1)/aapt2" \
             dump badging build/smoke.apk | head -1
       - name: Build the profile APK (x86_64)
-        if: steps.mode.outputs.full == 'true'
+        if: steps.mode.outputs.profile == 'true'
         run: |
           flutter pub get
           # Profile is AOT-compiled like the release app but needs no keystore,
@@ -219,7 +250,7 @@ jobs:
           cp build/app/outputs/flutter-apk/app-profile.apk build/profile.apk
           ls -l build/profile.apk
       - name: Build the debug APK for the preview gates
-        if: steps.mode.outputs.full == 'true'
+        if: steps.mode.outputs.demo == 'true'
         run: |
           # The preview routes need the demo dataset, which a debug build only
           # carries behind TAILDECK_DEMO.
@@ -228,7 +259,7 @@ jobs:
           cp build/app/outputs/flutter-apk/app-debug.apk build/demo.apk
           ls -l build/demo.apk
       - name: Build the debuggable APK for the netmap-window gate
-        if: steps.mode.outputs.full == 'true'
+        if: steps.mode.outputs.netready == 'true'
         run: |
           # The gate pushes a node key into the app's files and drops its netmap
           # cache, so this build has to stay debuggable; it carries no demo data,
@@ -258,24 +289,34 @@ jobs:
       - name: Resolve the APK under test
         run: |
           set -euo pipefail
+          # Whatever the selected gates need is resolved by name, from this run
+          # or from the artifact a gate-only re-run downloaded: one build, many
+          # smoke runs.
+          pick() { # <name>
+            local name=$1
+            for dir in build build/artifact; do
+              [ -s "$dir/$name" ] && { echo "$PWD/$dir/$name"; return 0; }
+            done
+            return 1
+          }
           if [ "${{ steps.mode.outputs.full }}" = "true" ]; then
-            apk=$PWD/build/profile.apk
-            test -s "$apk" || { echo "::error::the profile APK was not built"; exit 1; }
-            echo "APK=$apk" >> "$GITHUB_ENV"
-            echo "PROFILE=$apk" >> "$GITHUB_ENV"
-            echo "NODEPAGE=$PWD/build/demo.apk" >> "$GITHUB_ENV"
-            echo "NETREADY_APK=$PWD/build/netready.apk" >> "$GITHUB_ENV"
+            apk=$(pick profile.apk) || { echo "::error::the profile APK was not built"; exit 1; }
           else
-            apk=build/smoke.apk
-            if [ ! -s "$apk" ]; then
-              apk="$(ls build/artifact/taildeck-android-x64-*.apk 2>/dev/null | head -1 || true)"
-            fi
-            if [ -z "$apk" ] || [ ! -s "$apk" ]; then
-              apk="$(ls build/artifact/*.apk 2>/dev/null | head -1 || true)"
-            fi
-            test -s "$apk" || { echo "::error::no APK to smoke"; exit 1; }
-            echo "APK=$PWD/$apk" >> "$GITHUB_ENV"
+            # Ship mode: the APK the caller uploaded, under its release name.
+            apk=$(pick smoke.apk || pick taildeck-android-x64.apk ||
+              find build/artifact -maxdepth 1 -name 'taildeck-android-x64-*.apk' | sort | head -1)
+            [ -n "$apk" ] || apk=$(find build/artifact -maxdepth 1 -name '*.apk' | sort | head -1)
           fi
+          test -s "$apk" || { echo "::error::no APK to smoke"; exit 1; }
+          echo "APK=$apk" >> "$GITHUB_ENV"
+          for name in profile demo netready; do
+            file=$(pick "$name.apk") || continue
+            case "$name" in
+              profile) echo "PROFILE=$file" >> "$GITHUB_ENV" ;;
+              demo) echo "NODEPAGE=$file" >> "$GITHUB_ENV" ;;
+              netready) echo "NETREADY_APK=$file" >> "$GITHUB_ENV" ;;
+            esac
+          done
           mkdir -p gates
           aapt2="$(ls -d "${ANDROID_SDK_ROOT:-$ANDROID_HOME}"/build-tools/*/ | sort -V | tail -1)/aapt2"
           "$aapt2" dump badging "$apk" | grep -E "^(package|application-label:|launchable-activity)" \
@@ -283,11 +324,17 @@ jobs:
           echo "smoking $apk ($(stat -c%s "$apk") bytes)"
       - name: The release APK carries no demo data
         if: steps.mode.outputs.full != 'true'
-        run: tool/check_demo_free.sh "$APK"
+        run: |
+          # A gate-only re-run may smoke the demo APK itself; that is not the
+          # release build this check is about.
+          case "$APK" in
+            */demo.apk) echo "demo build under test; not a release APK" ;;
+            *) tool/check_demo_free.sh "$APK" ;;
+          esac
 
       - name: Start the test control plane and the peers
         id: control
-        if: steps.mode.outputs.full == 'true'
+        if: steps.mode.outputs.control == 'true'
         run: |
           set -o pipefail
           (cd tool/motion && go build -o /tmp/motion_control ./control) 2>&1 | tee /tmp/control-build.log
@@ -307,7 +354,7 @@ jobs:
           echo "AUTH_KEY=tskey-test" >> "$GITHUB_ENV"
           echo "DERP_PORT=$derp" >> "$GITHUB_ENV"
       - name: Start the peers the gates open
-        if: steps.mode.outputs.full == 'true'
+        if: steps.mode.outputs.control == 'true'
         run: |
           set -o pipefail
           (cd tool/motion && go build -o /tmp/motion_peer ./peer) 2>&1 | tee /tmp/peer-build.log
@@ -325,7 +372,7 @@ jobs:
             grep 'ssh shell' "$log" || { cat "$log"; exit 1; }
           done
       - name: Seed a node key for the app
-        if: steps.mode.outputs.full == 'true'
+        if: steps.mode.outputs.control == 'true'
         run: |
           # The app starts from a key already registered on the control plane,
           # so no login tap can fall back to the browser flow mid-gate.
