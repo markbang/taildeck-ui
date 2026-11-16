@@ -213,6 +213,10 @@ slow_point=$(ui tap Theme 2> /dev/null) || slow_point=""
 if [ -n "$slow_point" ]; then
   slow_push() { tap_then_stills taildeck-push-slow "$slow_point" 2; }
   record taildeck-slow 14 slow_push
+  # The clip's third frame holds the push mid-flight, which one screencap
+  # cannot reach.
+  ffmpeg -loglevel error -y -i "$out/taildeck-slow.mp4" -vf "select='eq(n,2)'" \
+    -frames:v 1 "$out/taildeck-slow-mid.png" 2> /dev/null || true
 fi
 back_key
 sleep 2
@@ -383,13 +387,13 @@ side_by_side() { # <name> <taildeck clip> <flclash clip> [seconds]
   note "$name: Taildeck from ${td_start}s, FlClash from ${fl_start}s"
   ffmpeg -loglevel error -y -ss "$td_start" -t "$length" -i "$out/$td.mp4" \
     -ss "$fl_start" -t "$length" -i "$out/$fl.mp4" \
-    -filter_complex '[0:v]scale=540:-2,setsar=1[l];[1:v]scale=540:-2,setsar=1[r];[l][r]hstack=inputs=2,drawtext=text=Taildeck:x=14:y=14:fontsize=24:fontcolor=white:box=1:boxcolor=black@0.5,drawtext=text=FlClash:x=554:y=14:fontsize=24:fontcolor=white:box=1:boxcolor=black@0.5' \
+    -filter_complex "[0:v]scale=540:-2,setsar=1[l];[1:v]scale=540:-2,setsar=1,tpad=stop_mode=clone:stop_duration=$length[r];[l][r]hstack=inputs=2,drawtext=text=Taildeck:x=14:y=14:fontsize=24:fontcolor=white:box=1:boxcolor=black@0.5,drawtext=text=FlClash:x=554:y=14:fontsize=24:fontcolor=white:box=1:boxcolor=black@0.5" \
     -an "$out/$name.mp4" 2> /dev/null || true
   [ -s "$out/$name.mp4" ] && note "side by side $name: $out/$name.mp4" || note "side by side $name: none"
 }
 
 side_by_side settings-flclash-language taildeck-language flclash-language 5
-side_by_side settings-flclash-theme taildeck-push flclash-push 5
+side_by_side settings-flclash-theme taildeck-slow flclash-push 9
 side_by_side settings-flclash-drag taildeck-drag flclash-drag 6
 
 # Still pairs for the pull request.
@@ -397,8 +401,7 @@ for pair in \
   "settings:taildeck-settings:flclash-tools" \
   "language:taildeck-language-open:flclash-language-open" \
   "theme:taildeck-theme:flclash-theme" \
-  "push:taildeck-push-slow-3:flclash-push-3" \
-  "popup:taildeck-language-3:flclash-language-2"; do
+  "push:taildeck-slow-mid:flclash-push-3"; do
   name=${pair%%:*}
   rest=${pair#*:}
   td=${rest%%:*}
