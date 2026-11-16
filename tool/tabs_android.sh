@@ -138,12 +138,19 @@ headers() { # <texts-file>
 # At rest the page settles to exactly one header. A slow emulator can still be
 # mid-fade when the still was taken, so poll instead of trusting one dump; two
 # headers are a failure either way.
-settle_headers() { # <index> <tag>
+settle_headers() { # <index> <tag> <target tab>
   local attempt found=""
   for attempt in 1 2 3 4 5 6; do
     if ui texts "$ymax" > "$out/headers-$2.txt" 2> /dev/null; then
       found=$(headers "$out/headers-$2.txt")
       [ "$(header_count "$found")" -eq 1 ] && { echo "$found"; return 0; }
+      # Until the node is up the Agents page shows its loading card instead of
+      # a header; the card belongs to that page and no other, so it settles it.
+      if [ -z "$found" ] && [ "$3" = 2 ] &&
+        grep -q 'Connecting to the tailnet' "$out/headers-$2.txt"; then
+        echo Agents
+        return 0
+      fi
     fi
     sleep 1
   done
@@ -196,7 +203,7 @@ for i in $(seq 1 10); do
   sleep $((slow + 2))
   shot "rest-$(printf %02d "$i")"
   alive "switch $i at rest"
-  found=$(settle_headers "$i" "$(printf %02d "$i")") ||
+  found=$(settle_headers "$i" "$(printf %02d "$i")" "$target") ||
     fail "switch $i never settled to one header at rest [${found:-none}]"
   note "switch $i -> ${names[$target]}: headers [$found] at rest"
   expect_header "$found" "$target" "switch $i"
