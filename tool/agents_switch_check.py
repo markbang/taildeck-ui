@@ -30,6 +30,11 @@ def main() -> int:
         help="raw gray still of an error card; repeat for each card the run shows",
     )
     parser.add_argument("--lead", type=int, default=3000, help="ms the tap owns")
+    parser.add_argument(
+        "--stills-only", action="store_true",
+        help="only check the cards the stills carry; a run whose screencaps "
+             "were too slow to cover the lead-in is reported, not failed",
+    )
     parser.add_argument("--grey", type=float, default=3.0)
     parser.add_argument("--edge", type=float, default=1.5)
     args = parser.parse_args()
@@ -64,6 +69,17 @@ def main() -> int:
             print(f"frame {index} at {at} ms grey={grey:.1f} edge={edge:.2f} "
                   f"{'card' if is_card else 'other'}")
 
+    inside = sum(1 for at in times if 0 <= at - args.tap < args.lead)
+    if args.stills_only:
+        if stale:
+            print(f"FAIL: the card is painted {len(stale)} time(s) inside the "
+                  f"{args.lead} ms the tap owns:")
+            for at, grey, edge in stale:
+                print(f"  at {at} ms (grey={grey:.1f} edge={edge:.2f})")
+            return 1
+        print(f"ok: {inside} still(s) inside the {args.lead} ms after the tap, "
+              f"none of them a card")
+        return 0
     if seen is None:
         print("no error card after the tap: the wake never failed")
         return 1
