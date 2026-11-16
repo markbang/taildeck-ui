@@ -1,0 +1,3 @@
+tags:
+  golden:
+    # Image goldens are the local UI loop; tool/golden.sh runs them.

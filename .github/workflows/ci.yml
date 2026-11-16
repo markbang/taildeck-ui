@@ -24,7 +24,9 @@ jobs:
           cache: true
       - run: flutter pub get
       - run: flutter analyze --no-fatal-infos
-      - run: flutter test
+      # The image goldens are the local loop (tool/golden.sh); a runner's
+      # rasterizer is not pixel-stable enough to gate a PR on them.
+      - run: flutter test --exclude-tags golden
       - run: flutter build web --release --base-href /taildeck-ui/ --no-web-resources-cdn
       - name: Serve build/web at /taildeck-ui/
         run: |
