@@ -111,7 +111,6 @@ class _FakeTerm implements NativeTerm {
 Future<void> _pump(
   WidgetTester tester,
   TerminalSession session, {
-  required VoidCallback onFocus,
   required ValueChanged<Uint8List> onBytes,
   VoidCallback? onMouseSent,
   int mods = 0,
@@ -129,7 +128,6 @@ Future<void> _pump(
             height: 320,
             child: TerminalCanvas(
               session: session,
-              onFocus: onFocus,
               onBytes: onBytes,
               onMouseSent: onMouseSent,
               mouseMods: mods,
@@ -143,18 +141,16 @@ Future<void> _pump(
 }
 
 void main() {
-  testWidgets('a tap focuses the terminal and clicks a tracking program', (
+  testWidgets('a tap clicks a tracking program and asks for no keyboard', (
     tester,
   ) async {
     final term = _FakeTerm();
     final session = TerminalSession(term);
-    var focused = 0;
     var sent = 0;
     final bytes = <int>[];
     await _pump(
       tester,
       session,
-      onFocus: () => focused++,
       onBytes: bytes.addAll,
       onMouseSent: () => sent++,
       mods: 6,
@@ -163,7 +159,7 @@ void main() {
     await tester.tapAt(tester.getCenter(find.byType(TerminalCanvas)));
     await tester.pump(const Duration(milliseconds: 400));
 
-    expect(focused, 1);
+    expect(FocusManager.instance.primaryFocus?.debugLabel, isNot('terminal-ime'));
     expect(term.mice, hasLength(2));
     expect(term.mice[0].action, 0);
     expect(term.mice[0].pressed, isTrue);
@@ -179,13 +175,12 @@ void main() {
     expect(sent, 1);
   });
 
-  testWidgets('a second tap and a tap on a blank cell keep the focus', (
+  testWidgets('a second tap and a tap on a blank cell still click', (
     tester,
   ) async {
     final term = _FakeTerm();
     final session = TerminalSession(term);
-    var focused = 0;
-    await _pump(tester, session, onFocus: () => focused++, onBytes: (_) {});
+    await _pump(tester, session, onBytes: (_) {});
 
     final canvas = tester.getRect(find.byType(TerminalCanvas));
     await tester.tapAt(canvas.center);
@@ -194,7 +189,6 @@ void main() {
     await tester.tapAt(canvas.bottomCenter - const Offset(0, 4));
     await tester.pump(const Duration(milliseconds: 400));
 
-    expect(focused, 2);
     expect(term.mice, hasLength(4));
   });
 
@@ -203,27 +197,25 @@ void main() {
   ) async {
     final term = _FakeTerm(tracking: false);
     final session = TerminalSession(term);
-    var focused = 0;
-    await _pump(tester, session, onFocus: () => focused++, onBytes: (_) {});
+    await _pump(tester, session, onBytes: (_) {});
 
     await tester.tapAt(tester.getCenter(find.byType(TerminalCanvas)));
     await tester.pump(const Duration(milliseconds: 400));
 
-    expect(focused, 1);
     expect(term.mice, isEmpty);
   });
 
-  testWidgets('a long press selects the word and still focuses', (tester) async {
+  testWidgets('a long press selects the word without the keyboard', (
+    tester,
+  ) async {
     final term = _FakeTerm();
     final session = TerminalSession(term);
-    var focused = 0;
-    await _pump(tester, session, onFocus: () => focused++, onBytes: (_) {});
+    await _pump(tester, session, onBytes: (_) {});
 
     final box = tester.getRect(find.byType(TerminalCanvas));
     await tester.longPressAt(box.topLeft + const Offset(30, 70));
     await tester.pumpAndSettle();
 
-    expect(focused, 1);
     expect(term.selected, isNot(-1));
     expect(term.mice, isEmpty, reason: 'a long press is not a click');
   });
@@ -233,7 +225,7 @@ void main() {
   ) async {
     final term = _FakeTerm(scrollOffset: 5);
     final session = TerminalSession(term);
-    await _pump(tester, session, onFocus: () {}, onBytes: (_) {});
+    await _pump(tester, session, onBytes: (_) {});
     await tester.pump();
 
     expect(term.resizes, isNotEmpty);

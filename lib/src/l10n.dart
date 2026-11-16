@@ -474,8 +474,8 @@ class AppLocalizations implements UiLocalizations {
   };
   String get terminalOutput => _zh ? '终端输出' : 'Terminal output';
   String get terminalReadOnly => _zh
-      ? '终端输出为只读，在下方输入命令。'
-      : 'Read-only terminal output. Type a command below.';
+      ? '终端输出；点击只作为鼠标事件发给程序，输入走工具栏。'
+      : 'Terminal output; taps only reach a mouse-aware program, input goes through the toolbar.';
 
   String get terminalSection => _zh ? '终端' : 'Terminal';
   String get terminalKeyHaptics => _zh ? '终端按键震动' : 'Terminal key haptics';
@@ -514,6 +514,12 @@ class AppLocalizations implements UiLocalizations {
   String get terminalInput => _zh ? '命令输入' : 'Command input';
   String get terminalPasteButton => _zh ? '从剪贴板插入' : 'Insert from clipboard';
   String get terminalHideKeyboard => _zh ? '收起键盘' : 'Hide keyboard';
+  String get terminalShowKeyboard => _zh ? '打开键盘' : 'Show keyboard';
+  String get terminalArrowKeys => _zh ? '方向键与其他键' : 'Arrow keys and more';
+  String get terminalCompose => _zh ? '编写' : 'Compose';
+  String get terminalComposeHint => _zh
+      ? '可多行；发送时每行回车一次。'
+      : 'Several lines are fine; each line gets its Enter.';
   String get terminalSend => _zh ? '发送' : 'Send';
   String get terminalSendHint => _zh
       ? '发送这一行并回车；长按改成只插入'

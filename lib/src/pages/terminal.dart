@@ -14,7 +14,6 @@ import '../backend.dart';
 import '../glyphs.dart';
 import '../data.dart';
 import '../l10n.dart';
-import '../motion.dart';
 import '../native/bridge.dart';
 import '../native/hardware_keyboard.dart';
 import '../native/keys.dart';
@@ -29,9 +28,9 @@ import '../terminal_keys.dart';
 import '../terminal_send.dart';
 import '../terminal_snippets.dart';
 import '../terminal_store.dart';
-import '../widgets/controls.dart';
 import '../widgets/snackbar.dart';
-import 'term_key_bar.dart';
+import 'term_toolbar.dart';
+import 'terminal_compose_sheet.dart';
 import 'terminal_sessions.dart';
 import 'term_view.dart';
 import 'terminal_snippets_sheet.dart';
@@ -98,9 +97,31 @@ class TerminalPage extends StatefulWidget {
 }
 
 class _TerminalPageState extends State<TerminalPage>
-    with WidgetsBindingObserver {
-  final _input = TextEditingController();
+    with WidgetsBindingObserver, TickerProviderStateMixin {
+  /// The hidden IME target: the soft keyboard types into this field, the
+  /// handler sends each committed character, and the field is emptied again,
+  /// so no input line is ever shown.
+  final _ime = TextEditingController();
+  final _imeFocus = FocusNode(debugLabel: 'terminal-ime');
+  final _keyFocus = FocusNode(debugLabel: 'terminal-keys');
   final _scroll = ScrollController();
+
+  /// The keyboard's inset, animated as one tween per change so the grid
+  /// shrinks smoothly instead of jumping a frame.
+  late final AnimationController _inset = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 200),
+  );
+  Animation<double>? _insetTween;
+  double _insetValue = 0;
+  double _insetTarget = 0;
+  bool _imeClearing = false;
+
+  /// What the IME's field held at the last commit. The field keeps it, so a
+  /// backspace reaches the remote as a KeyCode.DEL rather than only editing
+  /// an invisible buffer; keeping the two in step is what makes that work.
+  String _imeSnap = '';
+  bool _arrowsOpen = false;
 
   /// The demo session's transcript; a release build starts empty and only
   /// ever shows what a real remote wrote.
@@ -130,17 +151,12 @@ class _TerminalPageState extends State<TerminalPage>
   /// sessions or leaving the page keeps its grid and scrollback.
   TerminalSession? _session;
   bool _ownsSession = false;
-  final _focus = FocusNode(debugLabel: 'terminal');
   StreamSubscription<SshOutput>? _output;
   String? _closedReason;
   bool _connected = false;
   bool _bannerFed = false;
   int _demoRows = 0;
   final _mods = TerminalMods();
-
-  /// What the input line held at the last change: an armed modifier consumes
-  /// the one character typed after it.
-  String _typed = '';
 
   /// One Send at a time, so the lines of a paste reach the remote in order.
   Future<void> _sending = Future<void>.value();
@@ -178,13 +194,38 @@ class _TerminalPageState extends State<TerminalPage>
     }
     // Hardware keys go through the emulator's encoder in the demo too, so a
     // keyboard can be tried without a tailnet.
-    if (_session != null) _focus.onKeyEvent = _onKey;
     if (terminal.live) _output = terminal.frames.listen(_onOutput);
     WidgetsBinding.instance.addObserver(this);
+    _ime.addListener(_onImeChanged);
+    _inset.addListener(_onInsetTick);
     unawaited(_readKeyboard());
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _focus.requestFocus();
-    });
+  }
+
+  void _onInsetTick() {
+    final tween = _insetTween;
+    if (!mounted || tween == null) return;
+    setState(() => _insetValue = tween.value);
+  }
+
+  /// A new keyboard inset, approached from the current value: a mid-animation
+  /// change retargets instead of restarting from zero.
+  void _aimInset(double target) {
+    if (target == _insetTarget) return;
+    _insetTarget = target;
+    final begin = _insetValue;
+    _inset.stop();
+    if (context.disableAnimations || (begin - target).abs() < 0.5) {
+      _insetValue = target;
+      return;
+    }
+    _insetTween = Tween<double>(begin: begin, end: target).animate(
+      CurvedAnimation(parent: _inset, curve: Curves.easeOutCubic),
+    );
+    _inset
+      ..reset()
+      ..forward().whenComplete(() {
+        if (mounted) setState(() => _insetValue = target);
+      });
   }
 
   @override
@@ -225,87 +266,163 @@ class _TerminalPageState extends State<TerminalPage>
 
   static Uint8List _ansi(String text) => Uint8List.fromList(utf8.encode(text));
 
-  /// Editing keys the text field owns while the line holds text.
-  static const _editing = {
-    GhosttyKeys.backspace,
-    GhosttyKeys.deleteKey,
-    GhosttyKeys.home,
-    GhosttyKeys.end,
-    GhosttyKeys.arrowLeft,
-    GhosttyKeys.arrowRight,
-  };
-
-  /// Hardware keys: printing keys fill the input line, Enter sends it, and the
-  /// rest go through the emulator's encoder.
+  /// Hardware keys go straight through the emulator's encoder. While the IME
+  /// target holds focus, a printable key or Enter belongs to that field, whose
+  /// change handler sends the committed text; everything else (Esc, Tab,
+  /// arrows, Ctrl combinations, Backspace) is a terminal key here.
   KeyEventResult _onKey(FocusNode node, KeyEvent event) {
     final session = _session;
     if (session == null) return KeyEventResult.ignored;
     if (event is KeyUpEvent) return KeyEventResult.handled;
+    final typing = _imeFocus.hasFocus;
     final mods = ghosttyModsOf(HardwareKeyboard.instance);
     final text = event.character;
-    // Printable keys go through the text field, which buffers them: Esc, Tab
-    // and Backspace also carry a control character, so they must not, or their
-    // shortcuts would pop the page or edit the line.
     final printable =
         text != null && text.isNotEmpty && text.codeUnitAt(0) >= 0x20;
     if (printable && mods & ~GhosttyMods.shift == 0) {
-      return KeyEventResult.ignored;
+      if (typing) return KeyEventResult.ignored;
+      final encoded = session.term.encodeKey(
+        ghosttyKeyForText(text),
+        0,
+        text: text,
+      );
+      if (encoded != null) _deliver(encoded);
+      return KeyEventResult.handled;
     }
     final key = ghosttyKeyOf(event);
     if (key == GhosttyKeys.enter && mods == 0) {
-      // An IME composition still owes the field its commit.
-      if (_input.value.composing.isValid) return KeyEventResult.ignored;
-      // The line lives in the input, so Enter sends it rather than a bare CR.
-      unawaited(_submit());
+      if (typing) return KeyEventResult.ignored;
+      final encoded = session.term.encodeKey(GhosttyKeys.enter, 0);
+      if (encoded != null) _deliver(encoded);
       return KeyEventResult.handled;
-    }
-    if (_input.text.isNotEmpty && _editing.contains(key)) {
-      return KeyEventResult.ignored;
-    }
-    if (key == GhosttyKeys.tab && _input.text.isNotEmpty) {
-      // Completion needs the text typed so far, without an Enter.
-      unawaited(_send(_input.text, enter: false));
-      _input.clear();
     }
     final encoded = session.term.encodeKey(key, mods);
     if (encoded != null) _deliver(encoded);
     return KeyEventResult.handled;
   }
 
-  /// An armed Ctrl/Alt applies to the next typed character, as it does to the
-  /// next key on the row: that character is a keystroke, not line text.
-  void _onTextChanged(String value) {
-    final before = _typed;
-    _typed = value;
-    final mods = _mods.mask;
-    if (mods == 0 || _input.value.composing.isValid) return;
-    if (value.length != before.length + 1 || !value.startsWith(before)) return;
-    final added = value.substring(before.length);
-    final encoded = _session?.term.encodeKey(
-      ghosttyKeyForText(added),
-      mods,
-      text: added,
+  /// The IME's committed text, compared with the last commit: appended
+  /// characters are key presses (the armed Ctrl/Alt rides on the first one)
+  /// and removed ones are Backspace presses. The field keeps the buffer and
+  /// is only cleared when the keyboard closes, so Gboard's own backspace
+  /// turns into a real deletion on the remote. A composition in progress is
+  /// left to the IME until it commits.
+  void _onImeChanged() {
+    if (_imeClearing) return;
+    final value = _ime.value;
+    if (value.composing.isValid) return;
+    final text = value.text;
+    if (text == _imeSnap) return;
+    final session = _session;
+    if (session == null) {
+      _imeSnap = text;
+      return;
+    }
+    var common = 0;
+    while (common < text.length &&
+        common < _imeSnap.length &&
+        text.codeUnitAt(common) == _imeSnap.codeUnitAt(common)) {
+      common++;
+    }
+    final removed = _imeSnap.length - common;
+    for (var i = 0; i < removed; i++) {
+      final encoded = session.term.encodeKey(GhosttyKeys.backspace, 0);
+      if (encoded != null) _deliver(encoded);
+    }
+    final added = text.substring(common);
+    var mods = _mods.mask;
+    var consumed = false;
+    for (final rune in added.runes) {
+      if (rune == 0x0a || rune == 0x0d) {
+        final encoded = session.term.encodeKey(GhosttyKeys.enter, 0);
+        if (encoded != null) _deliver(encoded);
+        continue;
+      }
+      final ch = String.fromCharCode(rune);
+      final encoded = session.term.encodeKey(
+        ghosttyKeyForText(ch),
+        mods,
+        text: ch,
+      );
+      if (encoded != null) _deliver(encoded);
+      if (mods != 0) {
+        mods = 0;
+        consumed = true;
+      }
+    }
+    _imeSnap = text;
+    if (consumed && _mods.consume()) setState(() {});
+    // The caret stays at the end; the field is invisible, so any other
+    // selection would only make a later diff ambiguous.
+    if (value.selection.isValid && value.selection.end != text.length) {
+      _imeClearing = true;
+      _ime.selection = TextSelection.collapsed(offset: text.length);
+      _imeClearing = false;
+    }
+  }
+
+  void _clearIme() {
+    _imeClearing = true;
+    _ime.clear();
+    _imeSnap = '';
+    _imeClearing = false;
+  }
+
+  /// The toolbar's keyboard button: the only way in, apart from system back
+  /// which Android keeps for closing it.
+  void _toggleKeyboard() {
+    _haptic();
+    if (MediaQuery.viewInsetsOf(context).bottom > 0) {
+      _hideKeyboard();
+      return;
+    }
+    _showKeyboard();
+  }
+
+  /// Opens the IME on the hidden field. A field that kept focus does not ask
+  /// Android for the IME again after the back key closed it, so focus is taken
+  /// anew: one frame unfocused, then focused.
+  void _showKeyboard() {
+    if (_imeFocus.hasFocus) {
+      _imeFocus.unfocus();
+      _keyFocus.requestFocus();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _imeFocus.requestFocus();
+        unawaited(
+          SystemChannels.textInput.invokeMethod<void>('TextInput.show'),
+        );
+      });
+      return;
+    }
+    _imeFocus.requestFocus();
+    unawaited(SystemChannels.textInput.invokeMethod<void>('TextInput.show'));
+  }
+
+  void _hideKeyboard() {
+    _imeFocus.unfocus();
+    _keyFocus.requestFocus();
+    _clearIme();
+    unawaited(SystemChannels.textInput.invokeMethod<void>('TextInput.hide'));
+  }
+
+  Future<void> _compose() async {
+    _hideKeyboard();
+    final backend = BackendScope.of(context);
+    // `?compose=...` pre-fills the sheet on a preview build, so a recording
+    // can show a CJK command without a Chinese IME installed.
+    final initial = kReleaseMode ? '' : (previewParam('compose') ?? '');
+    final text = await showTerminalComposeSheet(
+      context,
+      backend: backend,
+      initialText: initial,
     );
-    if (encoded == null) return;
-    _deliver(encoded);
-    if (_mods.consume()) setState(() {});
-    _typed = before;
-    _input.value = TextEditingValue(
-      text: before,
-      selection: TextSelection.collapsed(offset: before.length),
-    );
+    if (!mounted || text == null) return;
+    await _send(text);
   }
 
   /// How long each line of a paste waits for the one before it.
   static const _linePace = Duration(milliseconds: 20);
-
-  /// Sends the input line: the text, then Enter unless insert-only is on.
-  Future<void> _submit() {
-    final text = _input.text;
-    _input.clear();
-    _typed = '';
-    return _send(text);
-  }
 
   /// One Send, one chunk per line, written in order.
   ///
@@ -319,8 +436,7 @@ class _TerminalPageState extends State<TerminalPage>
     );
     if (chunks.isEmpty) return Future<void>.value();
     if (!widget.live && !widget.demo) {
-      // The mock has no remote shell; its fake one runs the line.
-      if (pressesEnter) _run(text);
+      // The mock has no remote shell: there is nowhere to write.
       return Future<void>.value();
     }
     _haptic();
@@ -364,7 +480,6 @@ class _TerminalPageState extends State<TerminalPage>
     final l10n = AppLocalizations.of(context);
     unawaited(backend.setTerminalSendEnter(enter));
     _haptic();
-    _focus.requestFocus();
     setState(() {});
     showMotionSnack(
       context,
@@ -390,7 +505,6 @@ class _TerminalPageState extends State<TerminalPage>
     _deliver(bytes);
     if (_mods.consume()) setState(() {});
     _haptic();
-    _focus.requestFocus();
   }
 
   /// An arrow from a swipe carries the sticky modifiers like a row key.
@@ -468,33 +582,6 @@ class _TerminalPageState extends State<TerminalPage>
     return launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
-  /// A tap on the grid or the input line brings the soft keyboard back.
-  ///
-  /// A field that kept focus does not ask Android for the IME again after the
-  /// user dismissed it with the back key, so the field takes focus anew: one
-  /// frame unfocused, then focused, which re-opens the input connection.
-  void _focusTerminal() {
-    final keyboardUp = MediaQuery.viewInsetsOf(context).bottom > 0;
-    if (_focus.hasFocus && !keyboardUp) {
-      _focus.unfocus();
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        _focus.requestFocus();
-        unawaited(SystemChannels.textInput.invokeMethod<void>('TextInput.show'));
-      });
-      return;
-    }
-    _focus.requestFocus();
-    unawaited(SystemChannels.textInput.invokeMethod<void>('TextInput.show'));
-  }
-
-  /// The key row's keyboard button: only the IME goes away, the field keeps
-  /// focus so a hardware keyboard still types.
-  void _hideKeyboard() {
-    unawaited(SystemChannels.textInput.invokeMethod<void>('TextInput.hide'));
-    _haptic();
-  }
-
   void _haptic() {
     if (!BackendScope.of(context).terminalKeyHaptics) return;
     HapticFeedback.lightImpact();
@@ -539,6 +626,9 @@ class _TerminalPageState extends State<TerminalPage>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    // MediaQuery changes bring a new keyboard inset; the page follows it with
+    // one tween, and the grid holds its rows until it settles.
+    _aimInset(MediaQuery.viewInsetsOf(context).bottom);
     if (_bannerFed || widget.demo || widget.live) return;
     _bannerFed = true;
     final session = _session;
@@ -553,93 +643,15 @@ class _TerminalPageState extends State<TerminalPage>
     _fontSave?.cancel();
     // Detach only; the session stays up in the store and back reattaches.
     _output?.cancel();
-    _focus.dispose();
+    _ime.removeListener(_onImeChanged);
+    _inset.dispose();
+    _imeFocus.dispose();
+    _keyFocus.dispose();
     _session?.removeListener(_onSessionChanged);
     if (_ownsSession) _session?.dispose();
-    _input.dispose();
+    _ime.dispose();
     _scroll.dispose();
     super.dispose();
-  }
-
-  void _run(String raw) {
-    final command = raw.trim();
-    if (command.isEmpty) return;
-    if (widget.live) {
-      unawaited(_send(command));
-      return;
-    }
-    final session = _session;
-    if (session != null) {
-      // Demo echoes locally; there is no remote behind it.
-      if (widget.demo && demoData) {
-        session.feed(Uint8List.fromList(utf8.encode('$command\r\n')));
-      }
-      return;
-    }
-    // No emulator, no remote: the canned replies belong to the demo only.
-    if (!demoData) return;
-    if (command == 'clear') {
-      setState(_lines.clear);
-      return;
-    }
-    setState(() {
-      _lines.add(_Line(command, _Kind.command));
-      _lines.addAll(_outputFor(command));
-    });
-    _toBottom();
-  }
-
-  List<_Line> _outputFor(String command) => switch (command.split(' ').first) {
-    'ls' => const [
-      _Line(
-        'apps    docker-compose.yml    Makefile    README.md',
-        _Kind.output,
-      ),
-      _Line('bin     grafana.ini         node_modules  scripts', _Kind.output),
-    ],
-    'uname' => const [
-      _Line('Linux devbox 6.8.0-45-generic x86_64', _Kind.output),
-    ],
-    'tailscale' => const [
-      _Line('devbox    100.71.200.9   online', _Kind.output),
-      _Line('pixel-9   100.101.4.2    offline', _Kind.output),
-      _Line('nas       100.88.12.7    online', _Kind.output),
-    ],
-    'docker' => const [
-      _Line('grafana:11.3.0        Up 12 days', _Kind.output),
-      _Line('code-server:latest    Up 12 days', _Kind.output),
-    ],
-    'whoami' => const [_Line('root', _Kind.output)],
-    'pwd' => const [_Line('/root', _Kind.output)],
-    'uptime' => const [
-      _Line('16:47 up 12 days, 2 users, load 0.12 0.09 0.06', _Kind.output),
-    ],
-    'help' => const [
-      _Line(
-        'Try: ls · uname -a · tailscale · docker ps · whoami · pwd · uptime · clear',
-        _Kind.muted,
-      ),
-    ],
-    _ => [
-      _Line('bash: $command: command not found', _Kind.error),
-      const _Line('Type help for the demo commands.', _Kind.muted),
-    ],
-  };
-
-  void _toBottom() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!_scroll.hasClients) return;
-      final bottom = _scroll.position.maxScrollExtent;
-      if (context.disableAnimations) {
-        _scroll.jumpTo(bottom);
-        return;
-      }
-      _scroll.animateTo(
-        bottom,
-        duration: const Duration(milliseconds: 200),
-        curve: Curves.easeOut,
-      );
-    });
   }
 
   Color _colorOf(TerminalPalette palette, _Kind kind) => switch (kind) {
@@ -653,7 +665,6 @@ class _TerminalPageState extends State<TerminalPage>
   @override
   Widget build(BuildContext context) {
     final wide = MediaQuery.sizeOf(context).width > 900;
-    final keyboard = _keyboardInset(context);
     final l10n = AppLocalizations.of(context);
     final backend = BackendScope.of(context);
     final palette = terminalPaletteOf(
@@ -666,7 +677,7 @@ class _TerminalPageState extends State<TerminalPage>
       fontFamily: family,
       fontFamilyFallback: terminalFontFallback,
       fontSize: wide ? 14.5 : 13.5,
-      height: 1.6,
+      height: 1.5,
       color: palette.foreground,
       decoration: TextDecoration.none,
     );
@@ -683,21 +694,15 @@ class _TerminalPageState extends State<TerminalPage>
         ? (l10n.connected, palette.success)
         : (l10n.notConnected, palette.dim);
     final fontSize = _pinchFont ?? backend.terminalFontSize;
-    // Landscape on a phone is short: the quick commands would cost half the
-    // rows the grid needs.
-    final compact = MediaQuery.sizeOf(context).height < 420;
-    final grid = session?.snapshot;
-    final subtitle = widget.demo
-        ? (grid == null
-              ? 'libghostty-vt'
-              : 'libghostty-vt · ${grid.cols}×${grid.rows}')
-        : widget.live
-        ? '${widget.node.ip}:${widget.port} · ${widget.node.os}'
-        : '${widget.node.os} · ${widget.node.ip} · 18 ms';
-    final keyRow = _showKeyRow(context);
-    // The chrome under the grid owns the gesture bar (or the notch) below it,
-    // so the row's surface reaches the screen edge instead of stopping short.
-    final bottomInset = keyboard > 0 ? 0.0 : MediaQuery.viewPaddingOf(context).bottom;
+    final keyboardVisible = _keyboardInset(context) > 0;
+    // The toolbar owns the gesture bar or cutout below it; the keyboard owns
+    // the space while it is up.
+    final bottomInset = keyboardVisible
+        ? 0.0
+        : MediaQuery.viewPaddingOf(context).bottom;
+    final showToolbar = _showToolbar(context);
+    final toolbarSpace = showToolbar ? 62 + bottomInset : 0.0;
+    final title = '${widget.user}: ${widget.node.name}';
     return Surface(
       color: palette.background,
       child: DefaultTextStyle(
@@ -712,83 +717,121 @@ class _TerminalPageState extends State<TerminalPage>
           ),
           child: SafeArea(
             bottom: false,
-            child: Padding(
-              padding: EdgeInsets.only(bottom: keyboard),
-              child: Column(
-                children: [
-                  _Header(
-                    node: widget.node,
-                    onClose: widget.onClose,
-                    mono: mono,
-                    palette: palette,
-                    user: widget.user,
-                    subtitle: subtitle,
-                    status: status,
-                    statusColor: statusColor,
-                    reconnect: closed ? widget.onReconnect : null,
-                    agents: widget.onAgents,
-                  ),
-                  if (widget.sessions.length > 1)
-                    TerminalSessionStrip(
-                      sessions: widget.sessions,
-                      current: widget.terminal,
+            child: Focus(
+              focusNode: _keyFocus,
+              autofocus: true,
+              onKeyEvent: _onKey,
+              child: Padding(
+                padding: EdgeInsets.only(bottom: _insetValue),
+                child: Column(
+                  children: [
+                    _Grabber(palette: palette),
+                    _TitleBar(
+                      title: title,
                       palette: palette,
-                      onSwitch: widget.onSwitch,
+                      mono: mono,
+                      status: status,
+                      statusColor: statusColor,
+                      onClose: widget.onClose,
+                      reconnect: closed ? widget.onReconnect : null,
+                      agents: widget.onAgents,
                     ),
-                  LiveRegion(message: status),
-                  Expanded(
-                    child: Semantics(
-                      container: true,
-                      readOnly: true,
-                      label: l10n.terminalOutput,
-                      hint: l10n.terminalReadOnly,
-                      child: session == null
-                          ? _simulated(wide, mono, palette)
-                          : _emulator(
-                              session,
-                              fontSize,
-                              backend.terminalSwipeArrows,
-                              palette,
-                              family,
+                    if (widget.sessions.length > 1)
+                      TerminalSessionStrip(
+                        sessions: widget.sessions,
+                        current: widget.terminal,
+                        palette: palette,
+                        onSwitch: widget.onSwitch,
+                      ),
+                    LiveRegion(message: status),
+                    Expanded(
+                      child: Stack(
+                        children: [
+                          Positioned.fill(
+                            child: Padding(
+                              padding: EdgeInsets.only(bottom: toolbarSpace),
+                              child: Semantics(
+                                container: true,
+                                readOnly: true,
+                                label: l10n.terminalOutput,
+                                hint: l10n.terminalReadOnly,
+                                child: session == null
+                                    ? _simulated(wide, mono, palette)
+                                    : _emulator(
+                                        session,
+                                        fontSize,
+                                        backend.terminalSwipeArrows,
+                                        palette,
+                                        family,
+                                      ),
+                              ),
                             ),
+                          ),
+                          if (showToolbar)
+                            Positioned(
+                              left: 0,
+                              right: 0,
+                              bottom: 0,
+                              child: TerminalToolbar(
+                                palette: palette,
+                                mods: _mods,
+                                pages: backend.terminalKeyPages,
+                                expanded: _arrowsOpen,
+                                keyboardVisible: keyboardVisible,
+                                bottomInset: bottomInset,
+                                onToggleExpanded: () {
+                                  _haptic();
+                                  setState(() => _arrowsOpen = !_arrowsOpen);
+                                },
+                                onKey: _tapKey,
+                                onModifier: (mod) {
+                                  setState(() => _mods.tap(mod));
+                                  _haptic();
+                                },
+                                onSnippets: () => unawaited(_openSnippets()),
+                                onPaste: () => unawaited(_paste()),
+                                onCompose: () => unawaited(_compose()),
+                                onKeyboard: _toggleKeyboard,
+                              ),
+                            ),
+                          // The IME target: 1x1, invisible and untouchable, so
+                          // the keyboard types into the shell without an input
+                          // line, and a tap on the grid never reaches it.
+                          Positioned(
+                            left: 0,
+                            top: 0,
+                            width: 1,
+                            height: 1,
+                            child: IgnorePointer(
+                              child: ExcludeSemantics(
+                                child: Opacity(
+                                  opacity: 0,
+                                  child: TextField(
+                                    controller: _ime,
+                                    focusNode: _imeFocus,
+                                    keyboardType: TextInputType.multiline,
+                                    textInputAction: TextInputAction.newline,
+                                    maxLines: null,
+                                    autocorrect: false,
+                                    enableSuggestions: false,
+                                    enableInteractiveSelection: false,
+                                    showCursor: false,
+                                    style: mono.copyWith(
+                                      color: const Color(0x00000000),
+                                    ),
+                                    decoration: const InputDecoration.collapsed(
+                                      hintText: null,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                  if (!compact)
-                    _QuickBar(
-                      palette: palette,
-                      snippets: backend.terminalSnippets,
-                      onRun: _run,
-                      onSnippet: _sendSnippet,
-                      onManage: () => unawaited(_openSnippets()),
-                    ),
-                  _InputBar(
-                    controller: _input,
-                    mono: mono,
-                    palette: palette,
-                    focusNode: _focus,
-                    insertOnly: !backend.terminalSendEnter,
-                    onChanged: session == null ? null : _onTextChanged,
-                    bottomInset: keyRow ? 0 : bottomInset,
-                    onPaste: session == null ? null : _paste,
-                    onTap: _focusTerminal,
-                    onSubmit: () => unawaited(_submit()),
-                    onSendHold: _toggleSendEnter,
-                  ),
-                  if (keyRow)
-                    TerminalKeyBar(
-                      pages: backend.terminalKeyPages,
-                      mods: _mods,
-                      active: {if (!backend.terminalSendEnter) 'insert'},
-                      palette: palette,
-                      bottomInset: bottomInset,
-                      onKey: _tapKey,
-                      onHideKeyboard: _hideKeyboard,
-                      onModifier: (mod) {
-                        setState(() => _mods.tap(mod));
-                        _haptic();
-                      },
-                    ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
@@ -797,12 +840,12 @@ class _TerminalPageState extends State<TerminalPage>
     );
   }
 
-  /// A desktop window always has a hardware keyboard, so the row would only
-  /// take room. On a phone it hides while a physical keyboard is attached,
-  /// unless Settings keeps it or the soft keyboard is up.
-  bool _showKeyRow(BuildContext context) {
+  /// A desktop window always has a hardware keyboard, so the toolbar would
+  /// only take room. On a phone it hides while a physical keyboard is
+  /// attached, unless Settings keeps it or the soft keyboard is up.
+  bool _showToolbar(BuildContext context) {
     if (BackendScope.of(context).terminalKeyRowWithKeyboard) return true;
-    // `?keys=1` keeps the row on a preview build that reports a keyboard.
+    // `?keys=1` keeps the toolbar on a preview build that reports a keyboard.
     if (previewParam('keys') == '1') return true;
     final mobile = switch (defaultTargetPlatform) {
       TargetPlatform.android || TargetPlatform.iOS => true,
@@ -844,9 +887,9 @@ class _TerminalPageState extends State<TerminalPage>
         cursor: backend.terminalCursor,
         cursorBlink: backend.terminalCursorBlink,
         swipeArrows: swipeArrows,
+        liveResize: !_inset.isAnimating,
         onArrow: _onArrow,
         onFontSize: _zoomTo,
-        onFocus: _focusTerminal,
         onBytes: _deliver,
         onMouseSent: _consumeMods,
         mouseMods: _mods.mask,
@@ -937,392 +980,176 @@ class _PromptLine extends StatelessWidget {
   }
 }
 
-class _Header extends StatelessWidget {
-  const _Header({
-    required this.node,
-    required this.onClose,
-    required this.mono,
+/// The sheet's grabber: a short pill at the top edge, the affordance that
+/// says this page came up as a sheet.
+class _Grabber extends StatelessWidget {
+  const _Grabber({required this.palette});
+
+  final TerminalPalette palette;
+
+  @override
+  Widget build(BuildContext context) {
+    return ExcludeSemantics(
+      child: SizedBox(
+        height: 16,
+        child: Center(
+          child: Container(
+            width: 38,
+            height: 4,
+            decoration: BoxDecoration(
+              color: palette.foreground.withValues(alpha: 0.18),
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The narrow title bar: close dot and app mark, the session title, and a
+/// small SSH badge that doubles as Reconnect once the session dropped.
+class _TitleBar extends StatelessWidget {
+  const _TitleBar({
+    required this.title,
     required this.palette,
-    required this.user,
-    required this.subtitle,
+    required this.mono,
     required this.status,
     required this.statusColor,
+    required this.onClose,
     this.reconnect,
     this.agents,
   });
 
-  final NodeItem node;
-  final VoidCallback onClose;
-  final TextStyle mono;
+  final String title;
   final TerminalPalette palette;
-  final String user;
-  final String subtitle;
+  final TextStyle mono;
   final String status;
   final Color statusColor;
+  final VoidCallback onClose;
   final VoidCallback? reconnect;
   final VoidCallback? agents;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(6, 8, 14, 10),
-      decoration: BoxDecoration(
-        border: Border(
-          bottom: BorderSide(color: palette.border, width: 0.5),
-        ),
-      ),
-      child: Row(
-        children: [
-          IconButton(
-            onPressed: onClose,
-            icon: GlyphIcon(Glyphs.chevronBack, color: palette.foreground),
-            tooltip: AppLocalizations.of(context).close,
-          ),
-          const SizedBox(width: 2),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  '$user@${node.name}',
-                  style: mono.copyWith(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 14,
-                  ),
-                ),
-                const SizedBox(height: 1),
-                FadeThrough(
-                  child: Semantics(
-                    container: true,
-                    label: subtitle,
-                    excludeSemantics: true,
-                    child: Text(
-                      subtitle,
-                      key: ValueKey(subtitle),
-                      style: mono.copyWith(fontSize: 11, color: palette.dim),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          MotionVisibility(
-            visible: reconnect != null,
-            scaleFrom: 0.8,
-            child: _HeaderTextButton(
-              label: AppLocalizations.of(context).reconnect,
-              onPressed: reconnect ?? () {},
-              mono: mono,
-              color: palette.accent,
-            ),
-          ),
-          if (agents != null)
-            Builder(
-              builder: (context) {
-                final herdr = BackendScope.of(context).herdr;
-                if (herdr == null) return const SizedBox.shrink();
-                return ListenableBuilder(
-                  listenable: herdr,
-                  builder: (context, _) => MotionVisibility(
-                    visible: herdr.ready && herdr.node == node.name,
-                    scaleFrom: 0.6,
-                    child: IconButton(
-                      onPressed: agents,
-                      icon: GlyphIcon(
-                        Glyphs2.agents,
-                        size: 18,
-                        color: palette.foreground,
-                      ),
-                      tooltip: AppLocalizations.of(context).agentsTitle,
-                    ),
-                  ),
-                );
-              },
-            ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-            decoration: ShapeDecoration(
-              color: statusColor.withValues(alpha: 0.12),
-              shape: const StadiumBorder(),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 6,
-                  height: 6,
-                  decoration: BoxDecoration(
-                    color: statusColor,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-                const SizedBox(width: 5),
-                Text(
-                  status,
-                  style: mono.copyWith(fontSize: 10.5, color: statusColor),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _HeaderTextButton extends StatelessWidget {
-  const _HeaderTextButton({
-    required this.label,
-    required this.onPressed,
-    required this.mono,
-    required this.color,
-  });
-
-  final String label;
-  final VoidCallback onPressed;
-  final TextStyle mono;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return TextButton(
-      onPressed: onPressed,
-      style: ButtonStyle.from(
-        foregroundColor: color,
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        minimumSize: Size.zero,
-        textStyle: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600),
-        shape: const StadiumBorder(),
-      ),
-      child: Text(label, style: mono.copyWith(fontSize: 11.5)),
-    );
-  }
-}
-
-/// The snippets button comes first, then the saved commands, or the built-in
-/// ones while the drawer is empty.
-class _QuickBar extends StatelessWidget {
-  const _QuickBar({
-    required this.palette,
-    required this.snippets,
-    required this.onRun,
-    required this.onSnippet,
-    required this.onManage,
-  });
-
-  final TerminalPalette palette;
-  final List<TerminalSnippet> snippets;
-  final ValueChanged<String> onRun;
-  final ValueChanged<TerminalSnippet> onSnippet;
-  final VoidCallback onManage;
-
-  static const _commands = [
-    'ls',
-    'uname -a',
-    'tailscale',
-    'docker ps',
-    'clear',
-  ];
-
-  @override
-  Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     return SizedBox(
-      height: 44,
-      child: ListView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 14),
-        children: [
-          _QuickChip(
-            label: l10n.terminalSnippets,
-            palette: palette,
-            glyph: Glyphs2.bolt,
-            onTap: onManage,
-          ),
-          for (final snippet in snippets)
-            _QuickChip(
-              label: snippet.label,
-              palette: palette,
-              tooltip: snippet.command,
-              onTap: () => onSnippet(snippet),
-            ),
-          if (snippets.isEmpty)
-            for (final command in _commands)
-              _QuickChip(
-                label: command,
-                palette: palette,
-                onTap: () => onRun(command),
-              ),
-        ],
-      ),
-    );
-  }
-}
-
-class _QuickChip extends StatelessWidget {
-  const _QuickChip({
-    required this.label,
-    required this.palette,
-    required this.onTap,
-    this.tooltip,
-    this.glyph,
-  });
-
-  final String label;
-  final TerminalPalette palette;
-  final VoidCallback onTap;
-  final String? tooltip;
-  final Glyph? glyph;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(right: 8),
-      child: Tooltip(
-        message: tooltip ?? '',
-        child: Semantics(
-          button: true,
-          label: tooltip == null ? label : '$label: $tooltip',
-          excludeSemantics: true,
-          onTap: onTap,
-          child: TapFeedback(
-            onTap: onTap,
-            excludeFromSemantics: true,
-            squish: true,
-            shape: AppShape.full,
-            child: Container(
-              alignment: Alignment.center,
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              decoration: ShapeDecoration(
-                color: palette.surface,
-                shape: const StadiumBorder(),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (glyph case final glyph?) ...[
-                    GlyphIcon(glyph, size: 13, color: palette.dim),
-                    const SizedBox(width: 5),
-                  ],
-                  Text(
-                    label,
-                    maxLines: 1,
-                    style: TextStyle(
-                      fontFamily: terminalFontFamily(TerminalFontId.dejavu),
-                      fontSize: 11.5,
-                      color: palette.foreground.withValues(alpha: 0.9),
-                      decoration: TextDecoration.none,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _InputBar extends StatelessWidget {
-  const _InputBar({
-    required this.controller,
-    required this.mono,
-    required this.onSubmit,
-    required this.onSendHold,
-    required this.insertOnly,
-    required this.palette,
-    this.focusNode,
-    this.bottomInset = 0,
-    this.onChanged,
-    this.onPaste,
-    this.onTap,
-  });
-
-  final TextEditingController controller;
-  final TextStyle mono;
-
-  /// Tap on Send, or the soft keyboard's send/done action.
-  final VoidCallback onSubmit;
-
-  /// Long-press on Send: turn the Enter after the text off and on.
-  final VoidCallback onSendHold;
-
-  /// The text is sent without Enter.
-  final bool insertOnly;
-  final TerminalPalette palette;
-  final FocusNode? focusNode;
-
-  /// Gesture bar or cutout below the input line, when no key row follows it.
-  final double bottomInset;
-  final ValueChanged<String>? onChanged;
-  final VoidCallback? onPaste;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.fromLTRB(12, 2, 12, 12 + bottomInset),
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-        decoration: ShapeDecoration(
-          color: palette.surface,
-          shape: AppShape.all(12),
-          shadows: const [],
-        ),
+      height: 42,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(8, 0, 8, 0),
         child: Row(
           children: [
-            GlyphIcon(Glyphs.chevronForward, size: 13, color: palette.accent),
-            const SizedBox(width: 8),
+            Semantics(
+              button: true,
+              label: l10n.close,
+              onTap: onClose,
+              excludeSemantics: true,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: onClose,
+                child: SizedBox(
+                  height: 40,
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 10,
+                        height: 10,
+                        decoration: BoxDecoration(
+                          color: palette.error,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 9),
+                      Container(
+                        width: 24,
+                        height: 24,
+                        decoration: ShapeDecoration(
+                          color: palette.surface,
+                          shape: AppShape.all(7).copyWith(
+                            side: BorderSide(
+                              color: palette.border,
+                              width: 0.5,
+                            ),
+                          ),
+                        ),
+                        child: Center(
+                          child: GlyphIcon(
+                            Glyphs2.terminal,
+                            size: 14,
+                            color: palette.accent,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                    ],
+                  ),
+                ),
+              ),
+            ),
             Expanded(
-              child: Semantics(
-                textField: true,
-                label: AppLocalizations.of(context).terminalInput,
-                child: TextField(
-                  controller: controller,
-                  focusNode: focusNode,
-                  autofocus: true,
-                  onTap: onTap,
-                  onChanged: onChanged,
-                  textInputAction: TextInputAction.send,
-                  onSubmitted: (_) => onSubmit(),
-                  cursorColor: palette.accent,
-                  cursorHeight: 15,
-                  style: mono.copyWith(fontSize: 13),
-                  decoration: InputDecoration.collapsed(
-                    hintText: AppLocalizations.of(context).typeCommand,
-                    hintStyle: TextStyle(
-                      fontFamily: terminalFontFamily(TerminalFontId.dejavu),
-                      fontSize: 13,
-                      color: palette.dim.withValues(alpha: 0.8),
-                    ),
-                  ),
+              child: Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: mono.copyWith(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: palette.foreground,
                 ),
               ),
             ),
+            if (agents != null)
+              Builder(
+                builder: (context) {
+                  final herdr = BackendScope.of(context).herdr;
+                  if (herdr == null) return const SizedBox.shrink();
+                  return ListenableBuilder(
+                    listenable: herdr,
+                    builder: (context, _) => SizedBox(
+                      width: herdr.ready ? 34 : 0,
+                      child: herdr.ready
+                          ? Semantics(
+                              button: true,
+                              label: l10n.agentsTitle,
+                              onTap: agents,
+                              excludeSemantics: true,
+                              child: GestureDetector(
+                                behavior: HitTestBehavior.opaque,
+                                onTap: agents,
+                                child: SizedBox(
+                                  width: 34,
+                                  height: 40,
+                                  child: Center(
+                                    child: GlyphIcon(
+                                      Glyphs2.agents,
+                                      size: 17,
+                                      color: palette.foreground,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            )
+                          : const SizedBox.shrink(),
+                    ),
+                  );
+                },
+              ),
+            if (reconnect != null)
+              _ReconnectButton(
+                label: l10n.reconnect,
+                color: palette.accent,
+                mono: mono,
+                onTap: reconnect!,
+              ),
             const SizedBox(width: 4),
-            _SendButton(
-              insertOnly: insertOnly,
-              onSend: onSubmit,
-              onHold: onSendHold,
+            _SshBadge(
+              status: status,
+              color: statusColor,
+              palette: palette,
+              mono: mono,
+              onTap: reconnect,
             ),
-            if (onPaste != null)
-              Semantics(
-                button: true,
-                label: AppLocalizations.of(context).terminalPasteButton,
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: onPaste,
-                  child: SizedBox(
-                    width: 34,
-                    height: 34,
-                    child: Center(
-                      child: GlyphIcon(Glyphs.paste, size: 16, color: palette.dim),
-                    ),
-                  ),
-                ),
-              ),
           ],
         ),
       ),
@@ -1330,54 +1157,106 @@ class _InputBar extends StatelessWidget {
   }
 }
 
-/// The bar's Send: a tap sends the line, a long press turns its Enter off.
-class _SendButton extends StatelessWidget {
-  const _SendButton({
-    required this.insertOnly,
-    required this.onSend,
-    required this.onHold,
+/// A dropped session's only extra control, kept to a word so the title bar
+/// stays narrow; the badge next to it carries the state.
+class _ReconnectButton extends StatelessWidget {
+  const _ReconnectButton({
+    required this.label,
+    required this.color,
+    required this.mono,
+    required this.onTap,
   });
 
-  final bool insertOnly;
-  final VoidCallback onSend;
-  final VoidCallback onHold;
+  final String label;
+  final Color color;
+  final TextStyle mono;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: label,
+      onTap: onTap,
+      excludeSemantics: true,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Container(
+          height: 40,
+          alignment: Alignment.center,
+          padding: const EdgeInsets.symmetric(horizontal: 6),
+          child: Text(
+            label,
+            style: mono.copyWith(
+              fontSize: 11.5,
+              fontWeight: FontWeight.w600,
+              color: color,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A small SSH badge with the session's state dot; with a dropped session a
+/// tap dials again instead of showing a Reconnect button in the header.
+class _SshBadge extends StatelessWidget {
+  const _SshBadge({
+    required this.status,
+    required this.color,
+    required this.palette,
+    required this.mono,
+    this.onTap,
+  });
+
+  final String status;
+  final Color color;
+  final TerminalPalette palette;
+  final TextStyle mono;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final accent = insertOnly
-        ? const Color(0xFF7C838D)
-        : const Color(0xFF7FB4FF);
     return Semantics(
-      button: true,
-      selected: insertOnly,
-      label: l10n.terminalSend,
-      hint: l10n.terminalSendHint,
-      value: insertOnly ? l10n.terminalSendInsertOnly : null,
+      button: onTap != null,
+      label: 'SSH, $status',
+      hint: onTap == null ? null : l10n.reconnect,
+      onTap: onTap,
       excludeSemantics: true,
-      onTap: onSend,
-      onLongPress: onHold,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTap: onSend,
-        onLongPress: onHold,
-        child: SizedBox(
-          width: 38,
-          height: 34,
-          child: Center(
-            child: Container(
-              width: 28,
-              height: 28,
-              decoration: ShapeDecoration(
-                color: insertOnly
-                    ? const Color(0xFF20242C)
-                    : accent.withValues(alpha: 0.16),
-                shape: AppShape.all(8),
-              ),
-              child: Center(
-                child: GlyphIcon(Glyphs2.arrowUp, size: 15, color: accent),
-              ),
+        onTap: onTap,
+        child: Container(
+          height: 26,
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          decoration: ShapeDecoration(
+            color: color.withValues(alpha: 0.12),
+            shape: StadiumBorder(
+              side: BorderSide(color: color.withValues(alpha: 0.28), width: 0.5),
             ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 6,
+                height: 6,
+                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+              ),
+              const SizedBox(width: 5),
+              Text(
+                'SSH',
+                style: mono.copyWith(
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.4,
+                  color: color,
+                ),
+              ),
+            ],
           ),
         ),
       ),

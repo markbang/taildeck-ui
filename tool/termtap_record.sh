@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
-# Checks and records what a tap on the terminal grid does, on the Android
-# emulator against a real SSH shell: it focuses the input line and shows the
-# soft keyboard, keeps it up on a second tap or a blank-space tap, hides only
-# from the key row's keyboard button or the system back, and reaches a program
-# that tracks the mouse as a left press and release (SGR 1006) with the sticky
-# modifiers. The tap gate fails the run; vim and htop are recorded, not failed.
+# Checks and records the terminal sheet's input on the Android emulator against
+# a real SSH shell: a tap on the grid leaves the IME down and only reaches a
+# program that tracks the mouse as a left press and release (SGR 1006); the
+# toolbar's keyboard button shows and hides the IME; typing and Compose reach
+# the shell. The gate fails the run; vim and htop are recorded, not failed.
 #
 # The shell comes from the runner's test tailnet: a control plane plus a peer
 # node whose sshd serves bash on a pty (tool/motion/peer).
@@ -226,77 +225,112 @@ open_session() {
   note "$node: SSH session up"
 }
 
-send_command() { # <text> [settle seconds]
-  local point
-  point=$(ui tap "Command input") || point=$(ui edit 0) || { note "no input line"; return 1; }
-  tap_xy "$point"
+send_command() { # <text> [settle seconds], through the keyboard button
+  if ! tap_label 'Show keyboard'; then
+    note "no Show keyboard button"
+    return 1
+  fi
+  sleep 1.5
   type_text "$1"
   adb shell input keyevent 66 > /dev/null 2>&1 || true
   sleep "${2:-2}"
+  hide_ime
 }
 
-# ---- the tap gate --------------------------------------------------------
-# 1. tapping the grid with the IME down focuses the terminal and shows it.
-# 2. a second tap and a blank-space tap keep it up.
-# 3. the key row's keyboard button hides it; a tap brings it back.
-# 4. typing after the tap reaches the shell.
+# ---- the tap and keyboard gate ------------------------------------------
+# 1. a tap on the grid does not show the IME and does not focus an input.
+# 2. the toolbar's keyboard button shows the IME.
+# 3. typing then reaches the shell.
+# 4. the button hides the IME again, and a tap after it keeps it down.
+# 5. the d-pad, Ctrl, the arrows and Compose all work from the toolbar.
 gate() {
   gate_ran=1
   hide_ime
   [ "$(ime_state)" = "mInputShown=true" ] && { fail "IME did not close"; return 0; }
+
   tap_grid 0.3 0.35 || fail "no grid point to tap"
   sleep 4
-  [ "$(ime_state)" = "mInputShown=true" ] || fail "tap did not show the IME"
-  shot tap-keyboard
+  [ "$(ime_state)" = "mInputShown=true" ] && fail "a tap on the grid showed the IME"
+  shot tap-no-keyboard
   adb shell dumpsys input_method > "$out/input-method-tap.txt" 2> /dev/null || true
-  # With the IME up, dumpsys window's mCurrentFocus is the IME window, so the
-  # focused app comes from the activity instead.
-  local resumed
-  resumed=$(adb shell dumpsys activity activities 2> /dev/null \
-    | grep -m1 'topResumedActivity' | tr -d '\r' || true)
-  case "$resumed" in
-    *"$app"*) note "gate: focused app $resumed" ;;
-    *) fail "terminal is not the resumed activity: ${resumed:-none}" ;;
-  esac
 
-  tap_grid 0.3 0.35
-  sleep 2.5
-  [ "$(ime_state)" = "mInputShown=true" ] || fail "a second tap hid the IME"
-
-  # Padding at the bottom of the grid: blank space, still inside the canvas.
-  local box x1 y1 x2 y2
-  box=$(grid_box) || { fail "grid has no bounds"; return 0; }
-  read -r x1 y1 x2 y2 <<< "$box"
-  tap_xy "$((x1 + 6)) $((y2 - 6))"
-  sleep 2.5
-  [ "$(ime_state)" = "mInputShown=true" ] || fail "a blank-space tap hid the IME"
-
-  rm -f /tmp/tap-focus-ok
-  send_command "touch /tmp/tap-focus-ok" 3
-  if [ -f /tmp/tap-focus-ok ]; then
-    note "gate: typed command ran on the shell after the tap"
+  if ui has 'Show keyboard' > /dev/null 2>&1; then
+    tap_label 'Show keyboard' || fail "the keyboard button did not take a tap"
   else
-    fail "typing after the tap did not reach the shell"
+    cp "$out/ui.xml" "$out/ui-no-keyboard-button.xml" 2> /dev/null || true
+    fail "no Show keyboard button on the toolbar"
+  fi
+  sleep 3
+  [ "$(ime_state)" = "mInputShown=true" ] || fail "the keyboard button did not show the IME"
+  shot tap-keyboard
+
+  # A trailing x is deleted before Enter, so the run also proves that the
+  # IME's backspace reaches the shell as KeyCode.DEL.
+  rm -f /tmp/tap-focus-ok
+  type_text "touch /tmp/tap-focus-okx"
+  adb shell input keyevent 67 > /dev/null 2>&1 || true
+  adb shell input keyevent 66 > /dev/null 2>&1 || true
+  sleep 3
+  if [ -f /tmp/tap-focus-ok ]; then
+    note "gate: typing and Backspace after the keyboard button reached the shell"
+  else
+    fail "typing and Backspace after the keyboard button did not reach the shell"
   fi
 
-  # Enter's IME action may have put the keyboard away, so the row (and its
-  # keyboard button) need the tap again before the button is exercised.
-  tap_grid 0.3 0.35
-  sleep 3
-  [ "$(ime_state)" = "mInputShown=true" ] || fail "the IME was not up for the keyboard button"
   if ui has 'Hide keyboard' > /dev/null 2>&1; then
     tap_label 'Hide keyboard' || fail "the keyboard button did not take a tap"
   else
-    cp "$out/ui.xml" "$out/ui-no-keyboard-button.xml" 2> /dev/null || true
-    fail "no Hide keyboard button on the key row"
+    fail "no Hide keyboard button while the IME is up"
   fi
   sleep 2.5
   [ "$(ime_state)" = "mInputShown=true" ] && fail "the keyboard button did not hide the IME"
+
   tap_grid 0.3 0.35
   sleep 3
-  [ "$(ime_state)" = "mInputShown=true" ] || fail "a tap after the keyboard button did not show the IME again"
+  [ "$(ime_state)" = "mInputShown=true" ] && fail "a tap after the keyboard button showed the IME again"
+
+  # The d-pad opens the arrows and the custom key pages.
+  if ui has 'Arrow keys and more' > /dev/null 2>&1; then
+    tap_label 'Arrow keys and more' || fail "the d-pad did not take a tap"
+    sleep 1.5
+    shot tap-arrows
+    tap_label 'Control' || fail "no Control key in the capsule"
+    sleep 0.6
+    tap_label 'Left arrow' || fail "no arrow key in the expanded panel"
+    sleep 0.6
+  else
+    fail "no d-pad button on the toolbar"
+  fi
+
+  # Compose: a multiline sheet whose Send writes the text and Enter.
+  rm -f /tmp/tap-compose-ok
+  if ui has 'Compose' > /dev/null 2>&1; then
+    tap_label 'Compose' || fail "Compose did not take a tap"
+    sleep 2
+    if point=$(ui edit 0); then
+      read -r x y <<< "$point"
+      tap_xy "$x $y"
+      type_text "touch /tmp/tap-compose-ok"
+      if ui has 'Send' > /dev/null 2>&1; then
+        tap_label 'Send' || fail "Send did not take a tap"
+      else
+        fail "no Send button in Compose"
+      fi
+      sleep 3
+      if [ -f /tmp/tap-compose-ok ]; then
+        note "gate: Compose wrote its text and Enter to the shell"
+      else
+        fail "Compose did not run on the shell"
+      fi
+    else
+      fail "no Compose text field"
+    fi
+  else
+    fail "no Compose button on the toolbar"
+  fi
+
   if [ "$failures" -eq 0 ]; then
-    note "gate: tap focus, keyboard, blank taps and typing verified"
+    note "gate: tap leaves the IME down, the keyboard button and Compose work"
   else
     note "gate: $failures failure(s) so far"
   fi
@@ -365,10 +399,8 @@ exec vim -u NONE -c 'set mouse=a' -c 'set laststatus=2' -c 'set ruler' \
 VIM
   send_command "sh /tmp/tapvim.sh" 5
   hide_ime
-  # The first tap also brings the keyboard back, which reflows the grid, so
-  # the measured tap follows a warm-up one.
   tap_grid 0.45 0.4
-  sleep 3
+  sleep 2
   shot tap-vim-before
   local before after
   before=$(cat /tmp/tapvim-cursor 2> /dev/null || echo '')

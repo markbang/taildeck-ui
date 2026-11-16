@@ -54,9 +54,9 @@ class TerminalCanvas extends StatefulWidget {
     this.cursorBlink = true,
     this.padding = const EdgeInsets.fromLTRB(18, 10, 18, 10),
     this.swipeArrows = true,
+    this.liveResize = true,
     this.onArrow,
     this.onFontSize,
-    this.onFocus,
     this.onBytes,
     this.onMouseSent,
     this.mouseMods = 0,
@@ -84,14 +84,16 @@ class TerminalCanvas extends StatefulWidget {
   /// scrollback instead.
   final bool swipeArrows;
 
+  /// False while the keyboard inset animates: the grid is laid out at each
+  /// frame of the tween, but the emulator (and the PTY) resize once, at the
+  /// end, so a keyboard animation is one resize and not a dozen.
+  final bool liveResize;
+
   /// A swipe crossed one step along its axis.
   final ValueChanged<TerminalArrow>? onArrow;
 
   /// The font size a pinch asks for, already inside the zoom limits.
   final ValueChanged<double>? onFontSize;
-
-  /// A tap on the grid: focus the terminal and show the soft keyboard.
-  final VoidCallback? onFocus;
 
   /// Bytes a mouse report wrote, for the page to hand to the remote.
   final ValueChanged<Uint8List>? onBytes;
@@ -186,7 +188,7 @@ class _TerminalCanvasState extends State<TerminalCanvas>
                   _metrics.cellHeight)
               .floor(),
         );
-        _scheduleResize(cols, rows);
+        if (widget.liveResize) _scheduleResize(cols, rows);
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) _syncBlink();
         });
@@ -259,9 +261,8 @@ class _TerminalCanvasState extends State<TerminalCanvas>
   }
 
   void _onTap(TapUpDetails details) {
-    // A tap always brings the keyboard back; only the key row's keyboard
-    // button and the system back hide it.
-    widget.onFocus?.call();
+    // A tap is not focus: no keyboard, no input line. It is only a mouse
+    // click for a program that tracks the mouse.
     if (_selection != null) {
       _clearSelection();
       return;
@@ -299,7 +300,6 @@ class _TerminalCanvasState extends State<TerminalCanvas>
   }
 
   void _onDoubleTap() {
-    widget.onFocus?.call();
     final at = _doubleTapAt;
     if (at != null) _selectWord(at);
   }
@@ -355,7 +355,6 @@ class _TerminalCanvasState extends State<TerminalCanvas>
   /// Selects the word under [local]; a long press and a double tap both land
   /// here.
   void _selectWord(Offset local) {
-    widget.onFocus?.call();
     final snapshot = widget.session.snapshot;
     final columns = snapshot.cols;
     if (snapshot.rows == 0 || columns == 0) return;

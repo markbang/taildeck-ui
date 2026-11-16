@@ -22,6 +22,7 @@ class TerminalKeyBar extends StatefulWidget {
     this.active = const {},
     this.palette = defaultTerminalPalette,
     this.bottomInset = 0,
+    this.floating = false,
   });
 
   final List<List<String>> pages;
@@ -39,6 +40,10 @@ class TerminalKeyBar extends StatefulWidget {
   /// Gesture bar or cutout below the row: the row's own background covers it,
   /// so the row sits on the same surface as the rest of the page.
   final double bottomInset;
+
+  /// Inside the terminal's floating toolbar: no page border, a rounded
+  /// surface, and no bottom inset of its own.
+  final bool floating;
 
   @override
   State<TerminalKeyBar> createState() => _TerminalKeyBarState();
@@ -93,13 +98,19 @@ class _TerminalKeyBarState extends State<TerminalKeyBar> {
       label: l10n.a11yTerminalKeyRow(total),
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: widget.palette.chrome,
-          border: Border(
-            top: BorderSide(color: widget.palette.border, width: 0.5),
-          ),
+          color: widget.floating
+              ? widget.palette.surface.withValues(alpha: 0.55)
+              : widget.palette.chrome,
+          border: widget.floating
+              ? null
+              : Border(
+                  top: BorderSide(color: widget.palette.border, width: 0.5),
+                ),
         ),
         child: Padding(
-          padding: EdgeInsets.fromLTRB(6, 5, 6, 7 + widget.bottomInset),
+          padding: widget.floating
+              ? const EdgeInsets.fromLTRB(6, 4, 6, 4)
+              : EdgeInsets.fromLTRB(6, 5, 6, 7 + widget.bottomInset),
           child: Row(
             children: [
               Expanded(

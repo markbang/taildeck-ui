@@ -1,15 +1,16 @@
-# The tap gate: on the emulator, against a real SSH shell from the runner's
-# test tailnet, tapping the grid must show the soft keyboard and keep it up,
-# the key row's keyboard button must hide it, and a tap must reach a program
-# that tracks the mouse as an SGR 1006 left press and release. The gate fails
-# the run; the vim and htop clips are recorded next to it.
+# The terminal-sheet gate: on the emulator, against a real SSH shell from the
+# runner's test tailnet, a tap on the grid must leave the IME down and only
+# reach a mouse-tracking program as an SGR 1006 left press and release; the
+# toolbar's keyboard button must show and hide the IME; typing and Compose must
+# reach the shell. The gate fails the run; the vim and htop clips and the
+# before/after sheet takes are recorded next to it.
 name: termtap-record
 
 on:
   workflow_dispatch:
   # Temporary: dispatch only reaches a workflow that is on the default branch.
   push:
-    branches: [fix/terminal-tap]
+    branches: [feat/terminal-sheet-ui]
 
 permissions:
   contents: read
@@ -102,7 +103,7 @@ jobs:
       - name: Install the recording tools
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq ffmpeg fonts-dejavu-core vim htop
+          sudo apt-get install -y -qq ffmpeg imagemagick fonts-dejavu-core vim htop
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
@@ -123,20 +124,35 @@ jobs:
             AUTH_KEY='${{ steps.control.outputs.auth_key }}'
             DERP_PORT='${{ steps.control.outputs.derp_port }}'
             bash -c 'adb reverse "tcp:$DERP_PORT" "tcp:$DERP_PORT" >/dev/null 2>&1 || true;
-            tool/termtap_record.sh build/termtap.apk top.bangwu.taildeck termtap'
+            status=0;
+            tool/termtap_record.sh build/termtap.apk top.bangwu.taildeck termtap || status=1;
+            curl -fsSL -o build/old.apk https://github.com/markbang/taildeck-ui/releases/download/v0.2.18/taildeck-android-x64-v0.2.18.apk || true;
+            CONTROL_URL="$CONTROL_URL" AUTH_KEY="$AUTH_KEY" PEER="$PEER" tool/terminal_sheet_record.sh build/termtap.apk top.bangwu.taildeck sheet build/old.apk || true;
+            exit $status'
       - name: Job summary
         if: always()
         run: |
           {
-            echo "### Terminal tap: focus, keyboard and mouse reports"
+            echo "### Terminal tap: no IME on tap, keyboard button, mouse reports"
             echo
             echo '```'
             cat termtap/summary.txt 2>/dev/null || echo 'no summary'
             echo '```'
+            echo
+            if [ -s sheet/summary.txt ]; then
+              echo "### Terminal sheet: before and after"
+              echo
+              echo '```'
+              cat sheet/summary.txt
+              echo '```'
+              echo
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: termtap
-          path: termtap/
+          path: |
+            termtap/
+            sheet/
           if-no-files-found: warn
