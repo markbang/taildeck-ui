@@ -128,17 +128,13 @@ launch_taildeck() { # [time dilation]
   fi
   sleep 3
   dismiss_system_dialogs
-  local attempt
-  for attempt in $(seq 1 20); do
-    if gate_in_front "$app" && ui has Settings > /dev/null 2>&1; then
-      sleep 1
-      return 0
-    fi
-    sleep 2
-  done
+  if wait_home "$app" "$out" "$here" Settings 45; then
+    sleep 1
+    return 0
+  fi
   shot taildeck-launch-fail
   ui texts "$SH" > "$out/taildeck-launch-fail.txt" 2> /dev/null || true
-  note "Taildeck: no settings list after 40 s, carrying on"
+  note "Taildeck: no settings list after 45 s, carrying on"
 }
 
 dismiss_system_dialogs() {
@@ -182,8 +178,7 @@ note "Taildeck theme page: bar with the back button and the title"
 record taildeck-scroll 10 scroll_page
 shot taildeck-theme-scrolled
 
-back_key
-sleep 2
+record taildeck-back 10 back_step
 shot taildeck-back
 ui has "Tailnet & device" > /dev/null 2>&1 ||
   fail "back from the theme page did not return to the list"
