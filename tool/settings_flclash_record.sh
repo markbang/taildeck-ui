@@ -121,13 +121,14 @@ component="$app/${TAILDECK_ACTIVITY:-top.bangwu.taildeck_ui.MainActivity}"
 adb uninstall "$app" > /dev/null 2>&1 || true
 adb install -g "$apk" > "$out/install-taildeck.txt" 2>&1 || fail "adb install failed, see install-taildeck.txt"
 
-launch_taildeck() {
+launch_taildeck() { # [time dilation]
+  local stretch=${1:-$slow}
   adb shell am force-stop "$app" > /dev/null 2>&1 || true
   sleep 2
   adb logcat -c > /dev/null 2>&1 || true
   # ?slow= stretches the menu unfold and the page push, so the clip can show
   # their frames; the emulator itself runs with real motion.
-  adb shell "am start -W -a android.intent.action.VIEW -d 'taildeck://preview/?preview=1&tab=3&lang=en&splash=0&slow=$slow' -n $component" \
+  adb shell "am start -W -a android.intent.action.VIEW -d 'taildeck://preview/?preview=1&tab=3&lang=en&splash=0&slow=$stretch' -n $component" \
     > "$out/launch-taildeck.txt" 2>&1 || true
   sleep 3
   dismiss_system_dialogs
@@ -212,6 +213,18 @@ back_key
 sleep 2
 shot taildeck-back
 
+# The push at a sixth of its speed, so a still can land inside it.
+launch_taildeck 20
+slow_point=$(ui tap Theme 2> /dev/null) || slow_point=""
+if [ -n "$slow_point" ]; then
+  ( adb shell input tap $slow_point > /dev/null 2>&1 || true ) &
+  mid_stills taildeck-push-slow
+  wait
+  sleep 2
+fi
+back_key
+sleep 2
+
 record taildeck-drag 14 drag_step "$theme_point"
 shot taildeck-drag-end
 ui has "Theme mode" > /dev/null 2>&1 && note "drag back left the theme page open" ||
@@ -242,11 +255,10 @@ accept_flclash_disclaimer() {
   local point attempt
   point=$(ui tap Agree 2> /dev/null) || point=$(ui tap 同意 2> /dev/null) || return 0
   tap_point "$point" 2
-  for attempt in 1 2 3; do
-    ui has Confirm > /dev/null 2>&1 || return 0
+  if ui has Confirm > /dev/null 2>&1; then
     if point=$(ui edit 0 2> /dev/null); then
       tap_point "$point" 1
-      # shellcheck disable=SC2086
+      # Typed once: a second pass appends to the field and never matches.
       adb shell input text "$(printf '%s' "$disclaimer_statement" | sed 's/ /%s/g')" > /dev/null 2>&1 || true
       sleep 3
     elif point=$(ui tap "I have read" 2> /dev/null); then
@@ -254,9 +266,8 @@ accept_flclash_disclaimer() {
       tap_point "$point" 1
     fi
     point=$(ui tap Confirm 2> /dev/null) && tap_point "$point" 3
-    ui has Confirm > /dev/null 2>&1 || return 0
-    note "disclaimer: Confirm still disabled after attempt $attempt"
-  done
+    ui has Confirm > /dev/null 2>&1 && note "disclaimer: Confirm still disabled"
+  fi
   ui texts "$SH" > "$out/flclash-disclaimer.txt" 2> /dev/null || true
 }
 
@@ -383,7 +394,7 @@ for pair in \
   "settings:taildeck-settings:flclash-tools" \
   "language:taildeck-language-open:flclash-language-open" \
   "theme:taildeck-theme:flclash-theme" \
-  "push:taildeck-push-3:flclash-push-3" \
+  "push:taildeck-push-slow-3:flclash-push-3" \
   "popup:taildeck-language-3:flclash-language-2"; do
   name=${pair%%:*}
   rest=${pair#*:}
