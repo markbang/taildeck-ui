@@ -1,18 +1,35 @@
-# Cold-start smoke test: installs a release APK on an emulator, launches it
-# fresh and fails when our process dies, crashes or ANRs (system apps ignored).
-# A build=true run also builds a debug APK and runs the back key, ping and node
-# page gates, which need its demo dataset.
+# The one emulator gate. Every on-device check — cold start, back key, ping,
+# node page, splash, tabs, Agents, settings stills, the terminal sheet's tap and
+# IME, 20 startup-routing cold starts and 20 tailnet-ready cold starts per page —
+# runs against a single emulator boot, one after the other, each with its own
+# timeout and its own failure annotation (tool/android_gate_all.sh).
+#
+# The release workflow calls this with the shipped APK (ship mode: the cold
+# start, splash, Agents and stills gates on that APK). A pull request runs the
+# full set on a profile and a demo debug build made from the pull request.
 name: android-smoke
 
 on:
+  pull_request:
+    paths:
+      - lib/**
+      - native/**
+      - tool/**
+      - android/**
+      - pubspec.yaml
+      - .github/workflows/android-smoke.yml
   workflow_call:
     inputs:
       build:
-        description: Build the APKs from this ref instead of smoking the caller's artifact
+        description: Build a release-signed x86_64 APK from this ref instead of downloading one
         type: boolean
         default: false
+      apk-url:
+        description: APK to download and smoke (ship mode)
+        type: string
+        default: ''
       apk-artifact:
-        description: Artifact holding a taildeck-android-x64-*.apk (empty to skip)
+        description: Artifact holding a taildeck-android-x64-*.apk (ship mode)
         type: string
         default: android
       apk-run-id:
@@ -23,22 +40,34 @@ on:
         description: Package to install, launch and watch
         type: string
         default: top.bangwu.taildeck
-  workflow_dispatch:
-    inputs:
-      apk-url:
-        description: APK to download and smoke
-        type: string
-        default: https://github.com/markbang/taildeck-ui/releases/download/v0.2.8/taildeck-android-x64-v0.2.8.apk
-      apk-run-id:
-        description: Run whose 'android' artifact holds the x86_64 APK (empty for this run)
-        type: string
-        default: ''
-      build:
-        description: Build a release-signed x86_64 APK from this ref instead of downloading one
+      full-gate:
+        description: Run the routing, termtap and netready gates too (needs the signed-in test control plane)
         type: boolean
         default: false
+  workflow_dispatch:
+    inputs:
+      gates:
+        description: Space-separated gate labels to run (cold-start splash agents stills tabs back ping node termtap routing netready)
+        type: string
+        default: all
+      full-gate:
+        description: Run the routing, termtap and netready gates too
+        type: boolean
+        default: true
+      build:
+        description: Build a release-signed x86_64 APK from this ref
+        type: boolean
+        default: false
+      apk-url:
+        description: APK to download (when no artifact is given)
+        type: string
+        default: https://github.com/markbang/taildeck-ui/releases/download/v0.2.8/taildeck-android-x64-v0.2.8.apk
       apk-artifact:
         description: Artifact holding the x86_64 APK (skips apk-url)
+        type: string
+        default: ''
+      apk-run-id:
+        description: Run whose 'android' artifact holds the x86_64 APK (empty for this run)
         type: string
         default: ''
       application-id:
@@ -50,7 +79,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: android-smoke-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 env:
@@ -58,32 +87,60 @@ env:
   GOTOOLCHAIN: auto
   APP_ID: ${{ inputs.application-id || 'top.bangwu.taildeck' }}
   KOTLIN_APK_URL: https://github.com/markbang/taildeck/releases/download/v0.1.0/taildeck-0.1.0-x86_64.apk
+  AVD_NAME: taildeck-api34
+  GATES: ${{ inputs.gates || 'all' }}
+  # The emulator runner creates the AVD under ANDROID_AVD_HOME when it is set;
+  # pinning it is what lets the cache find the AVD and its boot snapshot again.
+  ANDROID_AVD_HOME: /home/runner/.android/avd
 
 jobs:
   smoke:
-    name: cold start and back key
+    name: one emulator, every on-device gate
     runs-on: ubuntu-latest
+    timeout-minutes: 80
     steps:
       - uses: actions/checkout@v4
 
-      # Build mode: a signed x86_64 APK from this ref, for iterating on a fix.
+      - name: Pick the gates and what to build
+        id: mode
+        env:
+          FULL_INPUT: ${{ inputs.full-gate }}
+        run: |
+          full=${FULL_INPUT:-false}
+          # A pull request always runs the whole set; the release call and a
+          # ship-mode dispatch smoke the APK they were given.
+          case "${{ github.event_name }}" in
+            pull_request)
+              full=true
+              # The long 20x loops wait for a label or a manual run: a PR gets
+              # the fast on-device set in one boot (target: under 20 minutes).
+              echo "GATES=cold-start tabs back ping agents" >> "$GITHUB_ENV"
+              ;;
+          esac
+          source=false
+          if [ "$full" = true ] || [ "${{ inputs.build }}" = true ]; then source=true; fi
+          if [ -z "${{ inputs.apk-artifact }}" ] && [ -z "${{ inputs.apk-url }}" ]; then source=true; fi
+          echo "full=$full" >> "$GITHUB_OUTPUT"
+          echo "source=$source" >> "$GITHUB_OUTPUT"
+          echo "full gates: $full, build from source: $source"
+
       - uses: actions/setup-java@v4
-        if: inputs.build
+        if: steps.mode.outputs.source == 'true'
         with:
           distribution: temurin
           java-version: '17'
           cache: gradle
       - uses: actions/setup-go@v6
-        if: inputs.build
+        if: steps.mode.outputs.source == 'true'
         with:
           go-version: 1.27.x
           cache-dependency-path: native/bridge/go.sum
       - uses: mlugg/setup-zig@v2
-        if: inputs.build
+        if: steps.mode.outputs.source == 'true'
         with:
           version: 0.17.1
       - name: Pin the Android NDK
-        if: inputs.build
+        if: steps.mode.outputs.source == 'true'
         run: |
           sdk="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
           ndk="$sdk/ndk/28.2.13676358"
@@ -95,13 +152,23 @@ jobs:
           test -d "$ndk"
           echo "ANDROID_NDK_HOME=$ndk" >> "$GITHUB_ENV"
       - uses: subosito/flutter-action@v2
-        if: inputs.build
+        if: steps.mode.outputs.source == 'true'
         with:
           flutter-version: 3.47.9
           channel: stable
           cache: true
+      - name: Resolve the pinned ghostty rev
+        id: ghostty
+        if: steps.mode.outputs.source == 'true'
+        run: echo "rev=$(sed -n 's/^GHOSTTY_REV=//p' native/term/build-ghostty.sh)" >> "$GITHUB_OUTPUT"
+      - name: Cache libghostty-vt
+        if: steps.mode.outputs.source == 'true'
+        uses: actions/cache@v4
+        with:
+          path: native/term/build/ghostty
+          key: ghostty-vt-${{ steps.ghostty.outputs.rev }}-zig0.17.1-${{ runner.os }}-${{ runner.arch }}
       - name: Build the native libs (x86_64)
-        if: inputs.build
+        if: steps.mode.outputs.source == 'true'
         run: |
           set -o pipefail
           flutter pub get
@@ -111,8 +178,9 @@ jobs:
             test -s "android/app/src/main/jniLibs/x86_64/$lib" \
               || { echo "::error::android/app/src/main/jniLibs/x86_64/$lib missing"; exit 1; }
           done
+
       - name: Configure Android signing
-        if: inputs.build
+        if: steps.mode.outputs.full != 'true' && steps.mode.outputs.source == 'true'
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
@@ -135,35 +203,52 @@ jobs:
           } > android/key.properties
           chmod 600 android/app/release.jks android/key.properties
       - name: Build the release APK (x86_64)
-        if: inputs.build
+        if: steps.mode.outputs.full != 'true' && steps.mode.outputs.source == 'true'
         run: |
           flutter build apk --release --target-platform android-x64 --split-per-abi
           cp build/app/outputs/flutter-apk/app-x86_64-release.apk build/smoke.apk
           "$(ls -d "${ANDROID_SDK_ROOT:-$ANDROID_HOME}"/build-tools/*/ | sort -V | tail -1)/aapt2" \
             dump badging build/smoke.apk | head -1
-      - name: Build the debug APK for the preview gates
-        if: inputs.build
+      - name: Build the profile APK (x86_64)
+        if: steps.mode.outputs.full == 'true'
         run: |
           flutter pub get
-          # The preview routes need the demo dataset, which a debug build no
-          # longer carries by default; the release snapshot stays demo-free.
+          # Profile is AOT-compiled like the release app but needs no keystore,
+          # and its cold start is fast enough for the 20-run loops.
+          flutter build apk --profile --target-platform android-x64
+          cp build/app/outputs/flutter-apk/app-profile.apk build/profile.apk
+          ls -l build/profile.apk
+      - name: Build the debug APK for the preview gates
+        if: steps.mode.outputs.full == 'true'
+        run: |
+          # The preview routes need the demo dataset, which a debug build only
+          # carries behind TAILDECK_DEMO.
           flutter build apk --debug --target-platform android-x64 \
             --dart-define=TAILDECK_DEMO=true
-          cp build/app/outputs/flutter-apk/app-debug.apk build/nodepage.apk
-          ls -l build/nodepage.apk
+          cp build/app/outputs/flutter-apk/app-debug.apk build/demo.apk
+          ls -l build/demo.apk
+      - name: Build the debuggable APK for the netmap-window gate
+        if: steps.mode.outputs.full == 'true'
+        run: |
+          # The gate pushes a node key into the app's files and drops its netmap
+          # cache, so this build has to stay debuggable; it carries no demo data,
+          # or the demo nodes would stand in for the real netmap.
+          flutter build apk --debug --target-platform android-x64
+          cp build/app/outputs/flutter-apk/app-debug.apk build/netready.apk
+          ls -l build/netready.apk
       - name: Drop the signing material
         if: always()
         run: rm -f android/app/release.jks android/key.properties
 
       - name: Download the APK
-        if: ${{ !inputs.build && (inputs.apk-artifact || '') == '' && (inputs.apk-url || '') != '' }}
+        if: ${{ steps.mode.outputs.full != 'true' && (inputs.apk-artifact || '') == '' && (inputs.apk-url || '') != '' }}
         run: |
           mkdir -p build
           curl -fsSL -o build/smoke.apk "${{ inputs.apk-url }}"
           "$(ls -d "${ANDROID_SDK_ROOT:-$ANDROID_HOME}"/build-tools/*/ | sort -V | tail -1)/aapt2" \
             dump badging build/smoke.apk | head -1
       - name: Download the APK artifact
-        if: inputs.apk-artifact
+        if: ${{ steps.mode.outputs.full != 'true' && inputs.apk-artifact }}
         uses: actions/download-artifact@v4
         with:
           name: ${{ inputs.apk-artifact }}
@@ -173,35 +258,100 @@ jobs:
       - name: Resolve the APK under test
         run: |
           set -euo pipefail
-          apk=build/smoke.apk
-          if [ ! -s "$apk" ]; then
-            apk="$(ls build/artifact/taildeck-android-x64-*.apk 2>/dev/null | head -1 || true)"
+          if [ "${{ steps.mode.outputs.full }}" = "true" ]; then
+            apk=$PWD/build/profile.apk
+            test -s "$apk" || { echo "::error::the profile APK was not built"; exit 1; }
+            echo "APK=$apk" >> "$GITHUB_ENV"
+            echo "PROFILE=$apk" >> "$GITHUB_ENV"
+            echo "NODEPAGE=$PWD/build/demo.apk" >> "$GITHUB_ENV"
+            echo "NETREADY_APK=$PWD/build/netready.apk" >> "$GITHUB_ENV"
+          else
+            apk=build/smoke.apk
+            if [ ! -s "$apk" ]; then
+              apk="$(ls build/artifact/taildeck-android-x64-*.apk 2>/dev/null | head -1 || true)"
+            fi
+            if [ -z "$apk" ] || [ ! -s "$apk" ]; then
+              apk="$(ls build/artifact/*.apk 2>/dev/null | head -1 || true)"
+            fi
+            test -s "$apk" || { echo "::error::no APK to smoke"; exit 1; }
+            echo "APK=$PWD/$apk" >> "$GITHUB_ENV"
           fi
-          if [ -z "$apk" ] || [ ! -s "$apk" ]; then
-            apk="$(ls build/artifact/*.apk 2>/dev/null | head -1 || true)"
-          fi
-          test -s "$apk" || { echo "::error::no APK to smoke"; exit 1; }
-          echo "APK=$PWD/$apk" >> "$GITHUB_ENV"
-          # The preview gates need the debug build's demo dataset; without it
-          # (release path) only the cold start and splash gates run.
-          if [ -s build/nodepage.apk ]; then
-            echo "NODEPAGE=$PWD/build/nodepage.apk" >> "$GITHUB_ENV"
-          fi
-          mkdir -p smoke
+          mkdir -p gates
           aapt2="$(ls -d "${ANDROID_SDK_ROOT:-$ANDROID_HOME}"/build-tools/*/ | sort -V | tail -1)/aapt2"
           "$aapt2" dump badging "$apk" | grep -E "^(package|application-label:|launchable-activity)" \
-            | tee smoke/badging.txt
+            | tee gates/badging.txt
           echo "smoking $apk ($(stat -c%s "$apk") bytes)"
       - name: The release APK carries no demo data
-        if: ${{ env.APK != '' }}
+        if: steps.mode.outputs.full != 'true'
         run: tool/check_demo_free.sh "$APK"
+
+      - name: Start the test control plane and the peers
+        id: control
+        if: steps.mode.outputs.full == 'true'
+        run: |
+          set -o pipefail
+          (cd tool/motion && go build -o /tmp/motion_control ./control) 2>&1 | tee /tmp/control-build.log
+          # The netmap is held for ~2 s so every cold start meets the window
+          # where the node is Running with no peers yet (the netready gate).
+          /tmp/motion_control -addr 127.0.0.1:8080 -hold-map 2000ms > /tmp/control.log 2>&1 &
+          for _ in $(seq 1 20); do
+            grep -q 'listening on' /tmp/control.log && break
+            sleep 1
+          done
+          grep 'listening on' /tmp/control.log || { cat /tmp/control.log; exit 1; }
+          derp=$(sed -n 's/.*DERP httpsrv listener: 127\.0\.0\.1:\([0-9]*\).*/\1/p' /tmp/control.log | head -1)
+          echo "control_url=http://10.0.2.2:8080" >> "$GITHUB_OUTPUT"
+          echo "auth_key=tskey-test" >> "$GITHUB_OUTPUT"
+          echo "derp_port=$derp" >> "$GITHUB_OUTPUT"
+          echo "CONTROL_URL=http://10.0.2.2:8080" >> "$GITHUB_ENV"
+          echo "AUTH_KEY=tskey-test" >> "$GITHUB_ENV"
+          echo "DERP_PORT=$derp" >> "$GITHUB_ENV"
+      - name: Start the peers the gates open
+        if: steps.mode.outputs.full == 'true'
+        run: |
+          set -o pipefail
+          (cd tool/motion && go build -o /tmp/motion_peer ./peer) 2>&1 | tee /tmp/peer-build.log
+          # bangwu is the online peer the node and Agents pages must list;
+          # motionpeer serves the SSH shell the terminal gates type into.
+          /tmp/motion_peer -hostname bangwu -control http://127.0.0.1:8080 \
+            -key tskey-test -port 3000 -ssh-port 22 > /tmp/peer.log 2>&1 &
+          /tmp/motion_peer -hostname motionpeer -control http://127.0.0.1:8080 \
+            -key tskey-test -port 3000 -ssh-port 22 > /tmp/peer2.log 2>&1 &
+          for _ in $(seq 1 60); do
+            grep -q 'ssh shell' /tmp/peer.log && grep -q 'ssh shell' /tmp/peer2.log && break
+            sleep 1
+          done
+          for log in /tmp/peer.log /tmp/peer2.log; do
+            grep 'ssh shell' "$log" || { cat "$log"; exit 1; }
+          done
+      - name: Seed a node key for the app
+        if: steps.mode.outputs.full == 'true'
+        run: |
+          # The app starts from a key already registered on the control plane,
+          # so no login tap can fall back to the browser flow mid-gate.
+          tool/build_native.sh linux
+          dart run tool/seed_state.dart linux/lib/libtaildeck_bridge.so /tmp/seed \
+            http://127.0.0.1:8080 tskey-test taildeck
+          echo "SEED_STATE=/tmp/seed/tailscaled.state" >> "$GITHUB_ENV"
 
       - name: Install the recording tools
         run: |
-          if ! command -v ffmpeg > /dev/null || ! command -v montage > /dev/null; then
+          if ! command -v ffmpeg > /dev/null || ! command -v montage > /dev/null \
+            || ! command -v vim > /dev/null || ! command -v htop > /dev/null; then
             sudo apt-get update -qq
-            sudo apt-get install -y -qq ffmpeg imagemagick fonts-dejavu-core
+            sudo apt-get install -y -qq ffmpeg imagemagick fonts-dejavu-core vim htop
           fi
+
+      # The AVD and its quickboot snapshot are cached: a restored AVD boots in
+      # about a third of a cold boot. The first (miss) run boots cold, the
+      # emulator writes its snapshot on `emu kill`, and the job saves it after
+      # that write finishes.
+      - name: Restore the AVD snapshot
+        id: avd
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.android/avd
+          key: avd-api34-google_apis-x86_64-pixel_6-v1
 
       - name: Enable KVM
         run: |
@@ -210,6 +360,10 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
           ls -l /dev/kvm
+      - name: Stamp the emulator launch
+        run: |
+          mkdir -p "$HOME/.android/avd"
+          date +%s > /tmp/emulator-launch
 
       - uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -217,81 +371,74 @@ jobs:
           target: google_apis
           arch: x86_64
           profile: pixel_6
+          avd-name: ${{ env.AVD_NAME }}
+          force-avd-creation: false
           disable-animations: true
-          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          # One line: the runner hands each line to sh separately. The stills
-          # come first, each case installing its own copy, so a failure later in
-          # the chain cannot cost the evidence; the splash recording runs before
-          # the back and ping cases for the same reason. The release APK gets
-          # the cold-start and splash gates; the preview routes (sheets, ping,
-          # node page) need the demo dataset a debug build carries, since a
-          # release build has no nodes without a tailnet, so NODEPAGE is set
-          # only when that debug APK was built. The Agents cold-start gate runs
-          # on the release APK like the cold-start and splash gates: it needs no
-          # demo data, and it must not be masked by a flake in a later step.
-          script: bash tool/screenshots_android.sh "$APK" "$APP_ID" smoke-shots && bash tool/smoke_android.sh "$APK" "$APP_ID" smoke && bash tool/splash_shots.sh "$APK" "$APP_ID" smoke-splash && bash tool/agents_android.sh "$APK" "$APP_ID" smoke-agents && if [ -n "${NODEPAGE:-}" ]; then bash tool/tabs_android.sh "$NODEPAGE" "$APP_ID" smoke-tabs && bash tool/back_android.sh "$NODEPAGE" "$APP_ID" smoke-back && bash tool/ping_android.sh "$NODEPAGE" "$APP_ID" smoke-ping && bash tool/nodepage_android.sh "$NODEPAGE" "$APP_ID" smoke-node; fi
+          emulator-boot-timeout: 900
+          # -no-snapshot-save on a restored AVD: the cached snapshot is the
+          # clean one, and a fresh save would carry the gates' state forward.
+          emulator-options: >-
+            -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+            -camera-back none
+            ${{ steps.avd.outputs.cache-hit == 'true' && '-no-snapshot-save' || '' }}
+          script: bash tool/android_gate_all.sh
+
+      - name: Wait for the emulator's snapshot write
+        if: always() && steps.avd.outputs.cache-hit != 'true'
+        continue-on-error: true
+        run: |
+          for _ in $(seq 1 90); do
+            pgrep -f "qemu-system-x86_64.*$AVD_NAME" > /dev/null || exit 0
+            sleep 2
+          done
+          echo "::warning::the emulator still runs; skipping the AVD snapshot cache"
+          exit 1
+      - name: Save the AVD snapshot
+        # A gate failure does not spoil the boot, so the cache is warmed anyway.
+        if: always() && steps.avd.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.android/avd
+          key: avd-api34-google_apis-x86_64-pixel_6-v1
 
       - name: Job summary
         if: always()
         run: |
           {
-            echo "### Android cold start"
+            echo "### One emulator: every on-device gate"
             echo
             echo '```'
-            cat smoke/summary.txt 2>/dev/null || echo 'no summary'
+            cat gates/gate-results.txt 2>/dev/null || echo 'no gate results'
             echo '```'
-            echo
-            if [ -n "${NODEPAGE:-}" ]; then
-              echo "### Android back key"
+            for entry in \
+              "cold start:smoke" \
+              "splash and first frame:smoke-splash" \
+              "Agents cold start:smoke-agents" \
+              "settings stills:smoke-shots" \
+              "tab switches:smoke-tabs" \
+              "back key:smoke-back" \
+              "ping:smoke-ping" \
+              "node page:smoke-node" \
+              "terminal tap and IME:termtap" \
+              "startup routing (20 cold starts):routing" \
+              "tailnet-ready (20 cold starts per page):netready"; do
+              title=${entry%:*}
+              dir=${entry##*:}
+              [ -s "$dir/summary.txt" ] || continue
+              echo
+              echo "### $title"
               echo
               echo '```'
-              cat smoke-back/summary.txt 2>/dev/null || echo 'no summary'
+              cat "$dir/summary.txt"
               echo '```'
-              echo
-              echo "### Android ping"
-              echo
-              echo '```'
-              cat smoke-ping/summary.txt 2>/dev/null || echo 'no summary'
-              echo '```'
-              echo
-            fi
-            echo "### Android cold start: splash and first frame"
-            echo
-            echo '```'
-            cat smoke-splash/summary.txt 2>/dev/null || echo 'no summary'
-            echo '```'
-            echo
-            if [ -n "${NODEPAGE:-}" ]; then
-              echo "### Android tab switches (overlap gate)"
-              echo
-              echo '```'
-              cat smoke-tabs/summary.txt 2>/dev/null || echo 'no summary'
-              echo '```'
-              echo
-              echo "### Android node page (grey ErrorWidget gate)"
-              echo
-              echo '```'
-              cat smoke-node/summary.txt 2>/dev/null || echo 'no summary'
-              echo '```'
-              echo
-              echo "### Android Agents cold start (no error before Running)"
-              echo
-              echo '```'
-              cat smoke-agents/summary.txt 2>/dev/null || echo 'no summary'
-              echo '```'
-              echo
-            fi
-            echo "### Settings stills"
-            echo
-            echo '```'
-            cat smoke-shots/summary.txt 2>/dev/null || echo 'no summary'
-            echo '```'
+            done
           } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: android-smoke
           path: |
+            gates/
             smoke/
             smoke-tabs/
             smoke-back/
@@ -300,10 +447,13 @@ jobs:
             smoke-node/
             smoke-agents/
             smoke-shots/
+            termtap/
+            routing/
+            netready/
           if-no-files-found: warn
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: android-smoke-apk
-          path: build/smoke.apk
+          path: build/*.apk
           if-no-files-found: warn

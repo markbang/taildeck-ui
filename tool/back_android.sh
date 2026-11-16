@@ -32,12 +32,17 @@ pass() { echo "ok: $*" | tee -a "$out/summary.txt"; }
 step() { echo "== $*" | tee -a "$out/summary.txt"; }
 
 adb wait-for-device
-activity=$(adb shell cmd package resolve-activity --brief "$app" 2>/dev/null | tail -n 1 | tr -d '\r')
-[ -n "$activity" ] || fail "no launcher activity for $app"
-
 if ! adb shell pm path "$app" > /dev/null 2>&1; then
   adb install -g "$apk" > "$out/install.txt" 2>&1 || fail "adb install failed, see install.txt"
 fi
+# After the install: the gates before this one uninstall their own build, and
+# resolve-activity answers "No activity found" in prose when nothing is there.
+activity=$(adb shell cmd package resolve-activity --brief "$app" 2>/dev/null \
+  | grep -oE '[A-Za-z0-9_.]+/[A-Za-z0-9_.$]+' | tail -n 1 | tr -d '\r')
+case "$activity" in
+  */*) ;;
+  *) fail "no launcher activity for $app (got '$activity')" ;;
+esac
 
 shot() { adb exec-out screencap -p > "$out/$1.png" || true; }
 
@@ -63,7 +68,10 @@ start() { # $1: preview query
     > "$out/launch.txt" 2>&1 || return 1
   grep -q "Activity: $app/" "$out/launch.txt" || return 1
   wait_first_frame
-  wait_home "$app" "$out" "$here" Services 30 \
+  # No dock marker: the launches with a sheet cover it, and wait_sheet is what
+  # proves that sheet opened. A launch with ssh=demo opens the terminal, whose
+  # route is its own.
+  wait_home "$app" "$out" "$here" '' 30 'shell|terminal' \
     || fail "the shell did not settle for $1; see launch.txt"
 }
 

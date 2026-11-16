@@ -99,16 +99,14 @@ dock() {
 
 # The page must be ours, in front. Without this an empty accessibility tree
 # (app gone, screen off) would read as "zero headers", which is legal only
-# while a switch is in flight.
+# while a switch is in flight. The shared check also reads the focused app and
+# the resumed activity: mCurrentFocus names the launcher for a moment after a
+# switch on this emulator while the app's window is already ours.
 alive() { # <step>
-  local pid focus
-  pid=$(adb shell pidof "$app" 2>/dev/null | tr -d '\r' || true)
-  [ -n "$pid" ] || fail "$1: $app is not running (crashed or was killed)"
-  focus=$(adb shell dumpsys window 2>/dev/null | grep -m1 mCurrentFocus | tr -d '\r' || true)
-  case "$focus" in
-    *"$app/"*) ;;
-    *) fail "$1: $app is not in front ($focus)" ;;
-  esac
+  gate_in_front "$app" && return 0
+  adb shell pidof "$app" > /dev/null 2>&1 \
+    || fail "$1: $app is not running (crashed or was killed)"
+  fail "$1: $app is not in front ($(adb shell dumpsys window 2>/dev/null | grep -m1 mCurrentFocus | tr -d '\r'))"
 }
 
 header_count() { # <space-separated headers>
@@ -140,12 +138,18 @@ headers() { # <texts-file>
 # At rest the page settles to exactly one header. A slow emulator can still be
 # mid-fade when the still was taken, so poll instead of trusting one dump; two
 # headers are a failure either way.
-settle_headers() { # <index> <tag>
+settle_headers() { # <index> <tag> <target tab>
   local attempt found=""
   for attempt in 1 2 3 4 5 6; do
     if ui texts "$ymax" > "$out/headers-$2.txt" 2> /dev/null; then
       found=$(headers "$out/headers-$2.txt")
       [ "$(header_count "$found")" -eq 1 ] && { echo "$found"; return 0; }
+      # A data page draws its tailnet loading card instead of a header until the
+      # node is up; that card is the page itself, so it settles the tab.
+      if [ -z "$found" ] && grep -q 'Connecting to the tailnet' "$out/headers-$2.txt"; then
+        echo "${titles[$3]}"
+        return 0
+      fi
     fi
     sleep 1
   done
@@ -198,7 +202,7 @@ for i in $(seq 1 10); do
   sleep $((slow + 2))
   shot "rest-$(printf %02d "$i")"
   alive "switch $i at rest"
-  found=$(settle_headers "$i" "$(printf %02d "$i")") ||
+  found=$(settle_headers "$i" "$(printf %02d "$i")" "$target") ||
     fail "switch $i never settled to one header at rest [${found:-none}]"
   note "switch $i -> ${names[$target]}: headers [$found] at rest"
   expect_header "$found" "$target" "switch $i"

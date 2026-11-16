@@ -13,7 +13,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: platform-release-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
 
 env:
@@ -261,6 +261,9 @@ jobs:
     uses: ./.github/workflows/android-smoke.yml
     with:
       apk-artifact: android
+      # Ship mode: the cold start, splash, Agents and stills gates on the APK
+      # this run built. The pull request that produced it ran the rest.
+      full-gate: false
 
   linux:
     name: linux bundle
