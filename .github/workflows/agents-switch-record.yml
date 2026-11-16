@@ -130,6 +130,8 @@ jobs:
       - name: Job summary
         if: always()
         run: |
+          echo '--- agents-switch/summary.txt'
+          cat agents-switch/summary.txt 2>/dev/null || echo 'no summary'
           {
             echo "### Agents switch gate (stale failure must not paint)"
             echo

@@ -31,7 +31,9 @@ summary="$out/summary.txt"
 
 fail() {
   echo "FAIL: $*" | tee -a "$summary"
+  echo "phases: [$(phases 2> /dev/null)]" | tee -a "$summary"
   timeout 30 adb logcat -d > "$out/logcat-fail.txt" 2>&1 || true
+  shot fail-screen
   timeout 60 adb uninstall "$app" > /dev/null 2>&1 || true
   exit 1
 }
@@ -91,16 +93,28 @@ await_log() { # <tag> <phrase> <limit-s>
   return 1
 }
 
-# The dock is a floating capsule under the page: four destinations across its
-# width, at a fixed height on this profile.
+# The dock is a floating capsule under the page. Its label boxes are read from
+# a settled dump; the fractions are only the fallback for a run whose dump
+# never came back.
 geometry() {
   read -r W SH <<< "$(adb shell wm size | sed -n 's/.*: \([0-9]*\)x\([0-9]*\).*/\1 \2/p' | tr -d '\r')"
   [ -n "${W:-}" ] || fail "no screen size"
-  DOCK_Y=$((SH * 955 / 1000))
+  DOCK_NODES="$((W / 8)) $((SH * 917 / 1000))"
+  DOCK_AGENTS="$((W * 5 / 8)) $((SH * 917 / 1000))"
 }
-tap_tab() { # <index>
-  adb shell input tap "$((W * (2 * $1 + 1) / 8))" "$DOCK_Y" > /dev/null 2>&1 \
-    || fail "the tap on tab $1 did not land"
+tap_dock() { # <x> <y>
+  adb shell input tap "$1" "$2" > /dev/null 2>&1 || fail "the dock tap did not land"
+}
+
+# Where the dock's two destinations are, from the dump taken at rest.
+read_dock() { # <nodes-out> <agents-out>
+  local nodes agents
+  nodes=$(python3 "$here/ui.py" "$out/ui.xml" tap Nodes 2> /dev/null)
+  agents=$(python3 "$here/ui.py" "$out/ui.xml" tap Agents 2> /dev/null)
+  [ -n "$nodes" ] && [ -n "$agents" ] || return 1
+  echo "$nodes" > "$1"
+  echo "$agents" > "$2"
+  note "dock: Nodes at [$nodes], Agents at [$agents]"
 }
 
 # A page at rest is static, so a dump of the settled card does reach the idle
@@ -135,8 +149,8 @@ launch() { # <tag> <tab>
 
 # One switch: tap the tab, note the phase the page logs first, record the first
 # seconds of it and keep a still of the rest.
-switch_to_agents() { # <tag> <clip?>
-  local tag=$1 clip=${2:-} rec=0 first
+switch_to_agents() { # <tag> <point> <clip?>
+  local tag=$1 point=$2 clip=${3:-} rec=0
   if [ -n "$clip" ]; then
     adb shell "rm -f /sdcard/$tag.mp4" > /dev/null 2>&1 || true
     adb shell screenrecord --time-limit 9 --bit-rate 6000000 --size 540x1200 \
@@ -146,9 +160,10 @@ switch_to_agents() { # <tag> <clip?>
   fi
   adb logcat -c > /dev/null 2>&1 || true
   sleep 0.2
-  tap_tab 2
-  # The page only logs a phase when its tab opens or its state changes.
-  await_log "$tag" 'taildeck agents: ' 5 \
+  tap_dock $point
+  # The page only logs a phase when its tab opens or its state changes. A
+  # loaded emulator can take seconds to deliver the tap.
+  await_log "$tag" 'taildeck agents: ' 12 \
     || fail "$tag: tapping the Agents tab started no page; the tap did not land"
   sleep 1
   shot "$tag-early"
@@ -188,11 +203,16 @@ case "$(rest_has 'did not answer')" in
   missing) fail "slow: the page at rest does not carry that failure" ;;
   *) note "slow: no dump at rest; the still carries the card" ;;
 esac
-tap_tab 0
+read_dock "$out/dock-nodes.txt" "$out/dock-agents.txt" || true
+[ -s "$out/dock-nodes.txt" ] || echo "$DOCK_NODES" > "$out/dock-nodes.txt"
+[ -s "$out/dock-agents.txt" ] || echo "$DOCK_AGENTS" > "$out/dock-agents.txt"
+read -r nx ny < "$out/dock-nodes.txt"
+read -r ax ay < "$out/dock-agents.txt"
+tap_dock "$nx" "$ny"
 sleep 2
 # Leaving the page starts the next visit clean.
 adb logcat -c > /dev/null 2>&1 || true
-switch_to_agents slow clip
+switch_to_agents slow "$ax $ay" clip
 assert_phases slow "connecting failed"
 [ -s "$out/slow-early.png" ] || fail "slow: no still of the first second"
 case "$(rest_has 'did not answer')" in
@@ -226,7 +246,7 @@ note "slow: no second dial after the failure"
 target ghost 22
 launch fast 0
 sleep 8
-switch_to_agents fast
+switch_to_agents fast "$ax $ay"
 assert_phases fast "connecting failed"
 sleep 1
 case "$(rest_has "Can't find node ghost")" in
