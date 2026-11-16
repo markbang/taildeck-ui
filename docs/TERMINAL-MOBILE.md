@@ -98,7 +98,7 @@ is a click, and only the toolbar's keyboard button shows or hides the IME.
 | Mouse reporting | Herdr: a click in a tracking program is a press then release with the button and modifiers; Shift keeps it local; a long press is local selection | A tap in a program that tracks the mouse sends a left press and a release through `td_term_encode_mouse`: the tap pixel and the current cell size give the cell, the key row's armed Ctrl/Alt ride along as GhosttyMods bits, and they clear after the click. The emulator picks the protocol the remote enabled (SGR 1006 is what vim, htop and tmux ask for); a terminal without mouse tracking gets no bytes. Long-press and double-tap are local selection and never send a click | Implemented |
 | Wheel and drag | Herdr: wheel notches are button 4/5 reports when the mouse is tracked; drag reports motion | A vertical drag walks the scrollback and a wheel scrolls it, locally. Reporting the wheel to a tracking program is not done yet | Open |
 | Grid gestures | Termius puts its gestures on the grid; Termux swipes its row | A one-finger swipe sends arrow keys. The axis locks to the first movement, one key per 26 dp along it, at most three per frame. Settings → Terminal → "Swipe sends arrows" turns it off, and a vertical drag then walks the scrollback | Implemented |
-| Word selection | Kotlin `TerminalView` selects the word under a long press; iOS terminals use double-tap | Long-press enters selection on the word under the finger and double-tap does the same, through `td_term_select`; two draggable handles move either end; a drag on the grid moves the far end, a tap clears the selection and keeps the keyboard up | Implemented |
+| Word selection | Kotlin `TerminalView` selects the word under a long press; iOS terminals use double-tap | Long-press enters selection on the word under the finger and double-tap does the same, through `td_term_select`; a wide CJK character carries its spacer cell into the run, so 你好 is one word; two draggable handles move either end; a drag on the grid moves the far end, a tap clears the selection | Implemented |
 | Copy, paste and links | Kotlin action mode has Copy and Paste; Termius and Blink both put copy on the selection | A toolbar over the selection: Copy (`td_term_selection_text` → system clipboard), Open link when the whole selection is one http(s) URL, Paste (`td_term_encode_paste`, bracketed paste respected). The capsule carries paste as well | Implemented |
 | Compose | Termius and Blink type into a command sheet for long or composed input | A multiline sheet with the terminal's mono style; Send writes the text through the send path (one Enter per line unless insert-only). The app's IME composers (Pinyin, Japanese) commit into it, so CJK never has to travel through a single-line field | Implemented |
 | Zoom | Blink: pinch on the grid | Pinch changes the grid font size from 8 to 24 pt and keeps it. Settings → Terminal shows the same value with A− / A+ | Implemented |
@@ -116,34 +116,36 @@ is a click, and only the toolbar's keyboard button shows or hides the IME.
 
 `tool/termtap_record.sh` (workflow `termtap-record`) is the tap and keyboard
 gate. It installs the APK, signs in to the runner's test control plane, opens a
-real session on the peer's sshd, and then: puts the keyboard away, taps the
-grid and fails if the IME comes up (a tap is only a click); taps the capsule's
-`Show keyboard` button and fails unless `dumpsys input_method` reports
-`mInputShown=true`; taps the same button again and fails unless the IME
-closes; taps the grid once more and fails if the IME comes back; types a
-command through the IME with a Backspace in it and checks it ran on the shell; and opens the d-pad,
-sends Ctrl and the arrow keys, the snippet sheet and Compose. The same run
-starts a small Python program on the peer that enables mouse tracking
-(1000 + SGR 1006) and logs what it reads; the gate fails unless a tap arrives
-as `<0;Cx;CyM` then `<0;Cx;Cym` on the same cell, and a Ctrl-armed tap as
-`<16;`. The clips are `tap-no-keyboard.mp4` (tap, no IME), `tap-keyboard.mp4`
-(the button opens and closes it), `compose-send.mp4` (Compose with Chinese
-text), `toolbar-controls.mp4` (Ctrl, arrows, snippets, paste),
-`tap-mouse.mp4` and `tap-mouse-ctrl.mp4` (the probe's reports on the grid),
+real session on the peer's sshd, and then: taps the grid and fails if the IME
+comes up (a tap is only a click); taps the capsule's `Show keyboard` button and
+fails unless `dumpsys input_method` reports `mInputShown=true`; types a command
+with a Backspace through the IME and checks it ran on the shell; taps
+`Hide keyboard` and fails unless the IME closes; taps the grid again and fails
+if it comes back; and exercises the d-pad, Ctrl, the arrows, the snippet sheet
+and Compose. The same run starts a small Python program on the peer that
+enables mouse tracking (1000 + SGR 1006) and logs what it reads; the gate fails
+unless a tap arrives as `<0;Cx;CyM` then `<0;Cx;Cym` on the same cell, and a
+Ctrl-armed tap as `<16;`. Clips: `tap-focus.mp4` (the whole gate),
+`tap-mouse.mp4` and `tap-mouse-ctrl.mp4` (the probe's reports),
 `tap-vim.mp4` with `tap-vim-before.png` / `tap-vim-after.png` (vim started with
-`set mouse=a` on a twelve-line file; a tap moves the cursor to another line,
-which vim writes to `/tmp/tapvim-cursor` on every move so the gate fails when
-the line does not change) and `tap-htop.mp4` with `tap-htop-before.png` /
-`tap-htop-after.png` (a tap on one process row, then on another). Stills:
-`tap-keyboard.png`, `sheet-dark.png`, `sheet-light.png`.
+`set mouse=a` on a twelve-line file; a tap moves the cursor, which vim writes
+to `/tmp/tapvim-cursor` on every move so the gate fails when the line does not
+change) and `tap-htop.mp4` with `tap-htop-before.png` / `tap-htop-after.png`
+(a tap on one process row, then on another; the app is force-stopped and the
+SSH session reopened first, so htop never depends on vim quitting).
 
-`tool/terminal_sheet_record.sh` (workflow `terminal-sheet-record`) records the
-same sheet before and after: it installs the published v0.2.18 APK first and
-records the old header, input line and quick-command row, then installs this
-build and records the new title bar, toolbar, tap-does-nothing, the keyboard
-button, Compose with Chinese text, the d-pad, snippets, paste, and the light
-theme. `sheet-structure.png` puts the new still next to the described
-reference layout, because the user's own image is not in the repository.
+`tool/terminal_sheet_record.sh`, called from the same job, records the sheet
+before and after: it installs the published v0.2.18 APK, records the old header,
+input line and quick-command row (`sheet-before-open.mp4`, `sheet-before-tap.mp4`,
+`sheet-before.png`), then installs this build and records the new title bar and
+capsule (`sheet-open.mp4`, `sheet-dark.png`), tap-does-nothing (`sheet-tap.mp4`),
+the keyboard button (`sheet-keyboard.mp4`), Compose with Chinese text
+(`sheet-compose.mp4`: a helper prints 你好, the run long-presses it, copies, and
+pastes it into Compose) and the toolbar controls (`sheet-toolbar.mp4`), plus the
+light theme (`sheet-light.mp4`, `sheet-light.png`). `sheet-structure.png` puts
+the new sheet next to the described reference layout (the user's own image is
+not in the repository), and `sheet-before-after.png` puts v0.2.18 next to this
+build.
 
 `tool/termgestures_record.sh` (workflow `termgestures-record`) records the
 gesture layer on the Android emulator: swipe arrows on both axes, a held arrow

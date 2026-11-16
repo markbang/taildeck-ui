@@ -55,7 +55,7 @@ herdr 是桌面终端复用器，没有触摸层：`herdrdev/herdr-core` 与 `he
 | 鼠标上报 | herdr：在跟踪鼠标的程序里，一次点击是先按下再松开，带按键与修饰键；Shift 留给本地；长按是本地选区 | 程序启用鼠标跟踪时，点一下会通过 `td_term_encode_mouse` 发一次左键按下和松开：点击像素与当前单元格尺寸算出单元格，键行上已激活的 Ctrl/Alt 作为 GhosttyMods 位一起发出，点击后清除。协议由模拟器按远端启用的模式选择（vim、htop、tmux 要的是 SGR 1006）；没开鼠标跟踪的终端不会收到任何字节。长按与双击是本地选区，从不发点击 | 已实现 |
 | 滚轮与拖动 | herdr：跟踪鼠标时滚轮变成 4/5 号键上报；拖动发移动 | 上下拖动翻看回滚、滚轮也翻回滚，都是本地的。把滚轮上报给跟踪鼠标的程序还没做 | 待做 |
 | 网格手势 | Termius 把手势放在网格上；Termux 靠在键行上滑 | 单指滑动发方向键：轴向由第一段位移决定，每 26 dp 一个键，每帧最多 3 个。设置 → 终端 → "滑动发送方向键" 可关闭，关闭后上下拖动改为翻看回滚 | 已实现 |
-| 选词 | Kotlin 的 `TerminalView` 长按选词；iOS 终端用双击 | 长按进入选区并选中手指下的词，双击同样（走 `td_term_select`），两端各有一个可拖动的把手；在网格上拖动可移动远端，单击清除选区并保持键盘 | 已实现 |
+| 选词 | Kotlin 的 `TerminalView` 长按选词；iOS 终端用双击 | 长按进入选区并选中手指下的词，双击同样（走 `td_term_select`），宽字符（CJK）带着自己的占位格一起算，所以 你好 是一个词；两端各有一个可拖动的把手；在网格上拖动可移动远端，单击清除选区并保持键盘 | 已实现 |
 | 复制、粘贴与链接 | Kotlin 的 action mode 有复制和粘贴；Termius 与 Blink 都放在选区上 | 选区上方的工具条：复制（`td_term_selection_text` → 系统剪贴板）、整段选区是一个 http(s) 链接时打开链接、粘贴（`td_term_encode_paste`，尊重 bracketed paste）。胶囊上也有粘贴按钮 | 已实现 |
 | 编写（Compose） | Termius、Blink 都用命令 sheet 输入长文本 | 多行 sheet，使用终端的等宽样式；发送走同一条发送路径（默认每行补回车，可切只插入）。系统的输入法组合（拼音、日文）在 sheet 里提交，中文不必经过单行输入框 | 已实现 |
 | 缩放 | Blink：在网格上捏合 | 捏合改变网格字号（8–24 pt）并持久保存；设置 → 终端 显示同一数值，可点 A− / A+ | 已实现 |
@@ -68,9 +68,9 @@ herdr 是桌面终端复用器，没有触摸层：`herdrdev/herdr-core` 与 `he
 
 ## 验证
 
-`tool/termtap_record.sh`（工作流 `termtap-record`）是点击与键盘门禁：安装 APK，登录录制机的测试控制面，在对等节点的 sshd 上打开真实会话，然后收起键盘、点网格，IME 一旦弹出就失败（点击只是鼠标点击）；点胶囊上的 `Show keyboard`，`dumpsys input_method` 不是 `mInputShown=true` 就失败；再点同一个按钮，IME 不收起就失败；再点一次网格，IME 回来就失败；通过 IME 输入一条带 Backspace 的命令，确认它真的在 shell 上执行；再展开方向盘，发 Ctrl 与方向键，打开片段列表和 Compose。同一次运行在对等节点上启动一个小 Python 程序，打开鼠标跟踪（1000 + SGR 1006）并记录收到的字节；一次点击必须是 `<0;Cx;CyM` 再 `<0;Cx;Cym` 且单元格相同，按住 Ctrl 的点击必须是 `<16;`，否则失败。录屏：`tap-no-keyboard.mp4`（点击后没有键盘）、`tap-keyboard.mp4`（按钮打开再关闭键盘）、`compose-send.mp4`（Compose 发中文）、`toolbar-controls.mp4`（Ctrl、方向键、片段、粘贴）、`tap-mouse.mp4` 与 `tap-mouse-ctrl.mp4`（探针收到的上报）、`tap-vim.mp4` 与 `tap-vim-before.png` / `tap-vim-after.png`（vim 以 `set mouse=a` 打开十二行文件，点另一处让光标移到另一行，vim 每次移动都把行号写进 `/tmp/tapvim-cursor`，行号没变就算失败）、`tap-htop.mp4` 与 `tap-htop-before.png` / `tap-htop-after.png`（先点一行进程，再点另一行）。静帧：`tap-keyboard.png`、`sheet-dark.png`、`sheet-light.png`。
+`tool/termtap_record.sh`（工作流 `termtap-record`）是点击与键盘门禁：安装 APK，登录录制机的测试控制面，在对等节点的 sshd 上打开真实会话，然后点网格，IME 一旦弹出就失败（点击只是鼠标点击）；点胶囊上的 `Show keyboard`，`dumpsys input_method` 不是 `mInputShown=true` 就失败；通过 IME 输入一条带 Backspace 的命令并确认它真的在 shell 上执行；点 `Hide keyboard`，IME 不收就失败；再点网格，IME 回来就失败；最后展开方向盘、发 Ctrl 与方向键、打开片段列表和 Compose。同一次运行在对等节点上启动一个小 Python 程序，打开鼠标跟踪（1000 + SGR 1006）并记录收到的字节；一次点击必须是 `<0;Cx;CyM` 再 `<0;Cx;Cym` 且单元格相同，按住 Ctrl 的点击必须是 `<16;`，否则失败。录屏：`tap-focus.mp4`（整段门禁）、`tap-mouse.mp4` 与 `tap-mouse-ctrl.mp4`（探针收到的上报）、`tap-vim.mp4` 与 `tap-vim-before.png` / `tap-vim-after.png`（vim 以 `set mouse=a` 打开十二行文件，点另一处让光标移到另一行，vim 每次移动都把行号写进 `/tmp/tapvim-cursor`，行号没变就算失败）、`tap-htop.mp4` 与 `tap-htop-before.png` / `tap-htop-after.png`（先点一行进程，再点另一行；这之前应用会被强制停止并重新拨号，htop 不依赖 vim 是否退出）。
 
-`tool/terminal_sheet_record.sh`（工作流 `terminal-sheet-record`）录制前后对照：先装已发布的 v0.2.18 APK，录下旧标题栏、输入行与快捷命令条，再装本次构建，录新标题栏、工具栏、点击不弹键盘、键盘按钮、Compose 发中文、方向盘、片段、粘贴与浅色主题。`sheet-structure.png` 把新静帧和“按描述画出的参考结构”放在一起，因为用户的原图不在仓库里。
+`tool/terminal_sheet_record.sh` 在同一个作业里录制前后对照：先装已发布的 v0.2.18 APK，录下旧标题栏、输入行与快捷命令条（`sheet-before-open.mp4`、`sheet-before-tap.mp4`、`sheet-before.png`），再装本次构建，录新标题栏与胶囊（`sheet-open.mp4`、`sheet-dark.png`）、点击不弹键盘（`sheet-tap.mp4`）、键盘按钮（`sheet-keyboard.mp4`）、Compose 发中文（`sheet-compose.mp4`：辅助脚本打印 你好，长按选中并复制，再粘进 Compose）与工具栏控制（`sheet-toolbar.mp4`），以及浅色主题（`sheet-light.mp4`、`sheet-light.png`）。`sheet-structure.png` 把新 sheet 和“按描述画出的参考结构”放在一起（用户的原图不在仓库里），`sheet-before-after.png` 是 v0.2.18 与本次构建的并排。
 
 `tool/termsend_record.sh`（工作流 `termsend-record`）录制发送写出的字节。演示会话把每个字节按插入符记法回显，所以 CR 在网格上显示成 `^M`：`term-send-button.png` 是输入行的发送（`echo send^M`），`term-send-ime.png` 是软键盘的回车（`echo enter^M`），`term-send-ime-action.png` 是 Gboard 自己的发送键（`echo action^M`，键盘不把按键放进无障碍树，所以按颜色找触点），`term-send-insert.png` 与 `-insert-cr.png` 是长按发送改成只插入：先插入 `echo ins` 不回车，再单独发一个 CR。旁边的录屏是同名的 `term-send-*.mp4`。模拟器连不上 tailnet，这些命令没有真实 shell 执行，因此 `echo` 的实际输出、历史调用与补全未实机验证。
 

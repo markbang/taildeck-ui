@@ -45,6 +45,8 @@ screen_size() {
 }
 
 dump() {
+  # A failed pull must not leave the previous screen's nodes in place.
+  rm -f "$out/ui.xml"
   adb shell uiautomator dump /sdcard/ui.xml > /dev/null 2>&1 || true
   adb pull /sdcard/ui.xml "$out/ui.xml" > /dev/null 2>&1 || true
 }
@@ -88,7 +90,12 @@ hide_ime() {
 }
 
 open_keyboard() {
-  ui has 'Hide keyboard' > /dev/null 2>&1 && return 0
+  # Hide first when the capsule thinks the IME is up: the hidden IME field
+  # then takes focus again on Show, which a stale connection would not.
+  if ui has 'Hide keyboard' > /dev/null 2>&1; then
+    tap_label 'Hide keyboard' > /dev/null 2>&1 || true
+    sleep 1
+  fi
   tap_label 'Show keyboard'
 }
 
@@ -452,24 +459,17 @@ VIM
   else
     fail "vim: the tap did not move the cursor (line ${before:-none} -> ${after:-none})"
   fi
-  adb shell input keyevent KEYCODE_ESCAPE > /dev/null 2>&1 || true
-  # Quit through the page's key handler instead of the IME: `input text`
-  # reaches the focused terminal even with the soft keyboard down.
-  type_text ':q!'
-  adb shell input keyevent 66 > /dev/null 2>&1 || true
-  sleep 2
-  adb shell input keyevent KEYCODE_ESCAPE > /dev/null 2>&1 || true
-  rm -f /tmp/tap-vim-quit
-  send_command "touch /tmp/tap-vim-quit" 2
-  if [ ! -f /tmp/tap-vim-quit ]; then
-    # A swallowed Enter: try once more before failing the run.
-    adb shell input keyevent KEYCODE_ESCAPE > /dev/null 2>&1 || true
-    type_text ':q!'
-    adb shell input keyevent 66 > /dev/null 2>&1 || true
-    sleep 2
-    send_command "touch /tmp/tap-vim-quit" 2
-  fi
-  [ -f /tmp/tap-vim-quit ] || fail "vim did not quit before htop"
+  # Vim stays open: htop gets a fresh session below, so one screen's state
+  # can never decide the next gate.
+}
+
+# Force-stop and dial again, for a shell that starts clean.
+fresh_session() {
+  adb shell am force-stop "$app" > /dev/null 2>&1 || true
+  sleep 1
+  launch || { note "fresh session: cannot launch the app"; return 1; }
+  sign_in || true
+  open_session "$peer" || { note "fresh session: no SSH session"; return 1; }
 }
 
 quit_htop() { send_command q 1; }
@@ -541,6 +541,7 @@ check_mouse /tmp/tap-mouse.log ctrl
 check_cell /tmp/tap-mouse.log
 
 record tap-vim 18 vim_step
+fresh_session || fail "could not open a fresh session for htop"
 record tap-htop 16 htop_step
 
 # A gate that never ran is not a gate: the call above must reach it.

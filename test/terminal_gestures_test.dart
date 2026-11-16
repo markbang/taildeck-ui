@@ -44,6 +44,22 @@ void main() {
     expect(wordRange(2, line.length, filled), (from: 2, to: 2));
   });
 
+  test('a wide character keeps its spacer in the word', () {
+    // 你 at 10, its spacer at 11, 好 at 12, its spacer at 13.
+    const spacerCells = {11, 13};
+    const textCells = {10, 12};
+    bool hasText(int column) => textCells.contains(column);
+    bool spacer(int column) => spacerCells.contains(column);
+
+    final range = wordRangeWithSpacers(
+      10,
+      20,
+      hasText: hasText,
+      spacer: spacer,
+    );
+    expect(range, (from: 10, to: 13));
+  });
+
   test('urlInSelection accepts one link and drops trailing punctuation', () {
     expect(
       urlInSelection('https://tailscale.com/kb/1151'),

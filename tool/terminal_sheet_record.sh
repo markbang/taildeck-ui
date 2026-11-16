@@ -34,6 +34,8 @@ adb shell wm dismiss-keyguard > /dev/null 2>&1 || true
 adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS > /dev/null 2>&1 || true
 
 dump() {
+  # A failed pull must not leave the previous screen's nodes in place.
+  rm -f "$out/ui.xml"
   adb shell uiautomator dump /sdcard/ui.xml > /dev/null 2>&1 || true
   adb pull /sdcard/ui.xml "$out/ui.xml" > /dev/null 2>&1 || true
 }
@@ -76,7 +78,12 @@ hide_ime() {
 }
 
 open_keyboard() {
-  ui has 'Hide keyboard' > /dev/null 2>&1 && return 0
+  # Hide first when the capsule thinks the IME is up: the hidden IME field
+  # then takes focus again on Show, which a stale connection would not.
+  if ui has 'Hide keyboard' > /dev/null 2>&1; then
+    tap_label 'Hide keyboard' > /dev/null 2>&1 || true
+    sleep 1
+  fi
   tap_label 'Show keyboard'
 }
 
@@ -294,9 +301,17 @@ new_toolbar() {
 # Chinese without a Chinese IME: print it from octal escapes, copy it from the
 # grid, and let Compose paste it.
 compose_flow() {
-  send_command "clear" 1
-  send_command "sh /tmp/tapzh.sh" 2
-  long_press_grid 0.06 0.06
+  # The script clears with ANSI and prints 你好 on the first row, so the
+  # long press lands on the CJK line and not on the SSH banner above it.
+  # Hardware keys, not the IME: the page's focus handler is always ready
+  # right after the session opens.
+  type_text "sh /tmp/tapzh.sh"
+  adb shell input keyevent 66 > /dev/null 2>&1 || true
+  sleep 3
+  type_text "sh /tmp/tapzh.sh"
+  adb shell input keyevent 66 > /dev/null 2>&1 || true
+  sleep 2
+  long_press_grid 0.06 0.03
   tap_label 'Copy' || { note "compose: the selection toolbar had no Copy"; return 1; }
   sleep 1
   tap_label 'Compose' || { note "compose: no Compose button"; return 1; }
@@ -304,6 +319,7 @@ compose_flow() {
   type_text "echo "
   tap_label 'Paste' || { note "compose: no Paste button"; return 1; }
   sleep 1
+  ui has '你好' > /dev/null 2>&1 || note "compose: the field does not hold the CJK text"
   shot sheet-compose
   tap_label 'Send' || { note "compose: no Send button"; return 1; }
   sleep 3
@@ -340,9 +356,11 @@ launch || { note "cannot launch the app"; exit 0; }
 sign_in || true
 cat > /tmp/tapzh.sh <<'ZH'
 #!/bin/sh
+printf '\033[2J\033[H'
 printf '\344\275\240\345\245\275\n'
 ZH
 record sheet-open 25 new_open
+sleep 5
 shot sheet-dark
 record sheet-compose 26 compose_flow
 record sheet-tap 10 new_tap
