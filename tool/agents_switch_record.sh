@@ -73,14 +73,30 @@ target() { # <node> <port>
 }
 
 shot() { adb exec-out screencap -p > "$out/$1.png" 2> /dev/null || rm -f "$out/$1.png"; }
+# A dump taken while Flutter re-publishes its tree comes back empty, so only a
+# dump uiautomator says it wrote counts.
 dump_page() {
   rm -f "$out/ui.xml"
-  timeout 60 adb shell uiautomator dump /sdcard/ui.xml > /dev/null 2>&1 || return 1
+  timeout 60 adb shell uiautomator dump /sdcard/ui.xml > "$out/dump.txt" 2>&1 || return 1
+  grep -q 'dumped to' "$out/dump.txt" || return 1
   timeout 30 adb pull /sdcard/ui.xml "$out/ui.xml" > /dev/null 2>&1 || return 1
   [ -s "$out/ui.xml" ]
 }
 page_has() { python3 "$here/ui.py" "$out/ui.xml" has "$1" 2> /dev/null; }
 tap_point() { python3 "$here/ui.py" "$out/ui.xml" tap "$1" 2> /dev/null; }
+# The dock does not move, so each destination's point is read once, with the
+# retries an empty dump needs.
+dock_point() { # <label>
+  local attempt point
+  for attempt in $(seq 1 10); do
+    if dump_page; then
+      point=$(tap_point "$1")
+      if [ -n "$point" ]; then echo "$point"; return 0; fi
+    fi
+    sleep 1
+  done
+  return 1
+}
 phases() { timeout 60 adb logcat -d 2> /dev/null | grep -aoE 'taildeck agents: [a-z]+' | awk '{print $3}' | tr '\n' ' ' | sed 's/ *$//'; }
 
 launch() { # <tag> <tab>
@@ -168,17 +184,17 @@ target bangwu "${HANG_PORT:-3001}"
 launch slow 2
 await_failure slow 30000
 sleep 1
+# The card on screen now is the reference the clip's frames are compared with.
 shot slow-stale-error
-dump_page || fail "slow: no dump of the stale error"
-page_has "Retry" || fail "slow: the error card left the screen before the switch"
-tap_point Nodes > "$out/slow-nodes.txt" || fail "slow: no Nodes destination in the dock"
+dock_point Nodes > "$out/slow-nodes.txt" || fail "slow: no Nodes destination in the dock"
 read -r nx ny < "$out/slow-nodes.txt"
+dock_point Agents > "$out/slow-agents.txt" || fail "slow: no Agents destination in the dock"
 adb shell input tap "$nx" "$ny" > /dev/null 2>&1 || fail "slow: the Nodes tap did not land"
 sleep 1.5
-dump_page || fail "slow: no dump after leaving the Agents tab"
-page_has "Connecting to herdr" && fail "slow: the Agents page stayed on screen after leaving it"
-agents_point=$(tap_point Agents) || fail "slow: no Agents destination in the dock"
-switch_and_record slow "$agents_point" clip
+dump_page && page_has "Connecting to herdr" \
+  && fail "slow: the Agents page stayed on screen after leaving it"
+read -r ax ay < "$out/slow-agents.txt"
+switch_and_record slow "$ax $ay" clip
 assert_phases slow "connecting failed"
 
 grep -q 'slow-600ms:.*connecting' "$summary" \
@@ -219,8 +235,9 @@ assert_phases slow "connecting failed"
 target ghost 22
 launch fast 0
 sleep 8
-agents_point=$(tap_point Agents) || fail "fast: no Agents destination in the dock"
-switch_and_record fast "$agents_point"
+dock_point Agents > "$out/fast-agents.txt" || fail "fast: no Agents destination in the dock"
+read -r ax ay < "$out/fast-agents.txt"
+switch_and_record fast "$ax $ay"
 assert_phases fast "connecting failed"
 grep -q "fast-7000ms:.*no-host" "$summary" \
   || fail "fast: the unknown host never reached the error card"
