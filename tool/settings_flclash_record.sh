@@ -207,21 +207,31 @@ dismiss_system_dialogs() {
   done
 }
 
-# FlClash opens on its disclaimer once per install: read to its end and agree.
+# FlClash opens on its disclaimer once per install; Agree then asks for the
+# no-service statement typed back before Confirm enables. The emulator's
+# English locale is the statement this types.
+disclaimer_statement="The Software itself does not provide any proxy server, node, subscription, or network access service, and has no partnership, agency, or guarantee relationship with any provider of such services."
+
 accept_flclash_disclaimer() {
   local point attempt
+  point=$(ui tap Agree 2> /dev/null) || point=$(ui tap 同意 2> /dev/null) || return 0
+  tap_point "$point" 2
   for attempt in 1 2 3; do
-    point=$(ui tap Agree 2> /dev/null) || point=$(ui tap 同意 2> /dev/null) || return 0
-    for _ in 1 2 3 4 5; do
-      adb shell input swipe "$((W / 2))" "$((SH * 3 / 4))" "$((W / 2))" "$((SH / 2))" 200 > /dev/null 2>&1 || true
-      sleep 0.4
-    done
-    point=$(ui tap Agree 2> /dev/null) || point=$(ui tap 同意 2> /dev/null) || return 0
-    # shellcheck disable=SC2086
-    adb shell input tap $point > /dev/null 2>&1 || true
-    sleep 3
-    ui has Agree > /dev/null 2>&1 || return 0
+    ui has Confirm > /dev/null 2>&1 || return 0
+    if point=$(ui edit 0 2> /dev/null); then
+      tap_point "$point" 1
+      # shellcheck disable=SC2086
+      adb shell input text "$(printf '%s' "$disclaimer_statement" | sed 's/ /%s/g')" > /dev/null 2>&1 || true
+      sleep 3
+    elif point=$(ui tap "I have read" 2> /dev/null); then
+      # A remote-focused build asks for a check instead of the statement.
+      tap_point "$point" 1
+    fi
+    point=$(ui tap Confirm 2> /dev/null) && tap_point "$point" 3
+    ui has Confirm > /dev/null 2>&1 || return 0
+    note "disclaimer: Confirm still disabled after attempt $attempt"
   done
+  ui texts "$SH" > "$out/flclash-disclaimer.txt" 2> /dev/null || true
 }
 
 launch_flclash() {
@@ -231,6 +241,7 @@ launch_flclash() {
   sleep 10
   dismiss_system_dialogs
   accept_flclash_disclaimer
+  sleep 3
   shot flclash-launch
   ui texts "$SH" > "$out/flclash-launch.txt" 2> /dev/null || true
   # Its dock is the last of four slots whether or not its labels reach the
