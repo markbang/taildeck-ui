@@ -170,26 +170,50 @@ adb install -g "$flclash_apk" > "$out/install-flclash.txt" 2>&1 ||
 adb shell am force-stop "$flclash" > /dev/null 2>&1 || true
 sleep 2
 adb shell monkey -p "$flclash" -c android.intent.category.LAUNCHER 1 > /dev/null 2>&1 || true
-sleep 10
+sleep 12
 dismiss_system_dialogs
 accept_flclash_disclaimer
 sleep 3
-if ! wait_for Tools 20; then
-  tap_point "$((W * 7 / 8)) $((SH - 160))" 2
+dismiss_system_dialogs
+shot flclash-home
+
+# Its Tools tab holds the Settings list with the Language row; the label is
+# not always published, so the tab's corner is the fallback.
+open_tools() {
+  local attempt
+  for attempt in 1 2 3; do
+    if point=$(ui tap Tools 2> /dev/null); then
+      # shellcheck disable=SC2086
+      tap_point "$point" 3
+    else
+      tap_point "$((W * 7 / 8)) $((SH - 160))" 3
+    fi
+    if ui has Language > /dev/null 2>&1; then return 0; fi
+    # A list longer than the page keeps the row below the fold.
+    adb shell input swipe "$((W / 2))" "$((SH * 3 / 5))" "$((W / 2))" "$((SH / 5))" 300 \
+      > /dev/null 2>&1 || true
+    sleep 2
+    ui has Language > /dev/null 2>&1 && return 0
+  done
+  return 1
+}
+
+if open_tools; then
+  shot flclash-settings
+  ui bounds Language > "$out/flclash-language-row.txt" 2> /dev/null || true
+  note "flclash language row: $(ui bounds Language 2> /dev/null || echo none)"
+  tap_point "$(value_point Language)" 3
+  ui has English > /dev/null 2>&1 || note "FlClash: no English entry in its menu"
+  shot flclash-open
+  measure flclash Default 6 Russian
+  tap_point "$((W / 8)) $((SH / 10))" 3
+  shot flclash-closed
+else
+  shot flclash-fail
+  note "FlClash: no Language row; see flclash-home.png and flclash-fail.png"
 fi
-if tap_label_point=$(ui tap Tools 2> /dev/null); then
-  # shellcheck disable=SC2086
-  tap_point "$tap_label_point" 2
-fi
-wait_for Language 20 || fail "FlClash never showed its Language row"
-shot flclash-settings
-tap_point "$(value_point Language)" 3
-ui has English > /dev/null 2>&1 || note "FlClash: no English entry in its menu"
-shot flclash-open
-measure flclash Default 6 Russian
-tap_point "$((W / 8)) $((SH / 10))" 3
-shot flclash-closed
 back_key
+sleep 1
 
 # ---- the same frame, side by side ----------------------------------------
 
