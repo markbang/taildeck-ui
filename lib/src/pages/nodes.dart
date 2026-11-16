@@ -31,8 +31,7 @@ class NodesPage extends StatelessWidget {
     final backend = BackendScope.of(context);
     // Until the netmap is in, the node has no name and no peers to report:
     // the page keeps its loading state rather than drawing that as the node.
-    final live =
-        backend.available && backend.tailnetReady && backend.self != null;
+    final live = backend.available && backend.self != null;
     // The preview draws the demo tailnet; a release build only ever shows what
     // the node reports, and says so when it reports nothing.
     final self = live ? backend.self : (demoData ? demoSelfNode : null);

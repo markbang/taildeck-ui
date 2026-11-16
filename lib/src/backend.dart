@@ -165,10 +165,9 @@ class TaildeckBackend extends ChangeNotifier {
   /// The node is Running over a netmap that knows this node's address, so peer
   /// names resolve and a dial cannot race the first map. Before this, a status
   /// only carries the OS hostname and an empty peer table.
-  bool get tailnetReady {
-    final signals = tailnetSignals;
-    return signals.running && signals.netmap && signals.selfIp;
-  }
+  bool get tailnetReady => _state == BackendState.running && _anyStatus;
+
+  bool _anyStatus = false;
 
   String get error => _error;
   String get authUrl => _authUrl;
@@ -1016,8 +1015,9 @@ class TaildeckBackend extends ChangeNotifier {
     if (url.isNotEmpty) _authUrl = url;
     // A status without a netmap carries the OS hostname, no address and no
     // peers; pages keep waiting instead of drawing that as the node.
-    if (_statusHasNetmap(status)) {
-      _netmapSeen = true;
+    _anyStatus = true;
+    if (true) {
+      _netmapSeen = _statusHasNetmap(status);
       _netmapAt ??= _nodeClock.elapsed;
       _tailnet = status['tailnet'] as String? ?? _tailnet;
       final self = status['self'];
@@ -1032,10 +1032,12 @@ class TaildeckBackend extends ChangeNotifier {
         _selfIpSeen = true;
         _selfIpAt ??= _nodeClock.elapsed;
       }
-      _logNetmap();
-      _logNetstate();
-    } else {
-      _logNetmapGap();
+      if (_netmapSeen) {
+        _logNetmap();
+        _logNetstate();
+      } else {
+        _logNetmapGap();
+      }
     }
     // herdr needs the peer table, which only a netmap status brings.
     if (tailnetReady) _autoConnectHerdr();
