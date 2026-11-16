@@ -69,18 +69,12 @@ hostname=${SEED_HOSTNAME:-taildeck}
 [ -s "$seed" ] || fail "no seeded node state at $seed (run tool/seed_state.dart first)"
 mkdir -p "$out/files"
 
-# Binary through run-as: base64 in chunks, because one long pty line is not
-# reliable and a bare cat mangles the bytes.
+# run-as takes the file as one base64 argument; a bare cat would let the pty
+# translate the bytes.
 push_file() { # <local> <app-relative>
-  local b64 chunk
+  local b64
   b64=$(base64 -w0 "$1")
-  adb shell "run-as $app sh -c ': > $2.b64'" > /dev/null 2>&1 || return 1
-  while [ -n "$b64" ]; do
-    chunk=${b64:0:1800}
-    b64=${b64:1800}
-    adb shell "run-as $app sh -c 'printf %s $chunk >> $2.b64'" > /dev/null 2>&1 || return 1
-  done
-  adb shell "run-as $app sh -c 'base64 -d $2.b64 > $2 && rm $2.b64'" > /dev/null 2>&1
+  adb shell "run-as $app sh -c 'echo $b64 | base64 -d > $2'" > /dev/null 2>&1
 }
 
 adb shell run-as "$app" mkdir -p files/tsnet > /dev/null 2>&1 \
