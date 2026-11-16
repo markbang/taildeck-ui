@@ -11,6 +11,7 @@ import '../l10n.dart';
 import '../motion.dart';
 import '../widgets/controls.dart';
 import '../widgets/foundation.dart';
+import '../widgets/header.dart';
 import '../widgets/snackbar.dart';
 import '../widgets/loading.dart';
 import '../widgets/bottom_sheet.dart';
@@ -448,41 +449,101 @@ class _AgentChatPageState extends State<AgentChatPage> {
     return Surface(
       color: SurfaceLevel.page.colorOf(scheme),
       child: SafeArea(
+        top: false,
         child: Padding(
           padding: EdgeInsets.only(
             bottom: MediaQuery.viewInsetsOf(context).bottom,
           ),
-          child: Column(
+          child: Stack(
             children: [
-              _header(context, l10n, agent, status, tint),
-              Expanded(
-                child: Stack(
-                  children: [
-                    Positioned.fill(
-                      child: Align(
-                        alignment: Alignment.topCenter,
-                        child: ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 760),
-                          child: _body(context, l10n),
+              Column(
+                children: [
+                  Expanded(
+                    child: Stack(
+                      children: [
+                        Positioned.fill(
+                          child: Align(
+                            alignment: Alignment.topCenter,
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 760),
+                              child: _body(context, l10n),
+                            ),
+                          ),
                         ),
-                      ),
-                    ),
-                    Positioned(
-                      left: 0,
-                      right: 0,
-                      bottom: 12,
-                      child: Center(
-                        child: MotionVisibility(
-                          visible: !_nearBottom,
-                          scaleFrom: 0.8,
-                          child: _ScrollToBottom(onPressed: _toBottom),
+                        Positioned(
+                          left: 0,
+                          right: 0,
+                          bottom: 12,
+                          child: Center(
+                            child: MotionVisibility(
+                              visible: !_nearBottom,
+                              scaleFrom: 0.8,
+                              child: _ScrollToBottom(onPressed: _toBottom),
+                            ),
+                          ),
                         ),
-                      ),
+                      ],
                     ),
-                  ],
+                  ),
+                  _composer(context, l10n),
+                ],
+              ),
+              PositionedDirectional(
+                start: 0,
+                end: 0,
+                top: 0,
+                child: PageHeader(
+                  child: PageBar(
+                    title: agent.label,
+                    subtitle: _subtitle(agent),
+                    onBack: () => Navigator.of(context).maybePop(),
+                    maxWidth: 760,
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        FadeThrough(
+                          child: StatusPill(
+                            key: ValueKey(status),
+                            label: status,
+                            tint: tint,
+                            dot: true,
+                            pulse:
+                                _agent.status == HerdrStatus.working ||
+                                _agent.status == HerdrStatus.blocked,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        IconButton(
+                          onPressed: _restarting || _switchingModel
+                              ? null
+                              : () => unawaited(_pickModel()),
+                          icon: _switchingModel
+                              ? LoadingIndicator(
+                                  size: 16,
+                                  semanticLabel: l10n.pleaseWait,
+                                )
+                              : const GlyphIcon(Glyphs2.sliders),
+                          tooltip: l10n.agentModel,
+                        ),
+                        IconButton(
+                          onPressed: _restarting || _switchingModel
+                              ? null
+                              : () => unawaited(_restart()),
+                          icon: _restarting
+                              ? LoadingIndicator(
+                                  size: 16,
+                                  semanticLabel: l10n.agentRestarting,
+                                )
+                              : const GlyphIcon(Glyphs2.refresh),
+                          tooltip: _restarting
+                              ? l10n.agentRestarting
+                              : l10n.agentRestart,
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ),
-              _composer(context, l10n),
             ],
           ),
         ),
@@ -490,98 +551,16 @@ class _AgentChatPageState extends State<AgentChatPage> {
     );
   }
 
-  Widget _header(
-    BuildContext context,
-    AppLocalizations l10n,
-    HerdrAgent agent,
-    String status,
-    Color tint,
-  ) {
-    final scheme = context.colorScheme;
+  /// The model and the context it has used, under the agent's name.
+  String _subtitle(HerdrAgent agent) {
     final model = _transcript?.model ?? '';
-    final subtitle = [
+    return [
       agent.kind,
       if (model.isNotEmpty) model,
       if (_transcript?.contextWindow != null && _transcript!.contextWindow > 0)
-        '${_contextLabel(_transcript!.contextUsed)} / ${_contextLabel(_transcript!.contextWindow)}',
+        '${_contextLabel(_transcript!.contextUsed)} / '
+            '${_contextLabel(_transcript!.contextWindow)}',
     ].join(' · ');
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(8, 6, 12, 10),
-      child: Row(
-        children: [
-          IconButton(
-            onPressed: () => Navigator.of(context).maybePop(),
-            icon: const GlyphIcon(Glyphs.chevronBack),
-            tooltip: l10n.back,
-          ),
-          const SizedBox(width: 2),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Flexible(
-                      child: Text(
-                        agent.label,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: AppTextStyle.title3.of(
-                          context,
-                          emphasized: true,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    FadeThrough(
-                      child: StatusPill(
-                        key: ValueKey(status),
-                        label: status,
-                        tint: tint,
-                        dot: true,
-                        pulse:
-                            _agent.status == HerdrStatus.working ||
-                            _agent.status == HerdrStatus.blocked,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  subtitle,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppTextStyle.footnote
-                      .of(context)
-                      .copyWith(color: scheme.onSurfaceVariant),
-                ),
-              ],
-            ),
-          ),
-          IconButton(
-            onPressed: _restarting || _switchingModel
-                ? null
-                : () => unawaited(_pickModel()),
-            icon: _switchingModel
-                ? LoadingIndicator(size: 16, semanticLabel: l10n.pleaseWait)
-                : const GlyphIcon(Glyphs2.sliders),
-            tooltip: l10n.agentModel,
-          ),
-          IconButton(
-            onPressed: _restarting || _switchingModel
-                ? null
-                : () => unawaited(_restart()),
-            icon: _restarting
-                ? LoadingIndicator(
-                    size: 16,
-                    semanticLabel: l10n.agentRestarting,
-                  )
-                : const GlyphIcon(Glyphs2.refresh),
-            tooltip: _restarting ? l10n.agentRestarting : l10n.agentRestart,
-          ),
-        ],
-      ),
-    );
   }
 
   static String _contextLabel(int tokens) {
@@ -597,7 +576,12 @@ class _AgentChatPageState extends State<AgentChatPage> {
     }
     if (_error.isNotEmpty) {
       return ListView(
-        padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
+        padding: EdgeInsets.fromLTRB(
+          20,
+          context.contentTopPadding,
+          20,
+          20,
+        ),
         children: [InlineNotice(text: _error)],
       );
     }
@@ -605,7 +589,12 @@ class _AgentChatPageState extends State<AgentChatPage> {
     if (transcript == null) return const SizedBox.shrink();
     if (transcript.screenMode) {
       return ListView(
-        padding: const EdgeInsets.fromLTRB(20, 6, 20, 20),
+        padding: EdgeInsets.fromLTRB(
+          20,
+          context.contentTopPadding,
+          20,
+          20,
+        ),
         children: [
           Text(
             l10n.agentScreenMode,
@@ -635,7 +624,12 @@ class _AgentChatPageState extends State<AgentChatPage> {
     }
     return ListView(
       controller: _scroll,
-      padding: const EdgeInsets.fromLTRB(20, 6, 20, 20),
+      padding: EdgeInsets.fromLTRB(
+        20,
+        context.contentTopPadding,
+        20,
+        20,
+      ),
       children: [
         if (transcript.truncated) ...[
           Align(
@@ -1566,48 +1560,20 @@ class _SubagentViewState extends State<_SubagentView> {
     return Surface(
       color: SurfaceLevel.page.colorOf(scheme),
       child: SafeArea(
-        child: Column(
+        top: false,
+        child: Stack(
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(8, 6, 16, 8),
-              child: Row(
-                children: [
-                  IconButton(
-                    onPressed: () => Navigator.of(context).maybePop(),
-                    icon: const GlyphIcon(Glyphs.chevronBack),
-                    tooltip: l10n.back,
-                  ),
-                  const SizedBox(width: 2),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Semantics(
-                          header: true,
-                          child: Text(
-                            title,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: AppTextStyle.title3.of(
-                              context,
-                              emphasized: true,
-                            ),
-                          ),
-                        ),
-                        if (type.isNotEmpty)
-                          Text(
-                            type,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: AppTextStyle.footnote
-                                .of(context)
-                                .copyWith(color: scheme.onSurfaceVariant),
-                          ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  StatusPill(
+            Positioned.fill(child: _body(context, l10n, subagent)),
+            PositionedDirectional(
+              start: 0,
+              end: 0,
+              top: 0,
+              child: PageHeader(
+                child: PageBar(
+                  title: title,
+                  subtitle: type.isEmpty ? null : type,
+                  onBack: () => Navigator.of(context).maybePop(),
+                  trailing: StatusPill(
                     label: finished
                         ? l10n.agentSubagentFinished
                         : l10n.agentSubagentRunning,
@@ -1615,10 +1581,9 @@ class _SubagentViewState extends State<_SubagentView> {
                     dot: true,
                     pulse: !finished,
                   ),
-                ],
+                ),
               ),
             ),
-            Expanded(child: _body(context, l10n, subagent)),
           ],
         ),
       ),
@@ -1633,7 +1598,12 @@ class _SubagentViewState extends State<_SubagentView> {
     final scheme = context.colorScheme;
     if (_error.isNotEmpty && subagent == null) {
       return ListView(
-        padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
+        padding: EdgeInsets.fromLTRB(
+          20,
+          context.contentTopPadding,
+          20,
+          20,
+        ),
         children: [
           InlineNotice(text: l10n.agentSubagentFailed(_error)),
           if (widget.task.output.isNotEmpty)
@@ -1666,7 +1636,12 @@ class _SubagentViewState extends State<_SubagentView> {
     }
     final messages = subagent.transcript.messages;
     return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 6, 20, 24),
+      padding: EdgeInsets.fromLTRB(
+        20,
+        context.contentTopPadding,
+        20,
+        24,
+      ),
       children: [
         if (messages.isEmpty)
           Text(

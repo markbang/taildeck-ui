@@ -120,6 +120,23 @@ Pick the control from the kind of value, not from how it looks in the form:
 - Content scrolls under the status bar over an opaque-to-transparent scrim
   (`PageBody`), so a scrolled title never collides with the system icons.
 
+## Page bars
+
+- A subpage — anything with a back arrow: a settings section, Theme, Logs, a
+  node, an agent's chat — names itself in a compact bar over its content
+  (`PageBar`): a circular back button, one line of title (plus a caption line
+  when the page has one), and the page's actions at the end. The body has no
+  large title of its own; its content scrolls under the bar, which carries the
+  page's colour at 90% and eases out below it.
+- A first-level page (Nodes, Services, Agents, Settings) keeps its large
+  title, and hands it to the bar as the list scrolls: the title fades out
+  first, the bar's title comes in after it, so the page never reads as two
+  titles. A list too short to scroll the title under the bar still hands over
+  by its own end.
+- Both bars sit on the same 72 dp toolbar, so a page keeps its place when it
+  moves between the two, and the same widget carries the back button, the
+  title's `header` semantics and the actions' labels.
+
 ## Motion
 
 | What | Duration | Curve |

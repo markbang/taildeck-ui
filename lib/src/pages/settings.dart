@@ -332,18 +332,12 @@ class _SectionPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
     final scheme = context.colorScheme;
     return Surface(
       color: SurfaceLevel.page.colorOf(scheme),
       child: PageBody(
         title: title,
-        titleMaxLines: 2,
-        leading: IconButton(
-          onPressed: () => Navigator.maybePop(context),
-          icon: const GlyphIcon(Glyphs.chevronBack),
-          tooltip: l10n.back,
-        ),
+        onBack: () => Navigator.maybePop(context),
         children: [
           if (notice.isNotEmpty) ...[
             InlineNotice(text: notice, tint: scheme.primary),

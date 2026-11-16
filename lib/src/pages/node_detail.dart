@@ -201,14 +201,7 @@ class _NodeDetailPageState extends State<NodeDetailPage> {
     final body = PageBody(
       title: node.name,
       subtitle: '${node.os} · ${node.online ? l10n.online : l10n.offline}',
-      leading: Padding(
-        padding: const EdgeInsets.only(top: 6, right: 6),
-        child: IconButton(
-          onPressed: widget.onBack,
-          icon: const GlyphIcon(Glyphs.arrowBack),
-          tooltip: l10n.back,
-        ),
-      ),
+      onBack: widget.onBack,
       children: [
         Focus(focusNode: _focus, child: const SizedBox.shrink()),
         Wrap(

@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:prism_ui/prism_ui.dart';
 import 'package:taildeck_ui/src/l10n.dart';
 import 'package:taildeck_ui/src/widgets/foundation.dart';
+import 'package:taildeck_ui/src/widgets/header.dart';
 
 Widget _app(Widget child, {EdgeInsets padding = EdgeInsets.zero}) {
   return MediaQuery(
@@ -56,18 +57,68 @@ void main() {
     expect(tester.getSize(find.byType(RowValue)).width, lessThanOrEqualTo(160));
   });
 
-  testWidgets('the status bar gets an opaque scrim once a page has one', (
+  testWidgets('a subpage names itself in the floating bar, not in the body', (
+    tester,
+  ) async {
+    var backed = 0;
+    await tester.pumpWidget(
+      _app(
+        PageBody(
+          title: 'Theme',
+          subtitle: 'Auto',
+          onBack: () => backed++,
+          children: const [Text('row')],
+        ),
+        padding: const EdgeInsets.only(top: 47),
+      ),
+    );
+    // The bar sits below the status bar and the content starts under it.
+    expect(tester.getSize(find.byType(PageBar)).height, pageToolbarHeight);
+    expect(
+      tester.getTopLeft(find.text('Theme')).dy,
+      greaterThanOrEqualTo(47),
+    );
+    final list = tester.widget<ListView>(find.byType(ListView));
+    expect(
+      (list.padding! as EdgeInsets).top,
+      greaterThanOrEqualTo(47 + pageToolbarHeight),
+    );
+    // One back button, above the content, that pops the page.
+    await tester.tap(find.byTooltip('Back'));
+    expect(backed, 1);
+    // The large title is the bar's alone.
+    final titles = tester.widgetList<Text>(find.text('Theme'));
+    expect(titles.length, 1);
+    expect(titles.single.style!.fontSize, lessThan(20));
+  });
+
+  testWidgets('a first-level page keeps its large title until it scrolls', (
     tester,
   ) async {
     await tester.pumpWidget(
       _app(
-        const PageBody(title: 'Settings', children: [Text('row')]),
+        PageBody(
+          title: 'Settings',
+          children: [for (var i = 0; i < 20; i++) Text('row $i')],
+        ),
         padding: const EdgeInsets.only(top: 47),
       ),
     );
-    final scrim = find.byWidgetPredicate(
-      (widget) => widget is Container && widget.decoration is BoxDecoration,
+    // At rest the bar is out of the way and the large title names the page.
+    expect(find.byType(PageBar, skipOffstage: true), findsNothing);
+    final large = tester.widget<Text>(find.text('Settings'));
+    expect(large.style!.fontSize, greaterThan(30));
+
+    await tester.drag(find.byType(ListView), const Offset(0, -120));
+    await tester.pump();
+
+    // Once the title has scrolled under it, the bar carries the page's name.
+    expect(find.byType(PageBar, skipOffstage: true), findsOneWidget);
+    expect(
+      tester
+          .widgetList<Text>(find.text('Settings', skipOffstage: true))
+          .map((text) => text.style!.fontSize),
+      contains(lessThan(20)),
     );
-    expect(scrim, findsOneWidget);
   });
 }
