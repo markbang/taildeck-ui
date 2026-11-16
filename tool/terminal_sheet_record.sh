@@ -172,7 +172,8 @@ launch() { # [url]
 
 sign_in() {
   [ -n "$control_url" ] || { note "no control server: cannot reach a shell"; return 1; }
-  if ui has "Nodes" > /dev/null 2>&1; then
+  # A deep-link launch can sit on the splash longer than a plain one.
+  if wait_for "Nodes" 20 || ui has "Nodes" > /dev/null 2>&1; then
     note "sign-in: already signed in"
     return 0
   fi

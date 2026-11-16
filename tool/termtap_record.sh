@@ -329,6 +329,13 @@ gate() {
     fail "no Compose button on the toolbar"
   fi
 
+  # Close the panel again: it floats over the bottom of the grid, and the vim
+  # and htop taps below must land on cells, not on its keys.
+  if ui has 'Left arrow' > /dev/null 2>&1; then
+    tap_label 'Arrow keys and more' || true
+    sleep 1
+  fi
+
   if [ "$failures" -eq 0 ]; then
     note "gate: tap leaves the IME down, the keyboard button and Compose work"
   else
@@ -385,6 +392,13 @@ check_cell() { # <log>
 }
 
 # ---- vim and htop --------------------------------------------------------
+collapse_panel() {
+  if ui has 'Left arrow' > /dev/null 2>&1; then
+    tap_label 'Arrow keys and more' || true
+    sleep 1
+  fi
+}
+
 vim_step() {
   # A script on the runner keeps the quotes out of `adb shell input text`,
   # which would otherwise hand vim `-c set` and a file called `mouse=a`.
@@ -399,12 +413,15 @@ exec vim -u NONE -c 'set mouse=a' -c 'set laststatus=2' -c 'set ruler' \
 VIM
   send_command "sh /tmp/tapvim.sh" 5
   hide_ime
-  tap_grid 0.45 0.4
+  collapse_panel
+  # Fractions of the grid's semantics box: the upper third is always cells,
+  # never the floating toolbar.
+  tap_grid 0.35 0.22
   sleep 2
   shot tap-vim-before
   local before after
   before=$(cat /tmp/tapvim-cursor 2> /dev/null || echo '')
-  tap_grid 0.2 0.25
+  tap_grid 0.55 0.12
   sleep 3
   shot tap-vim-after
   after=$(cat /tmp/tapvim-cursor 2> /dev/null || echo '')
@@ -427,10 +444,11 @@ quit_htop() { send_command q 1; }
 htop_step() {
   send_command "htop" 4
   hide_ime
-  tap_grid 0.5 0.35
+  collapse_panel
+  tap_grid 0.5 0.3
   sleep 2
   shot tap-htop-before
-  tap_grid 0.5 0.55
+  tap_grid 0.5 0.45
   sleep 2
   shot tap-htop-after
   note "htop: tapped one process row, then another; stills tap-htop-*.png"
