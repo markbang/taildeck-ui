@@ -70,13 +70,18 @@ value_point() { # <text>: the row's value at its end, where a select opens from
 }
 
 # Stills as fast as screencap allows, to catch a transition mid-flight. The
-# first capture warms the path: a cold one can trail the whole animation.
-mid_stills() { # <prefix>
+# capture path is warmed first, since a cold capture can take longer than the
+# whole animation, then the tap runs beside the stills.
+tap_then_stills() { # <prefix> <'x y'> [settle seconds]
   adb exec-out screencap -p > /dev/null 2>&1 || true
+  # shellcheck disable=SC2086
+  ( adb shell input tap $2 > /dev/null 2>&1 || true ) &
   local i
   for i in 1 2 3 4 5 6; do
     adb exec-out screencap -p > "$out/$1-$i.png" 2> /dev/null || true
   done
+  wait
+  sleep "${3:-1}"
 }
 
 tap_point() { # 'x y' [settle seconds]
@@ -164,14 +169,7 @@ dismiss_system_dialogs() {
 # point is resolved before the clip starts, so the tap lands in its first
 # second.
 theme_point= drag_point=
-theme_step() {
-  # The tap runs beside the captures, so the stills start before it lands.
-  # shellcheck disable=SC2086
-  ( adb shell input tap $theme_point > /dev/null 2>&1 || true ) &
-  mid_stills taildeck-push
-  wait
-  sleep $((slow + 1))
-}
+theme_step() { tap_then_stills taildeck-push "$theme_point" $((slow + 1)); }
 
 drag_step() {
   tap_point "$1" $((slow + 2))
@@ -190,11 +188,7 @@ note "Taildeck settings: list with the language row"
 
 language_point=$(value_point Language) || fail "no bounds for the language row"
 language_tap() {
-  # shellcheck disable=SC2086
-  ( adb shell input tap $language_point > /dev/null 2>&1 || true ) &
-  mid_stills taildeck-language
-  wait
-  sleep $((slow + 1))
+  tap_then_stills taildeck-language "$language_point" $((slow + 1))
 }
 record taildeck-language 12 language_tap
 shot taildeck-language-open
@@ -217,10 +211,8 @@ shot taildeck-back
 launch_taildeck 20
 slow_point=$(ui tap Theme 2> /dev/null) || slow_point=""
 if [ -n "$slow_point" ]; then
-  ( adb shell input tap $slow_point > /dev/null 2>&1 || true ) &
-  mid_stills taildeck-push-slow
-  wait
-  sleep 2
+  slow_push() { tap_then_stills taildeck-push-slow "$slow_point" 2; }
+  record taildeck-slow 14 slow_push
 fi
 back_key
 sleep 2
@@ -251,6 +243,16 @@ note "Taildeck: alive, no Flutter exception"
 # English locale is the statement this types.
 disclaimer_statement="The Software itself does not provide any proxy server, node, subscription, or network access service, and has no partnership, agency, or guarantee relationship with any provider of such services."
 
+type_pieces() { # <text>
+  local text=$1 offset=0 piece
+  while [ "$offset" -lt "${#text}" ]; do
+    piece=${text:offset:24}
+    adb shell input text "$(printf '%s' "$piece" | sed 's/ /%s/g')" > /dev/null 2>&1 || true
+    offset=$((offset + 24))
+    sleep 0.25
+  done
+}
+
 accept_flclash_disclaimer() {
   local point attempt
   point=$(ui tap Agree 2> /dev/null) || point=$(ui tap 同意 2> /dev/null) || return 0
@@ -258,9 +260,10 @@ accept_flclash_disclaimer() {
   if ui has Confirm > /dev/null 2>&1; then
     if point=$(ui edit 0 2> /dev/null); then
       tap_point "$point" 1
-      # Typed once: a second pass appends to the field and never matches.
-      adb shell input text "$(printf '%s' "$disclaimer_statement" | sed 's/ /%s/g')" > /dev/null 2>&1 || true
-      sleep 3
+      # Typed once and in pieces: input text drops all but the head of a
+      # long statement, and a repeat would append to the same field.
+      type_pieces "$disclaimer_statement"
+      sleep 2
     elif point=$(ui tap "I have read" 2> /dev/null); then
       # A remote-focused build asks for a check instead of the statement.
       tap_point "$point" 1
