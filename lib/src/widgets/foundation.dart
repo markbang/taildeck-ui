@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:flutter/widgets.dart';
 import 'package:prism_ui/icons/icons.dart';
 import 'package:prism_ui/prism_ui.dart';
@@ -66,7 +64,6 @@ class PageBody extends StatefulWidget {
     this.padding,
     this.onRefresh,
     this.animateSize = false,
-    this.titleMaxLines = 1,
     this.bottomExtra = 0,
   });
 
@@ -85,9 +82,6 @@ class PageBody extends StatefulWidget {
   /// Pull to refresh, as the Kotlin app's `RefreshBox` offers on lists.
   final Future<void> Function()? onRefresh;
 
-  /// A section page names itself in full rather than ending in an ellipsis.
-  final int titleMaxLines;
-
   /// More room at the foot, for a button floating above the dock.
   final double bottomExtra;
 
@@ -95,13 +89,9 @@ class PageBody extends StatefulWidget {
   /// the Kotlin settings page does.
   final bool animateSize;
 
-  /// The gap between the bar and the large title, which the title crosses
-  /// before the bar starts taking it over.
-  static const _titleClearance = 12.0;
-
-  /// How far the list scrolls before the bar has the title: the title's own
-  /// line plus the gap under it.
-  static const _collapseDistance = 56.0;
+  /// How far the list scrolls before the bar is compact: one title line, so
+  /// the material is in by the time content reaches the bar.
+  static const _collapseDistance = 32.0;
 
   @override
   State<PageBody> createState() => _PageBodyState();
@@ -110,8 +100,8 @@ class PageBody extends StatefulWidget {
 class _PageBodyState extends State<PageBody> {
   final _controller = ScrollController();
 
-  /// 0 leaves a first-level page's large title in place, 1 floats the compact
-  /// bar over the content; a subpage opens at 1.
+  /// 0 is a first-level page's title at rest, 1 the compact bar a subpage
+  /// opens with.
   final _collapse = ValueNotifier<double>(1);
 
   @override
@@ -135,25 +125,15 @@ class _PageBodyState extends State<PageBody> {
   }
 
   void _handleScroll() {
-    if (widget.onBack != null) return;
-    final offset = _controller.hasClients ? _controller.offset : 0.0;
-    // The bar takes the title over as the list scrolls; a list too short to
-    // scroll the title under it still hands over, by its own end.
-    final room = _controller.hasClients
-        ? _controller.position.maxScrollExtent
-        : 0.0;
-    final distance = math.min(PageBody._collapseDistance, room);
-    final collapse = distance <= 0
-        ? 0.0
-        : ((offset - PageBody._titleClearance) /
-                  (distance - PageBody._titleClearance))
-              .clamp(0.0, 1.0);
+    final offset = widget.onBack != null
+        ? PageBody._collapseDistance
+        : (_controller.hasClients ? _controller.offset : 0.0);
+    final collapse = (offset / PageBody._collapseDistance).clamp(0.0, 1.0);
     if ((collapse - _collapse.value).abs() > 0.004) _collapse.value = collapse;
   }
 
   @override
   Widget build(BuildContext context) {
-    final subpage = widget.onBack != null;
     return Stack(
       children: [
         Positioned.fill(
@@ -177,7 +157,6 @@ class _PageBodyState extends State<PageBody> {
                         pageBottomPadding(context) + widget.bottomExtra,
                       ),
                   children: [
-                    if (!subpage) _largeTitle(context),
                     if (widget.animateSize)
                       AnimatedContentSize(
                         child: Column(
@@ -207,77 +186,11 @@ class _PageBodyState extends State<PageBody> {
                 onBack: widget.onBack,
                 trailing: widget.trailing,
                 maxWidth: widget.maxWidth,
+                collapse: collapse,
               ),
             ),
           ),
         ),
-      ],
-    );
-  }
-
-  /// The page's name in full, above the content a first-level page lists. The
-  /// compact bar takes it over once it has scrolled under the bar.
-  Widget _largeTitle(BuildContext context) {
-    return ValueListenableBuilder<double>(
-      valueListenable: _collapse,
-      builder: (context, collapse, _) => ExcludeSemantics(
-        excluding: collapse > 0.5,
-        child: ExcludeFocus(
-          excluding: collapse > 0.5,
-          child: IgnorePointer(
-            ignoring: collapse > 0.5,
-            child: Opacity(
-              opacity: PageHeader.largeTitleOpacity(collapse),
-              child: _titleBlock(context),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _titleBlock(BuildContext context) {
-    final scheme = context.colorScheme;
-    final subtitle = widget.subtitle;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Semantics(
-                    header: true,
-                    child: Text(
-                      widget.title,
-                      maxLines: widget.titleMaxLines,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppTextStyle.largeTitle.of(
-                        context,
-                        emphasized: true,
-                      ),
-                    ),
-                  ),
-                  if (subtitle != null)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 2),
-                      child: Text(
-                        subtitle,
-                        style: AppTextStyle.subheadline
-                            .of(context)
-                            .copyWith(color: scheme.onSurfaceVariant),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-            ?widget.trailing,
-          ],
-        ),
-        const SizedBox(height: 16),
       ],
     );
   }

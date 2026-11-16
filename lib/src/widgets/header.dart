@@ -6,10 +6,9 @@ import 'package:prism_ui/prism_ui.dart';
 
 import '../l10n.dart';
 
-/// The bar a page shows over its content: a circular back button, one line of
-/// title with an optional subtitle under it, and the page's actions at its
-/// end. [PageHeader] floats it, so the content scrolls under it as FlClash's
-/// pages do.
+/// The bar a page shows over its content: a circular back button (a subpage),
+/// the page's title with an optional caption under it, and the page's actions
+/// at its end. [PageHeader] floats it, so the content scrolls under it.
 class PageBar extends StatelessWidget {
   const PageBar({
     super.key,
@@ -19,6 +18,7 @@ class PageBar extends StatelessWidget {
     this.onBack,
     this.trailing,
     this.maxWidth = 720,
+    this.collapse = 1,
   });
 
   final String title;
@@ -34,12 +34,21 @@ class PageBar extends StatelessWidget {
   /// The page body's own cap, so the bar lines up with the content under it.
   final double maxWidth;
 
+  /// 0 gives a first-level page FlClash's page title at rest, 1 the compact
+  /// title it keeps once the list has scrolled under the bar.
+  final double collapse;
+
+  /// The title's line box, held at the larger title's height so the swap
+  /// never moves the bar or its caption.
+  static const _titleBox = 30.0;
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final scheme = context.colorScheme;
     final back = onBack;
     final subtitle = this.subtitle;
+    final compact = collapse.clamp(0.0, 1.0);
     return Align(
       alignment: Alignment.topCenter,
       child: ConstrainedBox(
@@ -66,28 +75,55 @@ class PageBar extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Semantics(
-                        header: true,
-                        child: Text(
-                          title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: AppTextStyle.headline.of(
-                            context,
-                            emphasized: true,
-                          ),
+                      SizedBox(
+                        height: _titleBox,
+                        child: Stack(
+                          alignment: AlignmentDirectional.centerStart,
+                          children: [
+                            // FlClash's page title at rest, the compact one
+                            // once the list has scrolled.
+                            if (compact < 1)
+                              Opacity(
+                                opacity: 1 - _swap(compact),
+                                child: Semantics(
+                                  header: compact < 0.5,
+                                  child: Text(
+                                    title,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: AppTextStyle.pageTitle.of(context),
+                                  ),
+                                ),
+                              ),
+                            if (compact > 0)
+                              Opacity(
+                                opacity: _swap(compact),
+                                child: Semantics(
+                                  header: compact >= 0.5,
+                                  child: Text(
+                                    title,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: AppTextStyle.headline.of(
+                                      context,
+                                      emphasized: true,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                          ],
                         ),
                       ),
                       if (subtitle != null)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 1),
+                        Opacity(
+                          opacity: 1 - compact,
                           child: Text(
                             subtitle,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style:
                                 subtitleStyle ??
-                                AppTextStyle.footnote
+                                AppTextStyle.subheadline
                                     .of(context)
                                     .copyWith(color: scheme.onSurfaceVariant),
                           ),
@@ -107,6 +143,11 @@ class PageBar extends StatelessWidget {
       ),
     );
   }
+
+  /// The compact title comes in over the second half of the collapse, once
+  /// the larger one has gone.
+  static double _swap(double collapse) =>
+      ((collapse - 0.5) / 0.5).clamp(0.0, 1.0);
 }
 
 /// [PageBar] floating over the content it belongs to, on a translucent
@@ -117,94 +158,67 @@ class PageHeader extends StatelessWidget {
 
   final Widget child;
 
-  /// 0 keeps the bar out of the way of a first-level page's large title, 1
-  /// draws it at rest; the page drives it from its scroll.
+  /// 0 draws the bar with no material over a first-level page's content, 1
+  /// draws it at rest as a subpage has it; the page drives it from its scroll.
   final double collapse;
 
-  /// How much of the large title is left once the bar has come this far: it
-  /// goes before the bar's own title arrives, so the page never reads as two.
-  static double largeTitleOpacity(double collapse) =>
-      (1 - collapse / _handover).clamp(0, 1);
-
-  /// How much of the bar's own title is in; the second half of the handover.
-  static double barTitleOpacity(double collapse) =>
-      ((collapse - _handover) / (1 - _handover)).clamp(0, 1);
-
-  static const _handover = 0.65;
   static const _overhang = 16.0;
   static const _steps = 8;
 
   @override
   Widget build(BuildContext context) {
     final top = MediaQuery.paddingOf(context).top;
-    final height = top + pageToolbarHeight;
-    return Offstage(
-      offstage: collapse <= 0,
-      child: IgnorePointer(
-        ignoring: collapse < 0.5,
-        child: ExcludeFocus(
-          excluding: collapse < 0.5,
-          child: ExcludeSemantics(
-            excluding: collapse < 0.5,
-            child: Stack(
-              clipBehavior: Clip.none,
-              children: [
-                Positioned(
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  bottom: -_overhang,
-                  child: IgnorePointer(
-                    child: _Scrim(
-                      color: SurfaceLevel.page.colorOf(context.colorScheme),
-                      opacity: _materialOpacity(collapse),
-                      fadeStart: top / height,
-                    ),
-                  ),
-                ),
-                Padding(
-                  padding: EdgeInsets.only(top: top),
-                  child: Opacity(
-                    opacity: barTitleOpacity(collapse),
-                    child: child,
-                  ),
-                ),
-              ],
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: -_overhang,
+          child: IgnorePointer(
+            child: _Scrim(
+              color: SurfaceLevel.page.colorOf(context.colorScheme),
+              opacity: _materialOpacity(collapse),
             ),
           ),
         ),
-      ),
+        Padding(
+          padding: EdgeInsets.only(top: top),
+          child: child,
+        ),
+      ],
     );
   }
 
-  /// The material fades in with the scroll, then holds a tenth of the page
-  /// through it as FlClash's bar does.
+  /// The material fades in with the scroll and then holds the bar's own
+  /// colour, so a row never reads through the title.
   static double _materialOpacity(double collapse) =>
-      0.9 * Curves.easeInOut.transform(collapse.clamp(0, 1));
+      _material * Curves.easeInOut.transform(collapse.clamp(0, 1));
+
+  static const _material = 0.97;
 }
 
 class _Scrim extends StatelessWidget {
-  const _Scrim({
-    required this.color,
-    required this.opacity,
-    required this.fadeStart,
-  });
+  const _Scrim({required this.color, required this.opacity});
 
   final Color color;
   final double opacity;
-  final double fadeStart;
 
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
         final height = math.max(constraints.maxHeight, 1);
-        final start = (height - PageHeader._overhang) * fadeStart / height;
-        final stops = <double>[0];
-        final colors = <Color>[color.withValues(alpha: opacity)];
+        final solid = (height - PageHeader._overhang) / height;
+        final stops = <double>[0, solid];
+        final colors = <Color>[
+          color.withValues(alpha: opacity),
+          color.withValues(alpha: opacity),
+        ];
         for (var step = 0; step <= PageHeader._steps; step++) {
           final t = step / PageHeader._steps;
-          stops.add(start + (1 - start) * t);
+          stops.add(solid + (1 - solid) * t);
           colors.add(
             color.withValues(
               alpha: opacity * (1 - Curves.easeInOut.transform(t)),
