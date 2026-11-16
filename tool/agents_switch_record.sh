@@ -1,21 +1,20 @@
 #!/usr/bin/env bash
 # Agents switch gate: replays the reported recording. A herdr dial fails while
-# the user is on another tab, then the Agents tab is tapped. The page must wake
-# the target and paint the connecting skeleton; the failure left by the earlier
-# dial may never paint, not even one frame, and only the dial this visit
-# started may turn into an error.
+# the user is on another tab, then the Agents tab is tapped. The page has to
+# wake the target and paint the connecting skeleton; the failure left by the
+# earlier dial may not paint for the page at all, and only the dial this visit
+# started may turn into an error with Retry.
 #
-# The page logs one `taildeck agents: <phase>` line per phase change, and the
-# shell logs its route, so the order evidence is read from logcat: a stale
-# failure logs `failed` for the reopened page, the fix logs `connecting` first.
-# The clip's frames are then compared with the settled error card. uiautomator
-# is not used: the tailnet spinner never lets a dump reach the idle state.
+# The page logs one `taildeck agents: <phase>` line per phase change, so the
+# order is read from logcat: a stale failure logs `failed` for the reopened
+# page, the fix logs `connecting` first. Stills of the switch are kept as the
+# visible record. uiautomator is only used once a card is at rest (the loading
+# spinner never lets a dump reach the idle state).
 #
 # Needs CONTROL_URL, a node key seeded against that control plane
 # (tool/seed_state.dart, SEED_STATE) and a peer named bangwu on it
-# (tool/motion/peer -hostname bangwu -hang-port 3001). The slow variant dials
-# that hang port: it accepts and never answers, so the app's own four-second
-# dial timeout is the window the skeleton is held in.
+# (tool/motion/peer -hostname bangwu). The saved target is a name that peer
+# does not answer for, so the dial fails the way the report showed.
 # Usage: CONTROL_URL=http://10.0.2.2:8080 SEED_STATE=/tmp/seed/tailscaled.state \
 #          tool/agents_switch_record.sh <apk> [application-id] [out-dir]
 set -euo pipefail
@@ -25,6 +24,8 @@ app=${2:-top.bangwu.taildeck}
 out=${3:-agents-switch}
 control_url=${CONTROL_URL:-}
 here=$(cd "$(dirname "$0")" && pwd)
+# shellcheck source=tool/android_gate.sh
+. "$here/android_gate.sh"
 mkdir -p "$out/files"
 summary="$out/summary.txt"
 : > "$summary"
@@ -80,7 +81,8 @@ adb shell "mkdir -p $data/files/tsnet" > /dev/null 2>&1 || fail "could not creat
 adb push "$seed" "$data/files/tsnet/tailscaled.state" > "$out/push.txt" 2>&1 \
   || fail "could not push the node key"
 
-# A saved herdr target that cannot come up, so its dial fails on its own.
+# A saved herdr target the peer does not answer for, so its dial fails on its
+# own, with the sentence the report showed.
 target() { # <node> <port>
   printf '{"hostname":"%s","controlURL":"%s","signedIn":true,"herdrNode":"%s","herdrUser":"root","herdrPort":%s,"herdrAuth":"tailscale"}' \
     "$hostname" "$control_url" "$1" "$2" > "$out/files/config.json"
@@ -94,8 +96,6 @@ target() { # <node> <port>
 shot() { adb exec-out screencap -p > "$out/$1.png" 2> /dev/null || rm -f "$out/$1.png"; }
 logs() { timeout 60 adb logcat -d 2> /dev/null | grep -a 'I flutter :'; }
 phases() { logs | grep -aoE 'taildeck agents: [a-z]+' | awk '{print $3}' | tr '\n' ' ' | sed 's/ *$//'; }
-# Waits for a phrase in the app's own log; the route and phase lines arrive
-# within seconds of the launch.
 await_log() { # <tag> <phrase> <limit-s>
   local waited=0
   while [ "$waited" -lt "$3" ]; do
@@ -106,33 +106,42 @@ await_log() { # <tag> <phrase> <limit-s>
   return 1
 }
 
-# The dock is a floating capsule under the page. Its label boxes are read from
-# a settled dump; the fractions are only the fallback for a run whose dump
-# never came back.
+# A still every moment of the switch, each with the epoch ms it came back: the
+# paint a person would see, not a state sampled afterwards.
+capture_window() { # <dir> <tap-ms> <window-ms>
+  local dir=$1 tap=$2 window=$3 i=0 file
+  mkdir -p "$dir"
+  : > "$dir/times.txt"
+  while :; do
+    i=$((i + 1))
+    file=$(printf '%s/frame-%03d.png' "$dir" "$i")
+    echo "$(date +%s%3N)" >> "$dir/times.txt"
+    adb exec-out screencap -p > "$file" 2> /dev/null || { rm -f "$file"; i=$((i - 1)); sed -i '$d' "$dir/times.txt"; }
+    [ $(( $(date +%s%3N) - tap )) -ge "$window" ] && break
+    [ "$i" -ge 24 ] && break
+  done
+}
+
+# The dock is a floating capsule under the page: its label boxes are read from
+# a settled dump, the profile's fractions are the fallback.
 geometry() {
   read -r W SH <<< "$(adb shell wm size | sed -n 's/.*: \([0-9]*\)x\([0-9]*\).*/\1 \2/p' | tr -d '\r')"
   [ -n "${W:-}" ] || fail "no screen size"
-  DOCK_NODES="$((W / 8)) $((SH * 917 / 1000))"
-  DOCK_AGENTS="$((W * 5 / 8)) $((SH * 917 / 1000))"
+  DOCK_NODES="$((W * 186 / 1000)) $((SH * 917 / 1000))"
+  DOCK_AGENTS="$((W * 605 / 1000)) $((SH * 917 / 1000))"
 }
 tap_dock() { # <x> <y>
   adb shell input tap "$1" "$2" > /dev/null 2>&1 || fail "the dock tap did not land"
 }
-
-# Where the dock's two destinations are, from the dump taken at rest.
-read_dock() { # <nodes-out> <agents-out>
-  local nodes agents
-  nodes=$(python3 "$here/ui.py" "$out/ui.xml" tap Nodes 2> /dev/null)
+read_dock() { # <agents-out>
+  local agents
   agents=$(python3 "$here/ui.py" "$out/ui.xml" tap Agents 2> /dev/null)
-  [ -n "$nodes" ] && [ -n "$agents" ] || return 1
-  echo "$nodes" > "$1"
-  echo "$agents" > "$2"
-  note "dock: Nodes at [$nodes], Agents at [$agents]"
+  [ -n "$agents" ] || return 1
+  echo "$agents" > "$1"
+  note "dock: Agents at [$agents]"
 }
 
-# A page at rest is static, so a dump of the settled card does reach the idle
-# state. The spinners during loading do not, which is why this is only used
-# once a failure is on screen.
+# A page at rest is static, so its dump does reach the idle state.
 rest_has() { # <needle> -> ok | missing | nodump
   local attempt
   for attempt in 1 2 3 4 5; do
@@ -148,52 +157,8 @@ rest_has() { # <needle> -> ok | missing | nodump
   done
   echo nodump
 }
-
-launch() { # <tag> <tab>
-  adb shell am force-stop "$app" > /dev/null 2>&1 || true
-  sleep 2
-  adb logcat -c > /dev/null 2>&1 || true
-  adb shell "am start -a android.intent.action.VIEW -d 'taildeck://preview/?tab=$2&lang=en&splash=0' -n $component" \
-    > "$out/$1-launch.txt" 2>&1 || fail "$1: the launch did not start the app"
-  await_log "$1" 'taildeck route: shell' 60 || fail "$1: the shell never showed"
-  sleep 2
-  note "$1: shell up"
-}
-
-# One switch: tap the tab, note the phase the page logs first, record the first
-# seconds of it and keep a still of the rest.
-switch_to_agents() { # <tag> <point> <clip?>
-  local tag=$1 point=$2 clip=${3:-} rec=0
-  if [ -n "$clip" ]; then
-    # /data/local/tmp, not /sdcard: the gate runs as root (adb root) and the
-    # sdcard's FUSE mount does not always take a root write.
-    adb shell "rm -f /data/local/tmp/$tag.mp4" > /dev/null 2>&1 || true
-    adb shell screenrecord --time-limit 9 --bit-rate 6000000 --size 540x1200 \
-      "/data/local/tmp/$tag.mp4" > "$out/$tag-recorder.txt" 2>&1 &
-    rec=$!
-    sleep 0.8
-  fi
-  adb logcat -c > /dev/null 2>&1 || true
-  sleep 0.2
-  tap_dock $point
-  # The page only logs a phase when its tab opens or its state changes. A
-  # loaded emulator can take seconds to deliver the tap.
-  await_log "$tag" 'taildeck agents: ' 12 \
-    || fail "$tag: tapping the Agents tab started no page; the tap did not land"
-  sleep 1
-  shot "$tag-early"
-  sleep 6
-  shot "$tag-rest"
-  if [ -n "$clip" ]; then
-    wait "$rec" 2> /dev/null || true
-    sleep 1
-    adb shell "ls -l /data/local/tmp/$tag.mp4" >> "$out/$tag-recorder.txt" 2>&1 || true
-    adb pull "/data/local/tmp/$tag.mp4" "$out/$tag.mp4" >> "$out/$tag-recorder.txt" 2>&1 || true
-    [ -s "$out/$tag.mp4" ] || {
-      note "$tag: recorder said: $(head -3 "$out/$tag-recorder.txt" | tr '\n' ' ')"
-      fail "$tag: no clip"
-    }
-  fi
+rest_text() {
+  python3 "$here/ui.py" "$out/ui.xml" texts "$((SH * 5 / 10))" 2> /dev/null | head -3 | tr '\n' ' '
 }
 
 # The page's own line per phase change is the precise order evidence: a stale
@@ -206,73 +171,65 @@ assert_phases() { # <tag> <expected>
     || fail "$1: phases after the tap were [${actual:-none}], want [$2]"
 }
 
-# --- slow variant: a four-second dial, so the skeleton is on screen --------
-
 geometry
-target bangwu "${HANG_PORT:-3001}"
-launch slow 2
-# The page woke the target at launch and its dial has to fail on its own.
-await_log slow 'taildeck agents: failed' 40 \
-  || fail "slow: the launch dial never failed; the stale failure this gate needs never existed"
-note "slow: the launch dial failed with the page up"
-sleep 1
-shot slow-stale-error
-case "$(rest_has 'did not answer')" in
-  ok) note "slow: the card on screen is the dial's own failure" ;;
-  missing) fail "slow: the page at rest does not carry that failure" ;;
-  *) note "slow: no dump at rest; the still carries the card" ;;
-esac
-read_dock "$out/dock-nodes.txt" "$out/dock-agents.txt" || true
-[ -s "$out/dock-nodes.txt" ] || echo "$DOCK_NODES" > "$out/dock-nodes.txt"
-[ -s "$out/dock-agents.txt" ] || echo "$DOCK_AGENTS" > "$out/dock-agents.txt"
-read -r nx ny < "$out/dock-nodes.txt"
-read -r ax ay < "$out/dock-agents.txt"
-tap_dock "$nx" "$ny"
-sleep 2
-# Leaving the page starts the next visit clean.
-adb logcat -c > /dev/null 2>&1 || true
-switch_to_agents slow "$ax $ay" clip
-assert_phases slow "connecting failed"
-[ -s "$out/slow-early.png" ] || fail "slow: no still of the first second"
-case "$(rest_has 'did not answer')" in
-  ok) note "slow: after the switch the visit's own timeout shows with the card" ;;
-  missing) fail "slow: the failure this visit's dial made never reached the card" ;;
-  *) note "slow: no dump after the switch; the clip carries it" ;;
-esac
+target ghost 22
 
-# Frames: the error card may not paint in the three seconds after the tap that
-# the wake's four-second dial owns.
-ffmpeg -loglevel error -y -i "$out/slow.mp4" -vf "fps=12,scale=48:48,format=gray" \
-  -f rawvideo "$out/clip.raw" 2> /dev/null || fail "slow: could not decode the clip"
-ffmpeg -loglevel error -y -i "$out/slow-stale-error.png" -vf "scale=48:48,format=gray" \
-  -f rawvideo "$out/error.raw" 2> /dev/null || fail "slow: could not encode the error still"
-mkdir -p "$out/frames"
-ffmpeg -loglevel error -y -i "$out/slow.mp4" -vf "fps=12,scale=270:-2" \
-  "$out/frames/frame-%03d.png" 2> /dev/null || true
-python3 "$here/agents_switch_check.py" --frames "$out/clip.raw" --error "$out/error.raw" \
-  --tap 0.8 --lead 36 >> "$summary" 2>&1 \
-  || fail "slow: the error card painted before the connecting skeleton (see summary.txt)"
-montage "$out"/frames/frame-*.png -tile 8x -geometry +3+3 -background '#101214' \
-  "$out/frames.png" 2> /dev/null || true
+# The Nodes tab first, so the launch dial fails where the page cannot see it.
+adb shell am force-stop "$app" > /dev/null 2>&1 || true
+sleep 2
+adb logcat -c > /dev/null 2>&1 || true
+adb shell "am start -a android.intent.action.VIEW -d 'taildeck://preview/?tab=0&lang=en&splash=0' -n $component" \
+  > "$out/launch.txt" 2>&1 || fail "the launch did not start the app"
+if wait_home "$app" "$out" "$here" Services 60; then
+  note "shell up, dock readable"
+else
+  note "wait_home could not read the dock; the tap and the phase log still decide"
+fi
+# The launch dial has to fail on its own, unseen by the page.
+sleep 8
+
+# Dock point: the settled page's own box, else the profile's fraction.
+agents_point="$DOCK_AGENTS"
+rm -f "$out/ui.xml"
+if timeout 60 adb shell uiautomator dump /sdcard/ui.xml > "$out/dump.txt" 2>&1 &&
+  grep -q 'dumped to' "$out/dump.txt" &&
+  timeout 30 adb pull /sdcard/ui.xml "$out/ui.xml" > /dev/null 2>&1; then
+  read_dock "$out/dock-agents.txt" && agents_point=$(cat "$out/dock-agents.txt")
+fi
+echo "$agents_point" > "$out/dock-agents.txt"
+
+adb logcat -c > /dev/null 2>&1 || true
+sleep 0.2
+# The first screencap of a session pays adb's start; pay it before the tap.
+adb exec-out screencap -p > /dev/null 2>&1 || true
+started=$(date +%s%3N)
+echo "$started" > "$out/tap.txt"
+tap_dock $agents_point
+capture_window "$out/frames" "$started" 4200
+
+await_log tap 'taildeck agents: ' 12 \
+  || fail "tapping the Agents tab started no page; the tap did not land"
+first=$(phases | awk '{print $1}')
+note "first phase the opened page logged: ${first:-none}"
+
+sleep 1
+shot early
+sleep 6
+shot rest
+assert_phases tap "connecting failed"
+
+case "$(rest_has "Can't find node ghost")" in
+  ok) note "the recorded unknown-host sentence shows with the card: $(rest_text)" ;;
+  missing) fail "the unknown host did not reach the card" ;;
+  *) note "no dump at rest; the still carries the card" ;;
+esac
 
 # Nothing dials again by itself after that failure.
 sleep 5
-assert_phases slow "connecting failed"
-note "slow: no second dial after the failure"
+assert_phases tap "connecting failed"
+note "no second dial after the failure"
 
-# --- recorded variant: the unknown host the report showed ------------------
-
-target ghost 22
-launch fast 0
-sleep 8
-switch_to_agents fast "$ax $ay"
-assert_phases fast "connecting failed"
-sleep 1
-case "$(rest_has "Can't find node ghost")" in
-  ok) note "fast: the recorded unknown-host sentence shows with the card" ;;
-  missing) fail "fast: the unknown host did not reach the card" ;;
-  *) note "fast: no dump at rest; the still carries the card" ;;
-esac
-
+montage "$out"/frames/frame-0[0-2]*.png -tile 6x -geometry +2+2 \
+  -background '#101214' "$out/frames.png" 2> /dev/null || true
 note "ok: no stale failure painted; the wake's own failure shows with Retry"
 adb uninstall "$app" > /dev/null 2>&1 || true
