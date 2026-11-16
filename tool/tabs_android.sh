@@ -99,16 +99,14 @@ dock() {
 
 # The page must be ours, in front. Without this an empty accessibility tree
 # (app gone, screen off) would read as "zero headers", which is legal only
-# while a switch is in flight.
+# while a switch is in flight. The shared check also reads the focused app and
+# the resumed activity: mCurrentFocus names the launcher for a moment after a
+# switch on this emulator while the app's window is already ours.
 alive() { # <step>
-  local pid focus
-  pid=$(adb shell pidof "$app" 2>/dev/null | tr -d '\r' || true)
-  [ -n "$pid" ] || fail "$1: $app is not running (crashed or was killed)"
-  focus=$(adb shell dumpsys window 2>/dev/null | grep -m1 mCurrentFocus | tr -d '\r' || true)
-  case "$focus" in
-    *"$app/"*) ;;
-    *) fail "$1: $app is not in front ($focus)" ;;
-  esac
+  gate_in_front "$app" && return 0
+  adb shell pidof "$app" > /dev/null 2>&1 \
+    || fail "$1: $app is not running (crashed or was killed)"
+  fail "$1: $app is not in front ($(adb shell dumpsys window 2>/dev/null | grep -m1 mCurrentFocus | tr -d '\r'))"
 }
 
 header_count() { # <space-separated headers>
