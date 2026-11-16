@@ -230,7 +230,7 @@ shot taildeck-back
 launch_taildeck 20
 slow_point=$(ui tap Theme 2> /dev/null) || slow_point=""
 if [ -n "$slow_point" ]; then
-  slow_push() { tap_point "$slow_point" 9; }
+  slow_push() { tap_then_stills taildeck-expand "$slow_point" 9; }
   record taildeck-slow 16 slow_push
   # The clip holds the middle of the expansion, which one screencap cannot
   # reach.
@@ -427,7 +427,7 @@ for pair in \
   "settings:taildeck-settings:flclash-tools" \
   "language:taildeck-language-open:flclash-language-open" \
   "theme:taildeck-theme:flclash-theme" \
-  "expand:taildeck-expand-mid:flclash-push-3" \
+  "expand:taildeck-expand-3:flclash-push-3" \
   "shrink:taildeck-shrink-mid:flclash-back-mid"; do
   name=${pair%%:*}
   rest=${pair#*:}
