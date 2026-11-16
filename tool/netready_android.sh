@@ -117,7 +117,7 @@ cold_start() { # <tag> <query>
   # Without this the node answers from its on-disk netmap in ~70 ms and the
   # window this gate exists for never opens.
   adb shell rm -rf "$data/files/tsnet/profile-data" > /dev/null 2>&1 || true
-  curl -fsS -X POST "$hold_url" > /dev/null 2>&1 \
+  curl -fsS -X POST "$hold_url?host=$hostname" > /dev/null 2>&1 \
     || fail "no held-netmap control plane at $hold_url (start tool/motion/control -hold-map)"
   adb logcat -c > /dev/null 2>&1 || true
   # No -W: the page is what this gate samples, not the first frame.

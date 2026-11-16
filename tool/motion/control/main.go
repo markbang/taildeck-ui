@@ -19,6 +19,7 @@ import (
 	"tailscale.com/tailcfg"
 	"tailscale.com/tstest/integration"
 	"tailscale.com/tstest/integration/testcontrol"
+	"tailscale.com/types/key"
 	"tailscale.com/types/logger"
 )
 
@@ -42,23 +43,29 @@ func main() {
 	for range *fake {
 		control.AddFakeNode()
 	}
-	// Holding the first netmap needs a start marker: POST /__hold arms a
-	// window that opens at the next map request, so every cold start of the
-	// app under test meets the same delay instead of only the first one.
+	// Holding a first netmap needs a start marker and a subject: POST
+	// /__hold?host=<hostname> arms the window, and the node that reports that
+	// hostname is the one held (the recording's peer keeps polling unheld).
 	var holdMu sync.Mutex
-	var armed bool
+	var holdHost string
+	var held key.NodePublic
 	var windowStart time.Time
 	if *hold > 0 {
-		control.HoldMapRequest = func(*tailcfg.MapRequest) func() {
+		control.HoldMapRequest = func(req *tailcfg.MapRequest) func() {
 			holdMu.Lock()
+			if holdHost == "" {
+				holdMu.Unlock()
+				return nil
+			}
+			if hi := req.Hostinfo; hi != nil && hi.Hostname == holdHost {
+				held = req.NodeKey
+				windowStart = time.Now()
+			}
 			wait := time.Duration(0)
-			if armed {
-				if windowStart.IsZero() {
-					windowStart = time.Now()
-				}
+			if !held.IsZero() && req.NodeKey == held {
 				wait = time.Until(windowStart.Add(*hold))
 				if wait <= 0 {
-					armed = false
+					held = key.NodePublic{}
 				}
 			}
 			holdMu.Unlock()
@@ -67,15 +74,19 @@ func main() {
 			}
 			return nil
 		}
-		log.Printf("holding each armed start's first netmap for %s", *hold)
+		log.Printf("holding the armed node's first netmap for %s", *hold)
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/__hold", func(w http.ResponseWriter, r *http.Request) {
 		holdMu.Lock()
-		armed = *hold > 0
+		holdHost = r.URL.Query().Get("host")
+		if *hold <= 0 {
+			holdHost = ""
+		}
+		held = key.NodePublic{}
 		windowStart = time.Time{}
 		holdMu.Unlock()
-		fmt.Fprintf(w, "armed %s\n", *hold)
+		fmt.Fprintf(w, "armed %s for %q\n", *hold, holdHost)
 	})
 	mux.Handle("/", control)
 	log.Printf("listening on %s", *addr)
