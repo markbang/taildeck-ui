@@ -83,7 +83,7 @@ value_box() { # <text>: x,y,w,h of the row's trailing end, for the frame check
   box=$(ui bounds "$1") || return 1
   read -r x1 y1 x2 y2 <<< "$box"
   height=$((y2 - y1))
-  width=$((height * 4))
+  width=$((height * 5 / 2))
   echo "$((x2 - width)),$((y1 - 6)),$((width + 6)),$((height + 12))"
 }
 

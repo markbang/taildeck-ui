@@ -72,7 +72,9 @@ jobs:
           flutter pub get
           tool/build_native.sh android-x86_64 | tee /tmp/build_native.log
           tool/build_term.sh android-x86_64 | tee /tmp/build_term.log
-          flutter build apk --debug --target-platform android-x64
+          # The SSH sheet's preview route needs the demo dataset.
+          flutter build apk --debug --target-platform android-x64 \
+            --dart-define=TAILDECK_DEMO=true
           cp build/app/outputs/flutter-apk/app-debug.apk build/select-after.apk
           # The same tree with the fix taken out, for the "before" clip.
           cp lib/src/widgets/select_row.dart /tmp/select_row.dart
@@ -80,7 +82,8 @@ jobs:
           git show origin/main:lib/src/widgets/select_row.dart > lib/src/widgets/select_row.dart
           git show origin/main:third_party/prism_ui/lib/popup.dart > third_party/prism_ui/lib/popup.dart
           rm -f lib/src/widgets/select_value_button.dart
-          flutter build apk --debug --target-platform android-x64
+          flutter build apk --debug --target-platform android-x64 \
+            --dart-define=TAILDECK_DEMO=true
           cp build/app/outputs/flutter-apk/app-debug.apk build/select-before.apk
           cp /tmp/select_row.dart lib/src/widgets/select_row.dart
           cp /tmp/popup.dart third_party/prism_ui/lib/popup.dart
