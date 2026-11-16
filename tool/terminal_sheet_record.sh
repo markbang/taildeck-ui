@@ -178,7 +178,12 @@ sign_in() {
     return 0
   fi
   local point
-  point=$(find_or_scroll "Control server") || { note "sign-in: no control-server row"; return 1; }
+  point=$(find_or_scroll "Control server") || {
+    note "sign-in: no control-server row"
+    cp "$out/ui.xml" "$out/sign-in-stuck.xml" 2> /dev/null || true
+    shot sign-in-stuck
+    return 1
+  }
   tap_xy "$point"
   sleep 1
   fill_edit 0 "$control_url" || return 1
@@ -291,19 +296,23 @@ fi
 # old build has to go before the new one can be installed.
 adb uninstall "$app" > /dev/null 2>&1 || true
 adb install -r -g "$apk" > "$out/install.txt" 2>&1 || { note "install failed, see install.txt"; exit 0; }
-launch || { note "cannot launch the app"; exit 0; }
-sign_in || true
+# The Compose prefill comes from the launch query, so the deep link starts the
+# app once; a plain launch is the fallback when that query cannot start it.
+compose_url="taildeck://preview/?compose=echo%20%E4%BD%A0%E5%A5%BD%EF%BC%8C%E7%BB%88%E7%AB%AF"
+if launch "$compose_url"; then
+  sign_in || true
+fi
+if ! wait_for "Nodes" 20; then
+  note "compose launch did not reach the node list; falling back to a plain launch"
+  launch || { note "cannot launch the app"; exit 0; }
+  sign_in || true
+fi
 record sheet-open 25 new_open
 shot sheet-dark
+record sheet-compose 18 compose_flow
 record sheet-tap 10 new_tap
 record sheet-keyboard 14 new_keyboard
 record sheet-toolbar 16 new_toolbar
-
-compose_url="taildeck://preview/?compose=echo%20%E4%BD%A0%E5%A5%BD%EF%BC%8C%E7%BB%88%E7%AB%AF"
-launch "$compose_url" || note "compose launch failed"
-sign_in || true
-open_session "$peer" || true
-record sheet-compose 18 compose_flow
 
 launch "taildeck://preview/?theme=light" || note "light launch failed"
 sign_in || true

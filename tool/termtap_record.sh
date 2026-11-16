@@ -432,10 +432,22 @@ VIM
     fail "vim: the tap did not move the cursor (line ${before:-none} -> ${after:-none})"
   fi
   adb shell input keyevent KEYCODE_ESCAPE > /dev/null 2>&1 || true
-  send_command ':q!' 2
+  # Quit through the page's key handler instead of the IME: `input text`
+  # reaches the focused terminal even with the soft keyboard down.
+  type_text ':q!'
+  adb shell input keyevent 66 > /dev/null 2>&1 || true
+  sleep 2
   adb shell input keyevent KEYCODE_ESCAPE > /dev/null 2>&1 || true
   rm -f /tmp/tap-vim-quit
   send_command "touch /tmp/tap-vim-quit" 2
+  if [ ! -f /tmp/tap-vim-quit ]; then
+    # A swallowed Enter: try once more before failing the run.
+    adb shell input keyevent KEYCODE_ESCAPE > /dev/null 2>&1 || true
+    type_text ':q!'
+    adb shell input keyevent 66 > /dev/null 2>&1 || true
+    sleep 2
+    send_command "touch /tmp/tap-vim-quit" 2
+  fi
   [ -f /tmp/tap-vim-quit ] || fail "vim did not quit before htop"
 }
 
