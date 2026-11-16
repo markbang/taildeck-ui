@@ -41,14 +41,14 @@ gate_ui() { # <out-dir> <tool-dir> <ui.py args...>
 # The shell is painted and the launch screen has faded. The cheap signals come
 # first: a uiautomator dump during a cold start is what ANRs the app on a loaded
 # emulator, so the tree is read only after the route is the shell.
-wait_home() { # <app> <out-dir> <tool-dir> [marker] [seconds]
+wait_home() { # <app> <out-dir> <tool-dir> [marker] [seconds] [routes]
   # ${4-Services}, not ${4:-Services}: an empty marker means "no dock label
   # expected" (a launch that opens a sheet covers it).
-  local app=$1 out=$2 tools=$3 marker=${4-Services} limit=${5:-45} waited=0
+  local app=$1 out=$2 tools=$3 marker=${4-Services} limit=${5:-45} routes=${6:-shell} waited=0
   local attempt
   while [ "$waited" -lt "$limit" ]; do
     if gate_in_front "$app" &&
-      adb logcat -d 2>/dev/null | grep -q 'taildeck route: shell'; then
+      adb logcat -d 2>/dev/null | grep -qE "taildeck route: ($routes)"; then
       # The launch screen fades over 340 ms after the route is decided; the
       # tree can then take a few more seconds to carry the dock's labels.
       sleep 0.8

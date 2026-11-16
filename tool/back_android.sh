@@ -69,8 +69,9 @@ start() { # $1: preview query
   grep -q "Activity: $app/" "$out/launch.txt" || return 1
   wait_first_frame
   # No dock marker: the launches with a sheet cover it, and wait_sheet is what
-  # proves that sheet opened.
-  wait_home "$app" "$out" "$here" '' 30 \
+  # proves that sheet opened. A launch with ssh=demo opens the terminal, whose
+  # route is its own.
+  wait_home "$app" "$out" "$here" '' 30 'shell|terminal' \
     || fail "the shell did not settle for $1; see launch.txt"
 }
 

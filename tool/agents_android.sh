@@ -38,16 +38,8 @@ activity=$(adb shell cmd package resolve-activity --brief "$app" 2>/dev/null | t
 
 shot() { adb exec-out screencap -p > "$out/$1.png" || true; }
 
-in_front() {
-  local pid focus
-  pid=$(adb shell pidof "$app" 2>/dev/null | tr -d '\r' || true)
-  [ -n "$pid" ] || return 1
-  focus=$(adb shell dumpsys window 2>/dev/null | grep -m1 mCurrentFocus | tr -d '\r' || true)
-  case "$focus" in
-    *"$app/"*) return 0 ;;
-  esac
-  return 1
-}
+# A dump is what the loading spinner blocks, so this reads the window manager.
+in_front() { gate_in_front "$app"; }
 
 # The page under test must be our process, in front: a dismissed app would
 # make every "no error on screen" check true for the wrong reason.
