@@ -162,21 +162,22 @@ sample_until_ready() { # <tag> <phase>
   # One more read after the log says ready: the page has to be content now.
   sleep 1
   [ -s "$out/$tag.png" ] || adb exec-out screencap -p > "$out/$tag.png" 2>/dev/null || true
-  runs_done=$((runs_done + 1))
   loading_runs=$((loading_runs + loading))
+  runs_done=$((runs_done + 1))
 }
 
+# Returns 1 when the run met no delayed netmap: the arming raced another map
+# request, so the run proves nothing and is repeated instead of judged.
 check_netstate() { # <tag> <phase>
   local tag=$1 phase=$2 netmap_ms
   flutter_log > "$out/$tag-logcat.txt" || true
-  grep -q 'taildeck netstate: no netmap at' "$out/$tag-logcat.txt" \
-    || fail "$tag: the cold start never reported a netmap-less status; the window was not exercised"
   # The netmap line comes before readiness; the ready line repeats its time.
   netmap_ms=$(sed -n -e 's/.*netstate: Running at [^,]*, netmap at \([0-9]*\)ms.*/\1/p' \
     -e 's/.*netstate: netmap at \([0-9]*\)ms.*/\1/p' "$out/$tag-logcat.txt" | tail -1)
-  [ -n "$netmap_ms" ] || fail "$tag: no ready netstate line; see $tag-logcat.txt"
-  [ "$netmap_ms" -ge 1000 ] \
-    || fail "$tag: the netmap was in after ${netmap_ms}ms; the delayed-netmap window was not in effect"
+  [ -n "$netmap_ms" ] || { note "$tag: no netstate line, retrying"; return 1; }
+  [ "$netmap_ms" -ge 1000 ] || { note "$tag: netmap at ${netmap_ms}ms, retrying"; return 1; }
+  grep -q 'taildeck netstate: no netmap at' "$out/$tag-logcat.txt" \
+    || { note "$tag: no netmap-less status, retrying"; return 1; }
   # After ready the page has to be content, not the loading state.
   sleep 0.5
   dump_page || true
@@ -201,9 +202,13 @@ for phase in node agents; do
   [ "$phase" = agents ] && tab=2
   for n in $(seq 1 "$runs"); do
     tag=$(printf '%s-%02d' "$phase" "$n")
-    cold_start "$tag" "tab=$tab&lang=en&splash=0" || fail "$tag: the launch did not start the app"
-    sample_until_ready "$tag" "$phase"
-    check_netstate "$tag" "$phase"
+    for attempt in 1 2 3; do
+      cold_start "$tag" "tab=$tab&lang=en&splash=0" || fail "$tag: the launch did not start the app"
+      sample_until_ready "$tag" "$phase"
+      # A run whose held netmap never applied is setup noise, not a verdict.
+      check_netstate "$tag" "$phase" && break
+      [ "$attempt" -eq 3 ] && fail "$tag: no delayed netmap in three starts"
+    done
   done
 done
 
