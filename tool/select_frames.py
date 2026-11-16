@@ -5,8 +5,8 @@ The box is given in screen pixels (x,y,w,h): the value and the space around it.
 Each frame's grey pixels in that box are compared against the clip's last frame,
 which is the settled row, so the menu, the drop returning into the value and
 anything left behind all show up as a difference. A block left at the value is
-brighter than the row, so the frames just before the close settles must not be
-brighter than the settled row by more than --lift grey levels.
+lighter or darker than the row, so the frames just before the close settles must
+not differ from the settled row's grey by more than --lift levels.
 
 Usage: select_frames.py <clip.mp4> <out-dir> <x,y,w,h> [--name label]
                         [--quiet 1.5] [--lift 0.8]
@@ -115,9 +115,9 @@ def main() -> int:
     (out / "close-window.txt").write_text(
         f"{times[first]:.3f} {times[last]:.3f} {fps:.3f}\n")
 
-    lift = max(means[index] - settled_mean for index in dirty[-6:])
+    lift = max(abs(means[index] - settled_mean) for index in dirty[-6:])
     print(f"{args.name}: close {times[first]:.2f}-{times[last]:.2f}s of "
-          f"{times[-1]:.2f}s, last frames brighter by {lift:.2f} "
+          f"{times[-1]:.2f}s, last frames differ by {lift:.2f} "
           f"(limit {args.lift})")
     print(f"sheet {sheet}, table {out / 'close-diff.txt'}")
     return 1 if lift > args.lift else 0

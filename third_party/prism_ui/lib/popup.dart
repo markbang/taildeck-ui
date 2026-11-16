@@ -126,8 +126,9 @@ const _bareControlMargin = EdgeInsets.symmetric(horizontal: 12, vertical: 6);
 const _bareGlassIn = 0.1;
 
 // A control with no surface of its own keeps no glass for the drop to land in,
-// so the drop's glass dissolves into it once the card's content is out;
-// otherwise the return would leave a pill of frost where the control is text.
+// so the drop's glass and its shadow dissolve into it while the card's content
+// fades; otherwise the return would leave a pill of frost, or a shadow of one,
+// where the control is text.
 const _bareGlassOut = 0.22;
 
 /// How much longer than round the control is, which the platter keeps where
@@ -1054,9 +1055,7 @@ class _RenderPopupMorph extends RenderProxyBox {
     // ask for it: a value on a card has no surface to hand the drop over to.
     final surfaceLess = bareSource || _sourceColor.a == 0;
     final dissolve = surfaceLess
-        ? Curves.easeOut.transform(
-            ((time - _dropletContentOut) / _bareGlassOut).clamp(0.0, 1.0),
-          )
+        ? Curves.easeOut.transform((time / _bareGlassOut).clamp(0.0, 1.0))
         : 0.0;
     final path = outline.shift(offset);
     if (glass != null) {
