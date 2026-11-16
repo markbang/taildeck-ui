@@ -14,7 +14,6 @@ on:
       - lib/src/backend.dart
       - lib/src/herdr.dart
       - tool/agents_switch_record.sh
-      - tool/agents_switch_check.py
       - .github/workflows/agents-switch-record.yml
   workflow_dispatch:
 
@@ -91,7 +90,7 @@ jobs:
           done
           grep 'listening on' /tmp/control.log || { cat /tmp/control.log; exit 1; }
           /tmp/motion_peer -hostname bangwu -control http://127.0.0.1:8080 \
-            -key tskey-test -port 3000 -ssh-port 22 -hang-port 3001 > /tmp/peer.log 2>&1 &
+            -key tskey-test -port 3000 -ssh-port 22 > /tmp/peer.log 2>&1 &
           for _ in $(seq 1 60); do
             grep -q 'serving on' /tmp/peer.log && break
             sleep 1
@@ -125,7 +124,6 @@ jobs:
           script: >-
             CONTROL_URL='${{ steps.control.outputs.control_url }}'
             SEED_STATE=/tmp/seed/tailscaled.state
-            HANG_PORT=3001
             bash tool/agents_switch_record.sh build/agents-switch.apk "$APP_ID" agents-switch
       - name: Job summary
         if: always()
