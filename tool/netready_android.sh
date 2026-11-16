@@ -53,6 +53,50 @@ adb shell svc power stayon true > /dev/null 2>&1 || true
 adb shell settings put system screen_off_timeout 2147483647 > /dev/null 2>&1 || true
 adb shell wm dismiss-keyguard > /dev/null 2>&1 || true
 
+# --- start signed in: a seeded node key and a config on disk -----------------
+
+adb uninstall "$app" > /dev/null 2>&1 || true
+adb install -g "$apk" > "$out/install.txt" 2>&1 || fail "adb install failed, see install.txt"
+
+component=${LAUNCH_ACTIVITY:-$(adb shell cmd package resolve-activity --brief "$app" 2>/dev/null | tail -n 1 | tr -d '\r' || true)}
+[ -n "$component" ] || fail "no launcher activity for $app"
+
+# The login page costs taps that miss on a loaded emulator (and a missed auth
+# key silently opens the browser flow), so the gate starts from a node key
+# seeded against this control plane (tool/seed_state.dart).
+seed=${SEED_STATE:-/tmp/seed/tailscaled.state}
+hostname=${SEED_HOSTNAME:-taildeck}
+[ -s "$seed" ] || fail "no seeded node state at $seed (run tool/seed_state.dart first)"
+mkdir -p "$out/files"
+
+# Binary through run-as: base64 in chunks, because one long pty line is not
+# reliable and a bare cat mangles the bytes.
+push_file() { # <local> <app-relative>
+  local b64 chunk
+  b64=$(base64 -w0 "$1")
+  adb shell "run-as $app sh -c ': > $2.b64'" > /dev/null 2>&1 || return 1
+  while [ -n "$b64" ]; do
+    chunk=${b64:0:1800}
+    b64=${b64:1800}
+    adb shell "run-as $app sh -c 'printf %s $chunk >> $2.b64'" > /dev/null 2>&1 || return 1
+  done
+  adb shell "run-as $app sh -c 'base64 -d $2.b64 > $2 && rm $2.b64'" > /dev/null 2>&1
+}
+
+adb shell run-as "$app" mkdir -p files/tsnet > /dev/null 2>&1 \
+  || fail "run-as cannot write the app's files; this gate needs a debuggable APK"
+push_file "$seed" files/tsnet/tailscaled.state || fail "could not push the node key"
+size=$(timeout 30 adb shell run-as "$app" sh -c 'wc -c < files/tsnet/tailscaled.state' | tr -d '\r ')
+[ "$size" = "$(stat -c%s "$seed")" ] || fail "the node key landed short ($size bytes)"
+
+printf '{"hostname":"%s","controlURL":"%s","signedIn":true,"herdrNode":"bangwu","herdrUser":"root","herdrPort":22,"herdrAuth":"tailscale"}' \
+  "$hostname" "$control_url" > "$out/files/config.json"
+push_file "$out/files/config.json" files/config.json || fail "could not push the config"
+timeout 30 adb shell run-as "$app" cat files/config.json 2> /dev/null | grep -q '"herdrNode":"bangwu"' \
+  || fail "the saved config did not land"
+note "seeded node key from $seed, herdr target bangwu"
+
+
 dump_page() {
   rm -f "$out/ui.xml"
   timeout 60 adb shell uiautomator dump /sdcard/ui.xml 2> /dev/null | grep -q 'dumped to' || return 1
@@ -64,9 +108,28 @@ page_has() { # <needle>
   python3 "$here/ui.py" "$out/ui.xml" has "$1" 2> /dev/null
 }
 
+# These strings are wrong on either page at any time: bangwu is online, and a
+# node that is not found was looked up before its netmap. Retry is different:
+# a real herdr failure may offer it, so it is only forbidden while loading.
+forbidden_common=("Can't find node" "Connect herdr" "localhost" "No nodes yet")
+
 # The app's own lines, filtered on the host: the log is cleared per run, so one
 # read per run is enough (a device-side -s/-t filter returns nothing here).
 flutter_log() { timeout 60 adb logcat -d 2> /dev/null | grep -a 'I flutter :'; }
+
+cold_start() { # <tag> <query>
+  adb shell am force-stop "$app" > /dev/null 2>&1 || true
+  # Without this the node answers from its on-disk netmap in ~70 ms and the
+  # window this gate exists for never opens.
+  adb shell run-as "$app" rm -rf files/tsnet/profile-data > /dev/null 2>&1 || true
+  curl -fsS -X POST "$hold_url" > /dev/null 2>&1 \
+    || fail "no held-netmap control plane at $hold_url (start tool/motion/control -hold-map)"
+  adb logcat -c > /dev/null 2>&1 || true
+  # No -W: the page is what this gate samples, not the first frame.
+  adb shell "am start -a android.intent.action.VIEW -d 'taildeck://preview/?$2' -n $component" \
+    > "$out/$1-launch.txt" 2>&1 || return 1
+  grep -q "^Starting: Intent" "$out/$1-launch.txt"
+}
 
 # Samples the page until it shows content, and counts the runs that saw the
 # loading state: a run whose samples all landed after the netmap proves nothing,
