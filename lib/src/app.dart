@@ -101,22 +101,21 @@ class _TaildeckAppState extends State<TaildeckApp> with WidgetsBindingObserver {
             child: ViewScope(
               size: size,
               isMobile: size.width < 720,
-              child: child!,
+              // Above the navigator, so a page pushed over the shell reads
+              // the same backend, services and favicons as the tab below it.
+              child: BackendScope(
+                backend: backend,
+                child: ServicesScope(
+                  store: services,
+                  child: FaviconsScope(controller: favicons, child: child!),
+                ),
+              ),
             ),
           );
         },
         home: SplashGate(
           until: backend.sessionReady,
-          child: BackendScope(
-            backend: backend,
-            child: ServicesScope(
-              store: services,
-              child: FaviconsScope(
-                controller: favicons,
-                child: TaildeckShell(theme: theme),
-              ),
-            ),
-          ),
+          child: TaildeckShell(theme: theme),
         ),
       ),
     );

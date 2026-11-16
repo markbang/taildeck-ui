@@ -662,8 +662,6 @@ class AppLocalizations implements UiLocalizations {
   };
 
   String get tailnetAndDevice => _zh ? 'Tailnet 与设备' : 'Tailnet & device';
-  String get appearanceAndLanguage =>
-      _zh ? '外观与语言' : 'Appearance & language';
   String get opensSection => _zh ? '打开设置页' : 'Opens its settings';
   String get on => _zh ? '开' : 'On';
   String get unavailable => _zh ? '不可用' : 'Unavailable';
@@ -675,6 +673,9 @@ class AppLocalizations implements UiLocalizations {
 
   String get appearance => _zh ? '外观' : 'Appearance';
   String get theme => _zh ? '主题' : 'Theme';
+  String get themeMode => _zh ? '主题模式' : 'Theme mode';
+  String get auto => _zh ? '自动' : 'Auto';
+  String get themePreview => _zh ? '主题预览' : 'Theme preview';
   String get system => _zh ? '跟随系统' : 'System';
   String get light => _zh ? '浅色' : 'Light';
   String get dark => _zh ? '深色' : 'Dark';

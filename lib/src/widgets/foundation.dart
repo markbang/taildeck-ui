@@ -196,11 +196,7 @@ class PageBody extends StatelessWidget {
                 gradient: LinearGradient(
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
-                  colors: [
-                    color,
-                    color,
-                    color.withValues(alpha: 0),
-                  ],
+                  colors: [color, color, color.withValues(alpha: 0)],
                   stops: const [0, 0.7, 1],
                 ),
               ),
@@ -221,6 +217,8 @@ class GroupCard extends StatelessWidget {
   });
 
   final List<Widget> children;
+
+  /// Where a divider starts, so it lines up with the rows' titles.
   final double dividerInset;
   final Widget? header;
 
@@ -289,17 +287,29 @@ class InlineNotice extends StatelessWidget {
 }
 
 class SectionLabel extends StatelessWidget {
-  const SectionLabel(this.text, {super.key, this.trailing});
+  const SectionLabel(this.text, {super.key, this.trailing, this.glyph});
 
   final String text;
   final Widget? trailing;
 
+  /// A mark before the label, as FlClash's section headers carry.
+  final Glyph? glyph;
+
   @override
   Widget build(BuildContext context) {
+    final glyph = this.glyph;
     return Padding(
       padding: const EdgeInsets.fromLTRB(6, 10, 6, 10),
       child: Row(
         children: [
+          if (glyph != null) ...[
+            GlyphIcon(
+              glyph,
+              size: 16,
+              color: context.colorScheme.onSurfaceVariant,
+            ),
+            const SizedBox(width: 6),
+          ],
           Expanded(
             child: Text(
               text,

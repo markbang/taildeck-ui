@@ -7,14 +7,12 @@ import 'package:prism_ui/prism_ui.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../app_info.dart';
-import '../back.dart';
 import '../backend.dart';
 import '../data.dart';
 import '../favicons.dart';
 import '../glyphs.dart';
 import '../l10n.dart';
 import '../log_summary.dart';
-import '../motion.dart';
 import '../native/bridge.dart';
 import '../services.dart';
 import '../shell.dart';
@@ -28,6 +26,7 @@ import '../widgets/select_row.dart';
 import 'key_sheet.dart';
 import '../terminal_appearance.dart';
 import 'logs.dart';
+import 'theme_page.dart';
 import 'terminal_keys_sheet.dart';
 import 'terminal_snippets_sheet.dart';
 
@@ -38,7 +37,7 @@ enum _Section {
   services,
   notifications,
   terminal,
-  appearance,
+  theme,
   logs,
   about,
 }
@@ -46,7 +45,6 @@ enum _Section {
 class SettingsPage extends StatefulWidget {
   const SettingsPage({
     super.key,
-    required this.backStack,
     required this.theme,
     required this.floatingNavigation,
     required this.onFloatingNavigationChanged,
@@ -55,7 +53,6 @@ class SettingsPage extends StatefulWidget {
     required this.onSignOut,
   });
 
-  final BackStack backStack;
   final TaildeckTheme theme;
   final bool floatingNavigation;
   final ValueChanged<bool> onFloatingNavigationChanged;
@@ -68,33 +65,17 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> {
-  _Section? _section;
   List<SshIdentity> _keys = const [];
   bool _keysLoaded = false;
   bool _active = true;
   LogSummary? _logSummary;
 
   @override
-  void initState() {
-    super.initState();
-    widget.backStack.add(_closeSection);
-  }
-
-  @override
-  void dispose() {
-    widget.backStack.remove(_closeSection);
-    super.dispose();
-  }
-
-  @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     _active = TickerMode.valuesOf(context).enabled;
     // The tab keeps its page alive; it opens on the list again.
-    if (!_active) {
-      _section = null;
-      _logSummary = null;
-    }
+    if (!_active) _logSummary = null;
     _logSummary ??= _readLogs();
     if (_keysLoaded) return;
     _keysLoaded = true;
@@ -114,56 +95,40 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
-  /// Back closes the open section; false when the list itself is showing.
-  bool _closeSection() {
-    if (_section == null || !_active || !mounted) return false;
-    setState(() {
-      _section = null;
-      _logSummary = _readLogs();
-    });
-    return true;
-  }
-
-  void _open(_Section section) => setState(() => _section = section);
-
-  void _back() => setState(() {
-    _section = null;
-    _logSummary = _readLogs();
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final section = _section;
-    return ScaleFadeSwitcher(
-      child: KeyedSubtree(
-        key: ValueKey(section),
-        child: section == null ? _list(context) : _page(context, section),
-      ),
-    );
-  }
-
-  Widget _page(BuildContext context, _Section section) {
-    return switch (section) {
-      _Section.tailnet => _TailnetSection(onBack: _back),
+  /// A section opens over the list as its own page, sliding in from the right
+  /// while the list shifts back and dims, as FlClash's pages do.
+  void _open(_Section section) {
+    final page = switch (section) {
+      _Section.tailnet => const _TailnetSection(),
       _Section.identities => _SshIdentitiesSection(
-        onBack: _back,
         keys: _keys,
         reload: _loadKeys,
       ),
-      _Section.services => _ServicesSection(onBack: _back),
-      _Section.notifications => _NotificationsSection(onBack: _back),
-      _Section.terminal => _TerminalSection(onBack: _back),
-      _Section.appearance => _AppearanceSection(
-        onBack: _back,
+      _Section.services => const _ServicesSection(),
+      _Section.notifications => const _NotificationsSection(),
+      _Section.terminal => const _TerminalSection(),
+      _Section.theme => ThemePage(
         theme: widget.theme,
         floatingNavigation: widget.floatingNavigation,
         onFloatingNavigationChanged: widget.onFloatingNavigationChanged,
         tabAnimation: widget.tabAnimation,
         onTabAnimationChanged: widget.onTabAnimationChanged,
       ),
-      _Section.logs => LogsPage(onBack: _back),
-      _Section.about => _AboutSection(onBack: _back),
+      _Section.logs => const LogsPage(),
+      _Section.about => const _AboutSection(),
     };
+    unawaited(
+      BaseNavigator.push<void>(context, page).then((_) {
+        if (mounted) setState(() => _logSummary = null);
+      }),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // A section may have changed what the list summarises.
+    if (_active && _logSummary == null) _logSummary = _readLogs();
+    return _list(context);
   }
 
   Widget _list(BuildContext context) {
@@ -175,73 +140,84 @@ class _SettingsPageState extends State<SettingsPage> {
       title: l10n.tabSettings,
       animateSize: true,
       children: [
-        GroupCard(
-          dividerInset: 60,
-          children: [
-            _EntryRow(
-              glyph: Glyphs2.nodes,
-              title: l10n.tailnetAndDevice,
-              subtitle: backend.tailnet.isEmpty
-                  ? l10n.notSignedIn
-                  : backend.tailnet,
-              onTap: () => _open(_Section.tailnet),
-            ),
-            _EntryRow(
-              glyph: Glyphs2.key,
-              title: l10n.sshIdentities,
-              subtitle: live ? l10n.keyCount(_keys.length) : l10n.unavailable,
-              onTap: () => _open(_Section.identities),
-            ),
-            _EntryRow(
-              glyph: Glyphs2.grid,
-              title: l10n.tabServices,
-              subtitle: backend.openInApp ? l10n.inApp : l10n.inBrowser,
-              onTap: () => _open(_Section.services),
-            ),
-            _EntryRow(
-              glyph: Glyphs2.bell,
-              title: l10n.notificationsSection,
-              subtitle: !backend.notifications.supported
-                  ? l10n.unavailable
-                  : backend.agentNotifications
-                  ? l10n.on
-                  : l10n.off,
-              onTap: () => _open(_Section.notifications),
-            ),
-            _EntryRow(
-              glyph: Glyphs2.terminal,
-              title: l10n.terminalSection,
-              subtitle: l10n.terminalFontSizeValue(backend.terminalFontSize),
-              onTap: () => _open(_Section.terminal),
-            ),
-            _EntryRow(
-              glyph: Glyphs2.sun,
-              title: l10n.appearanceAndLanguage,
-              subtitle:
-                  '${_themeLabel(l10n, theme.mode)} · '
-                  '${_languageLabel(l10n, theme.locale?.languageCode)}',
-              onTap: () => _open(_Section.appearance),
-            ),
-            _EntryRow(
-              glyph: Glyphs2.doc,
-              title: l10n.logs,
-              subtitle: _logsSubtitle(l10n, live),
-              onTap: () => _open(_Section.logs),
-            ),
-            _EntryRow(
-              glyph: Glyphs2.agents,
-              title: l10n.about,
-              subtitle: l10n.version(AppInfo.version),
-              onTap: () => _open(_Section.about),
-            ),
-          ],
-        ),
+        generateGroup([
+          _EntryRow(
+            glyph: Glyphs2.nodes,
+            title: l10n.tailnetAndDevice,
+            subtitle: backend.tailnet.isEmpty
+                ? l10n.notSignedIn
+                : backend.tailnet,
+            onTap: () => _open(_Section.tailnet),
+          ),
+          _EntryRow(
+            glyph: Glyphs2.key,
+            title: l10n.sshIdentities,
+            subtitle: live ? l10n.keyCount(_keys.length) : l10n.unavailable,
+            onTap: () => _open(_Section.identities),
+          ),
+          _EntryRow(
+            glyph: Glyphs2.grid,
+            title: l10n.tabServices,
+            subtitle: backend.openInApp ? l10n.inApp : l10n.inBrowser,
+            onTap: () => _open(_Section.services),
+          ),
+          _EntryRow(
+            glyph: Glyphs2.bell,
+            title: l10n.notificationsSection,
+            subtitle: !backend.notifications.supported
+                ? l10n.unavailable
+                : backend.agentNotifications
+                ? l10n.on
+                : l10n.off,
+            onTap: () => _open(_Section.notifications),
+          ),
+          _EntryRow(
+            glyph: Glyphs2.terminal,
+            title: l10n.terminalSection,
+            subtitle: l10n.terminalFontSizeValue(backend.terminalFontSize),
+            onTap: () => _open(_Section.terminal),
+          ),
+          _EntryRow(
+            glyph: Glyphs2.sun,
+            title: l10n.theme,
+            subtitle: _themeLabel(l10n, theme.mode),
+            onTap: () => _open(_Section.theme),
+          ),
+          SelectRow<String>(
+            glyph: Glyphs2.globe,
+            label: l10n.language,
+            value: switch (theme.locale?.languageCode) {
+              'en' => 'en',
+              'zh' => 'zh',
+              _ => 'system',
+            },
+            options: [
+              ('system', l10n.system),
+              ('en', l10n.english),
+              ('zh', l10n.chinese),
+            ],
+            onChanged: (value) => theme.setLocale(switch (value) {
+              'en' => const Locale('en'),
+              'zh' => const Locale('zh'),
+              _ => null,
+            }),
+          ),
+          _EntryRow(
+            glyph: Glyphs2.doc,
+            title: l10n.logs,
+            subtitle: _logsSubtitle(l10n, live),
+            onTap: () => _open(_Section.logs),
+          ),
+          _EntryRow(
+            glyph: Glyphs2.agents,
+            title: l10n.about,
+            subtitle: l10n.version(AppInfo.version),
+            onTap: () => _open(_Section.about),
+          ),
+        ]),
         const SizedBox(height: 20),
         SectionLabel(l10n.session),
-        GroupCard(
-          dividerInset: 16,
-          children: [_SignOutRow(onTap: () => unawaited(_signOut(context)))],
-        ),
+        generateGroup([_SignOutRow(onTap: () => unawaited(_signOut(context)))]),
       ],
     );
   }
@@ -290,13 +266,7 @@ String _themeLabel(AppLocalizations l10n, ThemeMode mode) => switch (mode) {
   ThemeMode.system => l10n.system,
 };
 
-String _languageLabel(AppLocalizations l10n, String? code) => switch (code) {
-  'en' => l10n.english,
-  'zh' => l10n.chinese,
-  _ => l10n.system,
-};
-
-/// One row of the grouped list: a badge, the section and what it holds now.
+/// One row of the grouped list: a glyph, the section and what it holds now.
 class _EntryRow extends StatelessWidget {
   const _EntryRow({
     required this.glyph,
@@ -313,28 +283,19 @@ class _EntryRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final scheme = context.colorScheme;
-    return RowSemantics(
+    return Semantics(
+      container: true,
+      button: true,
       label: '$title, $subtitle',
       hint: l10n.opensSection,
       onTap: onTap,
-      child: TapFeedback(
-        onTap: onTap,
-        child: ListRow(
-          leading: IconBadge(glyph),
-          title: Text(title, style: context.listTitleStyle),
-          subtitle: Text(
-            subtitle,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: context.listCaptionStyle,
-          ),
-          trailing: GlyphIcon(
-            Glyphs.chevronForward,
-            size: 16,
-            color: scheme.onSurfaceVariant.opacity50,
-          ),
-        ),
+      excludeSemantics: true,
+      child: DecorationListItem(
+        leading: GlyphIcon(glyph),
+        title: Text(title),
+        subtitle: Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis),
+        trailing: const GlyphIcon(Glyphs.chevronForward),
+        onPressed: onTap,
       ),
     );
   }
@@ -344,14 +305,12 @@ class _EntryRow extends StatelessWidget {
 class _SectionPage extends StatelessWidget {
   const _SectionPage({
     required this.title,
-    required this.onBack,
     required this.children,
     this.notice = '',
     this.error = '',
   });
 
   final String title;
-  final VoidCallback onBack;
   final List<Widget> children;
   final String notice;
   final String error;
@@ -360,33 +319,34 @@ class _SectionPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final scheme = context.colorScheme;
-    return PageBody(
-      title: title,
-      titleMaxLines: 2,
-      leading: IconButton(
-        onPressed: onBack,
-        icon: const GlyphIcon(Glyphs.chevronBack),
-        tooltip: l10n.back,
+    return Surface(
+      color: SurfaceLevel.page.colorOf(scheme),
+      child: PageBody(
+        title: title,
+        titleMaxLines: 2,
+        leading: IconButton(
+          onPressed: () => Navigator.maybePop(context),
+          icon: const GlyphIcon(Glyphs.chevronBack),
+          tooltip: l10n.back,
+        ),
+        children: [
+          if (notice.isNotEmpty) ...[
+            InlineNotice(text: notice, tint: scheme.primary),
+            const SizedBox(height: 14),
+          ],
+          if (error.isNotEmpty) ...[
+            InlineNotice(text: error),
+            const SizedBox(height: 14),
+          ],
+          ...children,
+        ],
       ),
-      children: [
-        if (notice.isNotEmpty) ...[
-          InlineNotice(text: notice, tint: scheme.primary),
-          const SizedBox(height: 14),
-        ],
-        if (error.isNotEmpty) ...[
-          InlineNotice(text: error),
-          const SizedBox(height: 14),
-        ],
-        ...children,
-      ],
     );
   }
 }
 
 class _TailnetSection extends StatelessWidget {
-  const _TailnetSection({required this.onBack});
-
-  final VoidCallback onBack;
+  const _TailnetSection();
 
   static String _orDash(String? value) =>
       value == null || value.isEmpty ? '—' : value;
@@ -400,56 +360,37 @@ class _TailnetSection extends StatelessWidget {
     final online = self?.online ?? false;
     return _SectionPage(
       title: l10n.tailnetAndDevice,
-      onBack: onBack,
       children: [
         SectionLabel(l10n.tailnetSection),
-        GroupCard(
-          dividerInset: 16,
-          children: [
-            _InfoRow(label: l10n.account, value: _orDash(self?.owner)),
-            _InfoRow(label: l10n.tailnetName, value: backend.tailnet),
-            _InfoRow(
-              label: l10n.controlServer,
-              value: backend.controlURL.isEmpty
-                  ? 'controlplane.tailscale.com'
-                  : backend.controlURL,
-            ),
-          ],
-        ),
+        generateGroup([
+          _InfoRow(label: l10n.account, value: _orDash(self?.owner)),
+          _InfoRow(label: l10n.tailnetName, value: backend.tailnet),
+          _InfoRow(
+            label: l10n.controlServer,
+            value: backend.controlURL.isEmpty
+                ? 'controlplane.tailscale.com'
+                : backend.controlURL,
+          ),
+        ]),
         const SizedBox(height: 20),
         SectionLabel(l10n.thisDeviceSection),
-        GroupCard(
-          dividerInset: 16,
-          children: [
-            _InfoRow(
-              label: l10n.hostname,
-              value: self?.name ?? backend.hostname,
-            ),
-            _InfoRow(
-              label: l10n.addresses,
-              value: _orDash(self?.ip),
-              mono: true,
-            ),
-            _InfoRow(
-              label: l10n.status,
-              value: online ? l10n.online : l10n.offline,
-              tint: online ? scheme.primary : scheme.onSurfaceVariant,
-            ),
-          ],
-        ),
+        generateGroup([
+          _InfoRow(label: l10n.hostname, value: self?.name ?? backend.hostname),
+          _InfoRow(label: l10n.addresses, value: _orDash(self?.ip), mono: true),
+          _InfoRow(
+            label: l10n.status,
+            value: online ? l10n.online : l10n.offline,
+            tint: online ? scheme.primary : scheme.onSurfaceVariant,
+          ),
+        ]),
       ],
     );
   }
 }
 
 class _SshIdentitiesSection extends StatefulWidget {
-  const _SshIdentitiesSection({
-    required this.onBack,
-    required this.keys,
-    required this.reload,
-  });
+  const _SshIdentitiesSection({required this.keys, required this.reload});
 
-  final VoidCallback onBack;
   final List<SshIdentity> keys;
   final Future<void> Function() reload;
 
@@ -535,93 +476,63 @@ class _SshIdentitiesSectionState extends State<_SshIdentitiesSection> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final scheme = context.colorScheme;
     final backend = BackendScope.of(context);
     final live = backend.available;
     return _SectionPage(
       title: l10n.sshIdentities,
-      onBack: widget.onBack,
       notice: _notice,
       error: _error,
       children: [
-        GroupCard(
-          dividerInset: 60,
-          children: [
-            if (!live)
-              ListRow(
-                leading: const IconBadge(Glyphs2.key),
-                title: Text(l10n.builtinKey, style: context.listTitleStyle),
-                subtitle: Text(
-                  l10n.sshNoBackend,
-                  style: context.listCaptionStyle,
-                ),
-              )
-            else ...[
-              for (final identity in widget.keys)
-                _KeyRow(
-                  identity: identity,
-                  onCopy: identity.publicKey.isEmpty
-                      ? null
-                      : () => unawaited(_copy(identity.publicKey)),
-                  onDelete: identity.builtin
-                      ? null
-                      : () => unawaited(_delete(identity)),
-                ),
-              TapFeedback(
-                onTap: () => unawaited(_import()),
-                child: ListRow(
-                  leading: const IconBadge(Glyphs2.plus),
-                  title: Text(l10n.importKey, style: context.listTitleStyle),
-                  subtitle: Text(
-                    l10n.privateKeyHint,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: context.listCaptionStyle,
-                  ),
-                ),
+        generateGroup([
+          if (!live)
+            DecorationListItem(
+              leading: const GlyphIcon(Glyphs2.key),
+              title: Text(l10n.builtinKey),
+              subtitle: Text(l10n.sshNoBackend),
+            )
+          else ...[
+            for (final identity in widget.keys)
+              _KeyRow(
+                identity: identity,
+                onCopy: identity.publicKey.isEmpty
+                    ? null
+                    : () => unawaited(_copy(identity.publicKey)),
+                onDelete: identity.builtin
+                    ? null
+                    : () => unawaited(_delete(identity)),
               ),
-              TapFeedback(
-                onTap: _forgetting ? null : () => unawaited(_forgetHosts()),
-                child: ListRow(
-                  leading: const IconBadge(Glyphs2.refresh),
-                  title: Text(
-                    l10n.forgetHostKeys,
-                    style: context.listTitleStyle,
-                  ),
-                  subtitle: Text(
-                    l10n.forgetHostKeysHint,
-                    style: context.listCaptionStyle,
-                  ),
-                  trailing: _forgetting
-                      ? const SizedBox.square(
-                          dimension: 18,
-                          child: LoadingIndicator(size: 18),
-                        )
-                      : null,
-                ),
+            DecorationListItem(
+              leading: const GlyphIcon(Glyphs2.plus),
+              title: Text(l10n.importKey),
+              subtitle: Text(
+                l10n.privateKeyHint,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
-            ],
-          ],
-        ),
-        if (live) ...[
-          const SizedBox(height: 8),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 6),
-            child: Text(
-              l10n.sshKeysHint,
-              style: context.listCaptionStyle.copyWith(color: scheme.onSurfaceVariant),
+              onPressed: () => unawaited(_import()),
             ),
-          ),
-        ],
+            DecorationListItem(
+              leading: const GlyphIcon(Glyphs2.refresh),
+              title: Text(l10n.forgetHostKeys),
+              subtitle: Text(l10n.forgetHostKeysHint),
+              trailing: _forgetting
+                  ? const SizedBox.square(
+                      dimension: 18,
+                      child: LoadingIndicator(size: 18),
+                    )
+                  : null,
+              onPressed: _forgetting ? null : () => unawaited(_forgetHosts()),
+            ),
+          ],
+        ]),
+        if (live) ListFooter(text: l10n.sshKeysHint),
       ],
     );
   }
 }
 
 class _ServicesSection extends StatefulWidget {
-  const _ServicesSection({required this.onBack});
-
-  final VoidCallback onBack;
+  const _ServicesSection();
 
   @override
   State<_ServicesSection> createState() => _ServicesSectionState();
@@ -658,61 +569,50 @@ class _ServicesSectionState extends State<_ServicesSection> {
     final backend = BackendScope.of(context);
     return _SectionPage(
       title: l10n.tabServices,
-      onBack: widget.onBack,
       notice: _notice,
       error: _error,
       children: [
-        GroupCard(
-          dividerInset: 16,
-          children: [
-            SelectRow<bool>(
-              label: l10n.servicesOpen,
-              subtitle: backend.openInApp
-                  ? (inAppWebViewSupported
-                        ? l10n.inAppHint
-                        : l10n.inAppDesktopOnly)
-                  : null,
-              value: backend.openInApp,
-              options: [(false, l10n.inBrowser), (true, l10n.inApp)],
-              onChanged: (value) => unawaited(backend.setOpenInApp(value)),
-            ),
-            _IconSwitchRow(
-              label: l10n.serviceIcons,
-              caption: backend.serviceIcons
-                  ? l10n.serviceIconsOn
-                  : l10n.serviceIconsOff,
-              value: backend.serviceIcons,
-              semanticLabel: l10n.a11yServiceIcons(backend.serviceIcons),
-              onChanged: (value) => unawaited(backend.setServiceIcons(value)),
-            ),
-            TapFeedback(
-              onTap: _refreshing ? null : () => unawaited(_refreshIcons()),
-              child: ListRow(
-                leading: const IconBadge(Glyphs2.refresh),
-                title: Text(l10n.refreshIcons, style: context.listTitleStyle),
-                subtitle: Text(
-                  l10n.refreshIconsHint,
-                  style: context.listCaptionStyle,
-                ),
-                trailing: _refreshing
-                    ? const SizedBox.square(
-                        dimension: 18,
-                        child: LoadingIndicator(size: 18),
-                      )
-                    : null,
-              ),
-            ),
-          ],
-        ),
+        generateGroup([
+          SelectRow<bool>(
+            label: l10n.servicesOpen,
+            subtitle: backend.openInApp
+                ? (inAppWebViewSupported
+                      ? l10n.inAppHint
+                      : l10n.inAppDesktopOnly)
+                : null,
+            value: backend.openInApp,
+            options: [(false, l10n.inBrowser), (true, l10n.inApp)],
+            onChanged: (value) => unawaited(backend.setOpenInApp(value)),
+          ),
+          _IconSwitchRow(
+            label: l10n.serviceIcons,
+            caption: backend.serviceIcons
+                ? l10n.serviceIconsOn
+                : l10n.serviceIconsOff,
+            value: backend.serviceIcons,
+            semanticLabel: l10n.a11yServiceIcons(backend.serviceIcons),
+            onChanged: (value) => unawaited(backend.setServiceIcons(value)),
+          ),
+          DecorationListItem(
+            leading: const GlyphIcon(Glyphs2.refresh),
+            title: Text(l10n.refreshIcons),
+            subtitle: Text(l10n.refreshIconsHint),
+            trailing: _refreshing
+                ? const SizedBox.square(
+                    dimension: 18,
+                    child: LoadingIndicator(size: 18),
+                  )
+                : null,
+            onPressed: _refreshing ? null : () => unawaited(_refreshIcons()),
+          ),
+        ]),
       ],
     );
   }
 }
 
 class _NotificationsSection extends StatefulWidget {
-  const _NotificationsSection({required this.onBack});
-
-  final VoidCallback onBack;
+  const _NotificationsSection();
 
   @override
   State<_NotificationsSection> createState() => _NotificationsSectionState();
@@ -741,448 +641,256 @@ class _NotificationsSectionState extends State<_NotificationsSection> {
     final backend = BackendScope.of(context);
     return _SectionPage(
       title: l10n.notificationsSection,
-      onBack: widget.onBack,
       error: _error,
       children: [
-        GroupCard(
-          dividerInset: 16,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-              child: RowSemantics(
-                label: l10n.a11yAgentNotifications(
-                  backend.agentNotifications,
-                  backend.notifications.denied,
-                ),
-                onTap: backend.notifications.supported
-                    ? () => unawaited(_set(!backend.agentNotifications))
-                    : null,
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            l10n.agentNotifications,
-                            style: context.listTitleStyle,
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            !backend.notifications.supported
-                                ? l10n.notificationsUnsupported
-                                : backend.notifications.denied
-                                ? l10n.notificationsDenied
-                                : backend.agentNotifications
-                                ? l10n.agentNotificationsOn
-                                : l10n.agentNotificationsOff,
-                            style: context.listCaptionStyle,
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    if (_busy)
-                      SizedBox(
-                        width: 51,
-                        height: 31,
-                        child: Center(
-                          child: LoadingIndicator(
-                            size: 18,
-                            semanticLabel: l10n.pleaseWait,
-                          ),
-                        ),
-                      )
-                    else
-                      Switch(
-                        value: backend.agentNotifications,
-                        onChanged: backend.notifications.supported
-                            ? (value) => unawaited(_set(value))
-                            : null,
-                        semanticLabel: l10n.agentNotifications,
-                      ),
-                  ],
-                ),
-              ),
+        generateGroup([
+          Semantics(
+            label: l10n.a11yAgentNotifications(
+              backend.agentNotifications,
+              backend.notifications.denied,
             ),
-            if (backend.notifications.supported)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
-                child: Text(
-                  l10n.nodeNotificationHint,
-                  style: context.listCaptionStyle,
-                ),
+            child: DecorationListItem(
+              title: Text(l10n.agentNotifications),
+              subtitle: Text(
+                !backend.notifications.supported
+                    ? l10n.notificationsUnsupported
+                    : backend.notifications.denied
+                    ? l10n.notificationsDenied
+                    : backend.agentNotifications
+                    ? l10n.agentNotificationsOn
+                    : l10n.agentNotificationsOff,
               ),
-          ],
-        ),
+              trailing: _busy
+                  ? SizedBox(
+                      width: 51,
+                      height: 31,
+                      child: Center(
+                        child: LoadingIndicator(
+                          size: 18,
+                          semanticLabel: l10n.pleaseWait,
+                        ),
+                      ),
+                    )
+                  : Switch(
+                      value: backend.agentNotifications,
+                      onChanged: backend.notifications.supported
+                          ? (value) => unawaited(_set(value))
+                          : null,
+                      semanticLabel: l10n.agentNotifications,
+                    ),
+              onPressed: backend.notifications.supported
+                  ? () => unawaited(_set(!backend.agentNotifications))
+                  : null,
+            ),
+          ),
+        ]),
+        if (backend.notifications.supported)
+          ListFooter(text: l10n.nodeNotificationHint),
       ],
     );
   }
 }
 
 class _TerminalSection extends StatelessWidget {
-  const _TerminalSection({required this.onBack});
-
-  final VoidCallback onBack;
+  const _TerminalSection();
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final scheme = context.colorScheme;
     final backend = BackendScope.of(context);
     final keyPages = backend.terminalKeyPages.where((page) => page.isNotEmpty);
     final keyCount = keyPages.fold<int>(0, (sum, page) => sum + page.length);
     return _SectionPage(
       title: l10n.terminalSection,
-      onBack: onBack,
       children: [
-        GroupCard(
-          dividerInset: 16,
-          children: [
-            _IconSwitchRow(
-              label: l10n.terminalKeyHaptics,
-              caption: backend.terminalKeyHaptics
-                  ? l10n.terminalKeyHapticsOn
-                  : l10n.terminalKeyHapticsOff,
-              value: backend.terminalKeyHaptics,
-              semanticLabel: l10n.a11yTerminalKeyHaptics(
-                backend.terminalKeyHaptics,
-              ),
-              onChanged: (value) =>
-                  unawaited(backend.setTerminalKeyHaptics(value)),
+        generateGroup([
+          _IconSwitchRow(
+            label: l10n.terminalKeyHaptics,
+            caption: backend.terminalKeyHaptics
+                ? l10n.terminalKeyHapticsOn
+                : l10n.terminalKeyHapticsOff,
+            value: backend.terminalKeyHaptics,
+            semanticLabel: l10n.a11yTerminalKeyHaptics(
+              backend.terminalKeyHaptics,
             ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          l10n.terminalFontSize,
-                          style: context.listTitleStyle,
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          l10n.terminalFontSizeHint(backend.terminalFontSize),
-                          style: context.listCaptionStyle,
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  _FontStep(
-                    glyph: 'A-',
-                    label: l10n.terminalFontSmaller,
-                    onTap: () => unawaited(
-                      backend.setTerminalFontSize(backend.terminalFontSize - 1),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  _FontStep(
-                    glyph: 'A+',
-                    label: l10n.terminalFontLarger,
-                    onTap: () => unawaited(
-                      backend.setTerminalFontSize(backend.terminalFontSize + 1),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            SelectRow<TerminalThemeId>(
-              label: l10n.terminalColors,
-              value: backend.terminalTheme,
-              options: [
-                (TerminalThemeId.follow, l10n.terminalThemeFollow),
-                (TerminalThemeId.taildeck, l10n.terminalThemeTaildeck),
-                (TerminalThemeId.midnight, l10n.terminalThemeMidnight),
-                (TerminalThemeId.paper, l10n.terminalThemePaper),
-                (TerminalThemeId.solarizedDark, l10n.terminalThemeSolarizedDark),
-                (
-                  TerminalThemeId.solarizedLight,
-                  l10n.terminalThemeSolarizedLight,
-                ),
-              ],
-              onChanged: (value) => unawaited(backend.setTerminalTheme(value)),
-            ),
-            SelectRow<TerminalFontId>(
-              label: l10n.terminalFontFamily,
-              value: backend.terminalFont,
-              options: [
-                (TerminalFontId.dejavu, l10n.terminalFontDejavu),
-                (TerminalFontId.systemMono, l10n.terminalFontSystem),
-                (TerminalFontId.sans, l10n.terminalFontSans),
-              ],
-              onChanged: (value) => unawaited(backend.setTerminalFont(value)),
-            ),
-            SelectRow<TerminalCursorId>(
-              label: l10n.terminalCursorLabel,
-              value: backend.terminalCursor,
-              options: [
-                (TerminalCursorId.follow, l10n.terminalCursorFollow),
-                (TerminalCursorId.block, l10n.terminalCursorBlock),
-                (TerminalCursorId.bar, l10n.terminalCursorBar),
-                (TerminalCursorId.underline, l10n.terminalCursorUnderline),
-              ],
-              onChanged: (value) => unawaited(backend.setTerminalCursor(value)),
-            ),
-            _IconSwitchRow(
-              label: l10n.terminalCursorBlink,
-              caption: backend.terminalCursorBlink
-                  ? l10n.terminalCursorBlinkOn
-                  : l10n.terminalCursorBlinkOff,
-              value: backend.terminalCursorBlink,
-              semanticLabel: l10n.a11ySwitch(
-                l10n.terminalCursorBlink,
-                backend.terminalCursorBlink,
-              ),
-              onChanged: (value) =>
-                  unawaited(backend.setTerminalCursorBlink(value)),
-            ),
-            _IconSwitchRow(
-              label: l10n.terminalSwipeArrows,
-              caption: backend.terminalSwipeArrows
-                  ? l10n.terminalSwipeArrowsOn
-                  : l10n.terminalSwipeArrowsOff,
-              value: backend.terminalSwipeArrows,
-              semanticLabel: l10n.a11ySwitch(
-                l10n.terminalSwipeArrows,
-                backend.terminalSwipeArrows,
-              ),
-              onChanged: (value) =>
-                  unawaited(backend.setTerminalSwipeArrows(value)),
-            ),
-            _IconSwitchRow(
-              label: l10n.terminalKeyRowWithKeyboard,
-              caption: backend.terminalKeyRowWithKeyboard
-                  ? l10n.terminalKeyRowWithKeyboardOn
-                  : l10n.terminalKeyRowWithKeyboardOff,
-              value: backend.terminalKeyRowWithKeyboard,
-              semanticLabel: l10n.a11ySwitch(
-                l10n.terminalKeyRowWithKeyboard,
-                backend.terminalKeyRowWithKeyboard,
-              ),
-              onChanged: (value) =>
-                  unawaited(backend.setTerminalKeyRowWithKeyboard(value)),
-            ),
-            _IconSwitchRow(
-              label: l10n.terminalKeepAlive,
-              caption: backend.terminalKeepAlive
-                  ? l10n.terminalKeepAliveOn
-                  : l10n.terminalKeepAliveOff,
-              value: backend.terminalKeepAlive,
-              semanticLabel: l10n.a11ySwitch(
-                l10n.terminalKeepAlive,
-                backend.terminalKeepAlive,
-              ),
-              onChanged: (value) =>
-                  unawaited(backend.setTerminalKeepAlive(value)),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-              child: Text(
-                l10n.terminalKeepAliveLimits,
-                style: context.listCaptionStyle,
-              ),
-            ),
-            TapFeedback(
-              onTap: () => unawaited(
-                showTerminalSnippetsSheet(context, backend: backend),
-              ),
-              child: ListRow(
-                leading: const IconBadge(Glyphs2.bolt),
-                title: Text(l10n.terminalSnippets, style: context.listTitleStyle),
-                subtitle: Text(
-                  backend.terminalSnippets.isEmpty
-                      ? l10n.terminalSnippetsEmpty
-                      : l10n.terminalSnippetsHint(
-                          backend.terminalSnippets.length,
-                        ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: context.listCaptionStyle,
-                ),
-                trailing: GlyphIcon(
-                  Glyphs.chevronForward,
-                  size: 16,
-                  color: scheme.onSurfaceVariant.opacity50,
-                ),
-              ),
-            ),
-            TapFeedback(
-              onTap: () => unawaited(showTerminalKeysSheet(context, backend)),
-              child: ListRow(
-                leading: const IconBadge(Glyphs2.terminal),
-                title: Text(l10n.terminalKeyRow, style: context.listTitleStyle),
-                subtitle: Text(
-                  l10n.terminalKeyRowHint(keyCount, keyPages.length),
-                  style: context.listCaptionStyle,
-                ),
-                trailing: GlyphIcon(
-                  Glyphs.chevronForward,
-                  size: 16,
-                  color: scheme.onSurfaceVariant.opacity50,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-}
-
-class _AppearanceSection extends StatelessWidget {
-  const _AppearanceSection({
-    required this.onBack,
-    required this.theme,
-    required this.floatingNavigation,
-    required this.onFloatingNavigationChanged,
-    required this.tabAnimation,
-    required this.onTabAnimationChanged,
-  });
-
-  final VoidCallback onBack;
-  final TaildeckTheme theme;
-  final bool floatingNavigation;
-  final ValueChanged<bool> onFloatingNavigationChanged;
-  final TabAnimation tabAnimation;
-  final ValueChanged<TabAnimation> onTabAnimationChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
-    return _SectionPage(
-      title: l10n.appearanceAndLanguage,
-      onBack: onBack,
-      children: [
-        SectionLabel(l10n.appearance),
-        GroupCard(
-          dividerInset: 16,
-          children: [
-            SelectRow<ThemeMode>(
-              label: l10n.theme,
-              value: theme.mode,
-              options: [
-                (ThemeMode.system, l10n.system),
-                (ThemeMode.light, l10n.light),
-                (ThemeMode.dark, l10n.dark),
-              ],
-              onChanged: theme.setMode,
-            ),
-            SelectRow<String>(
-              label: l10n.language,
-              value: switch (theme.locale?.languageCode) {
-                'en' => 'en',
-                'zh' => 'zh',
-                _ => 'system',
-              },
-              options: [
-                ('system', l10n.system),
-                ('en', l10n.english),
-                ('zh', l10n.chinese),
-              ],
-              onChanged: (value) => theme.setLocale(switch (value) {
-                'en' => const Locale('en'),
-                'zh' => const Locale('zh'),
-                _ => null,
-              }),
-            ),
-          ],
-        ),
-        const SizedBox(height: 20),
-        SectionLabel(l10n.navigation),
-        GroupCard(
-          dividerInset: 16,
-          children: [
-            SelectRow<bool>(
-              label: l10n.bottomBar,
-              subtitle: floatingNavigation
-                  ? l10n.floatingHint
-                  : l10n.dockedHint,
-              value: floatingNavigation,
-              options: [(true, l10n.floating), (false, l10n.docked)],
-              onChanged: onFloatingNavigationChanged,
-            ),
-            SelectRow<TabAnimation>(
-              label: l10n.tabAnimation,
-              subtitle: tabAnimation == TabAnimation.fade
-                  ? l10n.fadeHint
-                  : l10n.slideHint,
-              value: tabAnimation,
-              options: [
-                (TabAnimation.slide, l10n.slide),
-                (TabAnimation.fade, l10n.fade),
-              ],
-              onChanged: onTabAnimationChanged,
-            ),
-          ],
-        ),
-        if (context.disableAnimations) ...[
-          const SizedBox(height: 8),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 6),
-            child: Text(l10n.motionHint, style: context.listCaptionStyle),
+            onChanged: (value) =>
+                unawaited(backend.setTerminalKeyHaptics(value)),
           ),
-        ],
+          DecorationListItem(
+            title: Text(l10n.terminalFontSize),
+            subtitle: Text(l10n.terminalFontSizeHint(backend.terminalFontSize)),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              spacing: 8,
+              children: [
+                _FontStep(
+                  glyph: 'A-',
+                  label: l10n.terminalFontSmaller,
+                  onTap: () => unawaited(
+                    backend.setTerminalFontSize(backend.terminalFontSize - 1),
+                  ),
+                ),
+                _FontStep(
+                  glyph: 'A+',
+                  label: l10n.terminalFontLarger,
+                  onTap: () => unawaited(
+                    backend.setTerminalFontSize(backend.terminalFontSize + 1),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          SelectRow<TerminalThemeId>(
+            label: l10n.terminalColors,
+            value: backend.terminalTheme,
+            options: [
+              (TerminalThemeId.follow, l10n.terminalThemeFollow),
+              (TerminalThemeId.taildeck, l10n.terminalThemeTaildeck),
+              (TerminalThemeId.midnight, l10n.terminalThemeMidnight),
+              (TerminalThemeId.paper, l10n.terminalThemePaper),
+              (TerminalThemeId.solarizedDark, l10n.terminalThemeSolarizedDark),
+              (
+                TerminalThemeId.solarizedLight,
+                l10n.terminalThemeSolarizedLight,
+              ),
+            ],
+            onChanged: (value) => unawaited(backend.setTerminalTheme(value)),
+          ),
+          SelectRow<TerminalFontId>(
+            label: l10n.terminalFontFamily,
+            value: backend.terminalFont,
+            options: [
+              (TerminalFontId.dejavu, l10n.terminalFontDejavu),
+              (TerminalFontId.systemMono, l10n.terminalFontSystem),
+              (TerminalFontId.sans, l10n.terminalFontSans),
+            ],
+            onChanged: (value) => unawaited(backend.setTerminalFont(value)),
+          ),
+          SelectRow<TerminalCursorId>(
+            label: l10n.terminalCursorLabel,
+            value: backend.terminalCursor,
+            options: [
+              (TerminalCursorId.follow, l10n.terminalCursorFollow),
+              (TerminalCursorId.block, l10n.terminalCursorBlock),
+              (TerminalCursorId.bar, l10n.terminalCursorBar),
+              (TerminalCursorId.underline, l10n.terminalCursorUnderline),
+            ],
+            onChanged: (value) => unawaited(backend.setTerminalCursor(value)),
+          ),
+          _IconSwitchRow(
+            label: l10n.terminalCursorBlink,
+            caption: backend.terminalCursorBlink
+                ? l10n.terminalCursorBlinkOn
+                : l10n.terminalCursorBlinkOff,
+            value: backend.terminalCursorBlink,
+            semanticLabel: l10n.a11ySwitch(
+              l10n.terminalCursorBlink,
+              backend.terminalCursorBlink,
+            ),
+            onChanged: (value) =>
+                unawaited(backend.setTerminalCursorBlink(value)),
+          ),
+          _IconSwitchRow(
+            label: l10n.terminalSwipeArrows,
+            caption: backend.terminalSwipeArrows
+                ? l10n.terminalSwipeArrowsOn
+                : l10n.terminalSwipeArrowsOff,
+            value: backend.terminalSwipeArrows,
+            semanticLabel: l10n.a11ySwitch(
+              l10n.terminalSwipeArrows,
+              backend.terminalSwipeArrows,
+            ),
+            onChanged: (value) =>
+                unawaited(backend.setTerminalSwipeArrows(value)),
+          ),
+          _IconSwitchRow(
+            label: l10n.terminalKeyRowWithKeyboard,
+            caption: backend.terminalKeyRowWithKeyboard
+                ? l10n.terminalKeyRowWithKeyboardOn
+                : l10n.terminalKeyRowWithKeyboardOff,
+            value: backend.terminalKeyRowWithKeyboard,
+            semanticLabel: l10n.a11ySwitch(
+              l10n.terminalKeyRowWithKeyboard,
+              backend.terminalKeyRowWithKeyboard,
+            ),
+            onChanged: (value) =>
+                unawaited(backend.setTerminalKeyRowWithKeyboard(value)),
+          ),
+          _IconSwitchRow(
+            label: l10n.terminalKeepAlive,
+            caption: backend.terminalKeepAlive
+                ? l10n.terminalKeepAliveOn
+                : l10n.terminalKeepAliveOff,
+            value: backend.terminalKeepAlive,
+            semanticLabel: l10n.a11ySwitch(
+              l10n.terminalKeepAlive,
+              backend.terminalKeepAlive,
+            ),
+            onChanged: (value) =>
+                unawaited(backend.setTerminalKeepAlive(value)),
+          ),
+
+          DecorationListItem(
+            leading: const GlyphIcon(Glyphs2.bolt),
+            title: Text(l10n.terminalSnippets),
+            subtitle: Text(
+              backend.terminalSnippets.isEmpty
+                  ? l10n.terminalSnippetsEmpty
+                  : l10n.terminalSnippetsHint(backend.terminalSnippets.length),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+            trailing: const GlyphIcon(Glyphs.chevronForward),
+            onPressed: () =>
+                unawaited(showTerminalSnippetsSheet(context, backend: backend)),
+          ),
+          DecorationListItem(
+            leading: const GlyphIcon(Glyphs2.terminal),
+            title: Text(l10n.terminalKeyRow),
+            subtitle: Text(l10n.terminalKeyRowHint(keyCount, keyPages.length)),
+            trailing: const GlyphIcon(Glyphs.chevronForward),
+            onPressed: () => unawaited(showTerminalKeysSheet(context, backend)),
+          ),
+        ]),
+        ListFooter(text: l10n.terminalKeepAliveLimits),
       ],
     );
   }
 }
 
 class _AboutSection extends StatelessWidget {
-  const _AboutSection({required this.onBack});
-
-  final VoidCallback onBack;
+  const _AboutSection();
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final scheme = context.colorScheme;
     return _SectionPage(
       title: l10n.about,
-      onBack: onBack,
       children: [
-        GroupCard(
-          dividerInset: 60,
-          children: [
-            ListRow(
-              leading: const IconBadge(Glyphs2.nodes),
-              title: Text('Taildeck', style: context.listTitleStyle),
-              trailing: Text(
-                l10n.version(AppInfo.version),
-                style: context.listCaptionStyle,
+        generateGroup([
+          DecorationListItem(
+            leading: const GlyphIcon(Glyphs2.nodes),
+            title: const Text('Taildeck'),
+            trailing: Text(l10n.version(AppInfo.version)),
+          ),
+          DecorationListItem(
+            leading: const GlyphIcon(Glyphs2.globe),
+            title: Text(l10n.repository),
+            subtitle: const Text('markbang/taildeck-ui'),
+            trailing: const GlyphIcon(Glyphs.chevronForward),
+            onPressed: () => unawaited(
+              launchUrl(
+                Uri.parse(repoUrl),
+                mode: LaunchMode.externalApplication,
               ),
             ),
-            TapFeedback(
-              onTap: () => unawaited(
-                launchUrl(
-                  Uri.parse(repoUrl),
-                  mode: LaunchMode.externalApplication,
-                ),
-              ),
-              child: ListRow(
-                leading: const IconBadge(Glyphs2.globe),
-                title: Text(l10n.repository, style: context.listTitleStyle),
-                subtitle: Text(
-                  'markbang/taildeck-ui',
-                  style: context.listCaptionStyle,
-                ),
-                trailing: GlyphIcon(
-                  Glyphs.chevronForward,
-                  size: 16,
-                  color: scheme.onSurfaceVariant.opacity50,
-                ),
-              ),
-            ),
-            ListRow(
-              leading: const IconBadge(Glyphs2.agents),
-              title: Text('prism_ui', style: context.listTitleStyle),
-              trailing: Text('0.1.2', style: context.listCaptionStyle),
-            ),
-          ],
-        ),
+          ),
+          DecorationListItem(
+            leading: const GlyphIcon(Glyphs2.agents),
+            title: const Text('prism_ui'),
+            trailing: const Text('0.1.2'),
+          ),
+        ]),
       ],
     );
   }
@@ -1206,28 +914,14 @@ class _IconSwitchRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-      child: RowSemantics(
+    return DecorationListItem(
+      title: Text(label),
+      subtitle: Text(caption),
+      trailing: Semantics(
         label: semanticLabel,
-        onTap: () => onChanged(!value),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(label, style: context.listTitleStyle),
-                  const SizedBox(height: 2),
-                  Text(caption, style: context.listCaptionStyle),
-                ],
-              ),
-            ),
-            const SizedBox(width: 12),
-            Switch(value: value, onChanged: onChanged, semanticLabel: label),
-          ],
-        ),
+        child: Switch(value: value, onChanged: onChanged, semanticLabel: label),
       ),
+      onPressed: () => onChanged(!value),
     );
   }
 }
@@ -1241,30 +935,13 @@ class _SignOutRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final scheme = context.colorScheme;
-    return RowSemantics(
-      label: l10n.signOut,
-      onTap: onTap,
-      child: TapFeedback(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  l10n.signOut,
-                  style: context.listTitleStyle.copyWith(color: scheme.error),
-                ),
-              ),
-              GlyphIcon(
-                Glyphs.chevronForward,
-                size: 16,
-                color: scheme.error.opacity50,
-              ),
-            ],
-          ),
-        ),
+    return DecorationListItem(
+      title: Text(
+        l10n.signOut,
+        style: context.listTitleStyle.copyWith(color: scheme.error),
       ),
+      trailing: GlyphIcon(Glyphs.chevronForward, color: scheme.error),
+      onPressed: onTap,
     );
   }
 }
@@ -1290,25 +967,9 @@ class _InfoRow extends StatelessWidget {
               .of(context)
               .copyWith(fontFamily: 'DejaVuSansMono', fontSize: 11)
         : AppTextStyle.body.of(context);
-    return RowSemantics(
-      label: '$label, $value',
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-        child: Row(
-          children: [
-            Expanded(
-              child: Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: context.listTitleStyle,
-              ),
-            ),
-            const SizedBox(width: 16),
-            RowValue(value, style: style, tint: tint),
-          ],
-        ),
-      ),
+    return DecorationListItem(
+      title: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
+      trailing: RowValue(value, style: style, tint: tint),
     );
   }
 }
@@ -1327,15 +988,9 @@ class _KeyRow extends StatelessWidget {
     final subtitle = identity.publicKey.isEmpty
         ? l10n.publicKeyUnavailable
         : identity.publicKey;
-    return ListRow(
-      leading: IconBadge(
-        Glyphs2.key,
-        tint: identity.builtin ? null : scheme.primary,
-      ),
-      title: Text(
-        identity.builtin ? l10n.builtinKey : identity.name,
-        style: context.listTitleStyle,
-      ),
+    return DecorationListItem(
+      leading: const GlyphIcon(Glyphs2.key),
+      title: Text(identity.builtin ? l10n.builtinKey : identity.name),
       subtitle: Text(
         subtitle,
         maxLines: 2,

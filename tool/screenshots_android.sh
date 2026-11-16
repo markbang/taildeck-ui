@@ -116,10 +116,10 @@ flow() { # the settings flow, for the recording
   sleep 1.5
   adb shell input keyevent KEYCODE_BACK > /dev/null 2>&1 || true
   sleep 1.5
-  tap 'Appearance & language' || true
-  sleep 1.5
   tap 'Theme' || true
   sleep 2.5
+  tap 'Light' || true
+  sleep 1.5
   adb shell input keyevent KEYCODE_BACK > /dev/null 2>&1 || true
   sleep 1
 }
@@ -147,20 +147,27 @@ if tap 'Tailnet & device'; then
   shot settings-tailnet
 fi
 
-# ---- an open picker ------------------------------------------------------
+# ---- the theme page, and an open picker ---------------------------------
 launch "$settings_url"
-if tap 'Appearance & language'; then
-  shot settings-appearance
-  # The menu opens from the row's value, not its label.
-  if tap 'Theme' 48; then
+if tap 'Theme'; then
+  sleep 2
+  shot settings-theme
+  tap 'Light' || true
+  sleep 1.5
+  shot settings-theme-light
+  adb shell input keyevent KEYCODE_BACK > /dev/null 2>&1 || true
+  sleep 1
+fi
+launch "$settings_url"
+# The menu opens from the row's value, not its label.
+if tap 'Language' 48; then
+  sleep 2
+  if ! ui has 'English' > /dev/null 2>&1; then
+    note "picker: the menu did not open, tapping again"
+    tap 'Language' 48 || true
     sleep 2
-    if ! ui has 'System' > /dev/null 2>&1; then
-      note "picker: the menu did not open, tapping again"
-      tap 'Theme' 48 || true
-      sleep 2
-    fi
-    shot settings-picker
   fi
+  shot settings-picker
 fi
 
 # ---- the logs page -------------------------------------------------------

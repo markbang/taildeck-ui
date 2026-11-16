@@ -12,9 +12,7 @@ import '../widgets/net_loading.dart';
 
 /// `td_logs()` as a monospace, scrollable page.
 class LogsPage extends StatefulWidget {
-  const LogsPage({super.key, required this.onBack});
-
-  final VoidCallback onBack;
+  const LogsPage({super.key});
 
   @override
   State<LogsPage> createState() => _LogsPageState();
@@ -70,13 +68,15 @@ class _LogsPageState extends State<LogsPage> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final scheme = context.colorScheme;
-    return PageBody(
-      title: l10n.logs,
-      leading: IconButton(
-        onPressed: widget.onBack,
-        icon: const GlyphIcon(Glyphs.chevronBack),
-        tooltip: l10n.back,
-      ),
+    return Surface(
+      color: SurfaceLevel.page.colorOf(scheme),
+      child: PageBody(
+        title: l10n.logs,
+        leading: IconButton(
+          onPressed: () => Navigator.maybePop(context),
+          icon: const GlyphIcon(Glyphs.chevronBack),
+          tooltip: l10n.back,
+        ),
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -129,7 +129,8 @@ class _LogsPageState extends State<LogsPage> {
                     ),
             ),
           ),
-      ],
+        ],
+      ),
     );
   }
 }
