@@ -102,7 +102,7 @@ record() { # <name> <seconds> <command...>
 
 # ---- Taildeck ------------------------------------------------------------
 
-activity=${TAILDECK_ACTIVITY:-top.bangwu.taildeck_ui.MainActivity}
+component="$app/${TAILDECK_ACTIVITY:-top.bangwu.taildeck_ui.MainActivity}"
 adb uninstall "$app" > /dev/null 2>&1 || true
 adb install -g "$apk" > "$out/install-taildeck.txt" 2>&1 || fail "adb install failed, see install-taildeck.txt"
 
@@ -112,7 +112,7 @@ launch_taildeck() {
   adb logcat -c > /dev/null 2>&1 || true
   # ?slow= stretches the menu unfold and the page push, so the clip can show
   # their frames; the emulator itself runs with real motion.
-  adb shell "am start -W -a android.intent.action.VIEW -d 'taildeck://preview/?preview=1&tab=3&lang=en&splash=0&slow=$slow' -n $activity" \
+  adb shell "am start -W -a android.intent.action.VIEW -d 'taildeck://preview/?preview=1&tab=3&lang=en&splash=0&slow=$slow' -n $component" \
     > "$out/launch-taildeck.txt" 2>&1 || true
   wait_home "$app" "$out" "$here" Settings 45 || fail "Taildeck never showed the settings tab"
 }
@@ -187,12 +187,22 @@ launch_flclash() {
   adb shell monkey -p "$flclash" -c android.intent.category.LAUNCHER 1 > /dev/null 2>&1 || true
   sleep 12
   dismiss_system_dialogs
-  wait_for Tools 30 || wait_for 工具 10 || return 1
+  # Its dock is the last of four slots whether or not its labels reach the
+  # accessibility tree.
+  if wait_for Tools 20 || wait_for 工具 5; then return 0; fi
+  adb shell input tap "$((W * 7 / 8))" "$((SH - 80))" > /dev/null 2>&1 || true
+  sleep 2
+  ui has Language > /dev/null 2>&1 || ui has Theme > /dev/null 2>&1
 }
 
 open_tools() {
-  tap_label Tools || tap_label 工具 || return 1
+  if tap_label Tools || tap_label 工具; then
+    sleep 2
+    return 0
+  fi
+  adb shell input tap "$((W * 7 / 8))" "$((SH - 80))" > /dev/null 2>&1 || true
   sleep 2
+  ui has Language > /dev/null 2>&1 || ui has Theme > /dev/null 2>&1
 }
 
 open_theme_flclash() {
