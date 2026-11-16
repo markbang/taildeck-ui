@@ -112,8 +112,8 @@ await_log() { # <tag> <phrase> <limit-s>
 geometry() {
   read -r W SH <<< "$(adb shell wm size | sed -n 's/.*: \([0-9]*\)x\([0-9]*\).*/\1 \2/p' | tr -d '\r')"
   [ -n "${W:-}" ] || fail "no screen size"
-  DOCK_NODES="$((W / 8)) $((SH * 917 / 1000))"
-  DOCK_AGENTS="$((W * 5 / 8)) $((SH * 917 / 1000))"
+  DOCK_NODES="$((W * 186 / 1000)) $((SH * 917 / 1000))"
+  DOCK_AGENTS="$((W * 605 / 1000)) $((SH * 917 / 1000))"
 }
 tap_dock() { # <x> <y>
   adb shell input tap "$1" "$2" > /dev/null 2>&1 || fail "the dock tap did not land"
@@ -128,6 +128,11 @@ read_dock() { # <nodes-out> <agents-out>
   echo "$nodes" > "$1"
   echo "$agents" > "$2"
   note "dock: Nodes at [$nodes], Agents at [$agents]"
+}
+
+# Which card the page settled on, for the record.
+rest_text() {
+  python3 "$here/ui.py" "$out/ui.xml" texts "$((SH * 5 / 10))" 2> /dev/null | head -3 | tr '\n' ' '
 }
 
 # A page at rest is static, so a dump of the settled card does reach the idle
@@ -217,9 +222,9 @@ await_log slow 'taildeck agents: failed' 40 \
 note "slow: the launch dial failed with the page up"
 sleep 1
 shot slow-stale-error
-case "$(rest_has 'did not answer')" in
-  ok) note "slow: the card on screen is the dial's own failure" ;;
-  missing) fail "slow: the page at rest does not carry that failure" ;;
+case "$(rest_has 'Retry')" in
+  ok) note "slow: a failure card is on screen: $(rest_text)" ;;
+  missing) fail "slow: the launch failure never reached the page's card" ;;
   *) note "slow: no dump at rest; the still carries the card" ;;
 esac
 read_dock "$out/dock-nodes.txt" "$out/dock-agents.txt" || true
@@ -234,8 +239,8 @@ adb logcat -c > /dev/null 2>&1 || true
 switch_to_agents slow "$ax $ay" clip
 assert_phases slow "connecting failed"
 [ -s "$out/slow-early.png" ] || fail "slow: no still of the first second"
-case "$(rest_has 'did not answer')" in
-  ok) note "slow: after the switch the visit's own timeout shows with the card" ;;
+case "$(rest_has 'Retry')" in
+  ok) note "slow: after the switch the visit's own failure shows: $(rest_text)" ;;
   missing) fail "slow: the failure this visit's dial made never reached the card" ;;
   *) note "slow: no dump after the switch; the clip carries it" ;;
 esac
@@ -245,11 +250,14 @@ esac
 ffmpeg -loglevel error -y -i "$out/slow.mp4" -vf "fps=12,scale=48:48,format=gray" \
   -f rawvideo "$out/clip.raw" 2> /dev/null || fail "slow: could not decode the clip"
 ffmpeg -loglevel error -y -i "$out/slow-stale-error.png" -vf "scale=48:48,format=gray" \
-  -f rawvideo "$out/error.raw" 2> /dev/null || fail "slow: could not encode the error still"
+  -f rawvideo "$out/error-stale.raw" 2> /dev/null || fail "slow: could not encode the card still"
+ffmpeg -loglevel error -y -i "$out/slow-rest.png" -vf "scale=48:48,format=gray" \
+  -f rawvideo "$out/error-wake.raw" 2> /dev/null || fail "slow: could not encode the rest still"
 mkdir -p "$out/frames"
 ffmpeg -loglevel error -y -i "$out/slow.mp4" -vf "fps=12,scale=270:-2" \
   "$out/frames/frame-%03d.png" 2> /dev/null || true
-python3 "$here/agents_switch_check.py" --frames "$out/clip.raw" --error "$out/error.raw" \
+python3 "$here/agents_switch_check.py" --frames "$out/clip.raw" \
+  --error "$out/error-stale.raw" --error "$out/error-wake.raw" \
   --tap 0.8 --lead 36 >> "$summary" 2>&1 \
   || fail "slow: the error card painted before the connecting skeleton (see summary.txt)"
 montage "$out"/frames/frame-*.png -tile 8x -geometry +3+3 -background '#101214' \
