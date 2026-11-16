@@ -102,8 +102,7 @@ record() { # <name> <seconds> <command...>
 
 # ---- Taildeck ------------------------------------------------------------
 
-activity=$(adb shell cmd package resolve-activity --brief "$app" 2>/dev/null | tail -n 1 | tr -d '\r')
-[ -n "$activity" ] || fail "no launcher activity for $app"
+activity=${TAILDECK_ACTIVITY:-top.bangwu.taildeck_ui.MainActivity}
 adb uninstall "$app" > /dev/null 2>&1 || true
 adb install -g "$apk" > "$out/install-taildeck.txt" 2>&1 || fail "adb install failed, see install-taildeck.txt"
 
@@ -186,7 +185,7 @@ launch_flclash() {
   adb shell am force-stop "$flclash" > /dev/null 2>&1 || true
   sleep 2
   adb shell monkey -p "$flclash" -c android.intent.category.LAUNCHER 1 > /dev/null 2>&1 || true
-  sleep 8
+  sleep 12
   dismiss_system_dialogs
   wait_for Tools 30 || wait_for 工具 10 || return 1
 }
