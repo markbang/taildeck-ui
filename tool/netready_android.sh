@@ -131,6 +131,10 @@ wait_for "Continue in browser" 60 || fail "the login page never opened; see ui.x
 tap_text "Control server" || fail "no Control server toggle"
 fill_field 0 "$control_url" || fail "no control server field"
 tap_text "Use an auth key" || fail "no auth key toggle"
+# The Connect button lives inside the key block, so its presence is the proof
+# that the toggle opened; the expand animates, so the dump has to wait.
+wait_for "Connect" 20 || fail "the auth key field did not open"
+sleep 0.5
 fill_field 0 "$auth_key" || fail "no auth key field"
 read -r w h <<< "$(screen_size)"
 tap_text "Connect" || {
@@ -140,7 +144,14 @@ tap_text "Connect" || {
 }
 # Not wait_home: a loaded emulator can take longer than its three dumps to
 # paint the shell after the route is logged.
-wait_for "Services" 90 || fail "sign-in did not reach the shell; see ui.xml"
+signed=0
+for _ in $(seq 1 90); do
+  if dump_page && page_has "Services"; then signed=1; break; fi
+  # Connect without a key falls back to the browser flow, which never returns.
+  page_has "Waiting for approval" && fail "the auth key was not entered; the login page fell back to the browser"
+  sleep 1
+done
+[ "$signed" -eq 1 ] || fail "sign-in did not reach the shell; see ui.xml"
 # The app persists `signedIn` right after the node comes up; a force-stop this
 # close to the shell can drop that write.
 sleep 4
