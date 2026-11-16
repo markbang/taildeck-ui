@@ -30,18 +30,6 @@ import 'theme_page.dart';
 import 'terminal_keys_sheet.dart';
 import 'terminal_snippets_sheet.dart';
 
-/// What the grouped list opens, in the order the rows show.
-enum _Section {
-  tailnet,
-  identities,
-  services,
-  notifications,
-  terminal,
-  theme,
-  logs,
-  about,
-}
-
 class SettingsPage extends StatefulWidget {
   const SettingsPage({
     super.key,
@@ -95,35 +83,6 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
-  /// A section opens over the list as its own page, sliding in from the right
-  /// while the list shifts back and dims, as FlClash's pages do.
-  void _open(_Section section) {
-    final page = switch (section) {
-      _Section.tailnet => const _TailnetSection(),
-      _Section.identities => _SshIdentitiesSection(
-        keys: _keys,
-        reload: _loadKeys,
-      ),
-      _Section.services => const _ServicesSection(),
-      _Section.notifications => const _NotificationsSection(),
-      _Section.terminal => const _TerminalSection(),
-      _Section.theme => ThemePage(
-        theme: widget.theme,
-        floatingNavigation: widget.floatingNavigation,
-        onFloatingNavigationChanged: widget.onFloatingNavigationChanged,
-        tabAnimation: widget.tabAnimation,
-        onTabAnimationChanged: widget.onTabAnimationChanged,
-      ),
-      _Section.logs => const LogsPage(),
-      _Section.about => const _AboutSection(),
-    };
-    unawaited(
-      BaseNavigator.push<void>(context, page).then((_) {
-        if (mounted) setState(() => _logSummary = null);
-      }),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     // A section may have changed what the list summarises.
@@ -141,27 +100,27 @@ class _SettingsPageState extends State<SettingsPage> {
       animateSize: true,
       children: [
         generateGroup([
-          _EntryRow(
+          _PageRow(
             glyph: Glyphs2.nodes,
             title: l10n.tailnetAndDevice,
             subtitle: backend.tailnet.isEmpty
                 ? l10n.notSignedIn
                 : backend.tailnet,
-            onTap: () => _open(_Section.tailnet),
+            page: const _TailnetSection(),
           ),
-          _EntryRow(
+          _PageRow(
             glyph: Glyphs2.key,
             title: l10n.sshIdentities,
             subtitle: live ? l10n.keyCount(_keys.length) : l10n.unavailable,
-            onTap: () => _open(_Section.identities),
+            page: _SshIdentitiesSection(keys: _keys, reload: _loadKeys),
           ),
-          _EntryRow(
+          _PageRow(
             glyph: Glyphs2.grid,
             title: l10n.tabServices,
             subtitle: backend.openInApp ? l10n.inApp : l10n.inBrowser,
-            onTap: () => _open(_Section.services),
+            page: const _ServicesSection(),
           ),
-          _EntryRow(
+          _PageRow(
             glyph: Glyphs2.bell,
             title: l10n.notificationsSection,
             subtitle: !backend.notifications.supported
@@ -169,19 +128,25 @@ class _SettingsPageState extends State<SettingsPage> {
                 : backend.agentNotifications
                 ? l10n.on
                 : l10n.off,
-            onTap: () => _open(_Section.notifications),
+            page: const _NotificationsSection(),
           ),
-          _EntryRow(
+          _PageRow(
             glyph: Glyphs2.terminal,
             title: l10n.terminalSection,
             subtitle: l10n.terminalFontSizeValue(backend.terminalFontSize),
-            onTap: () => _open(_Section.terminal),
+            page: const _TerminalSection(),
           ),
-          _EntryRow(
+          _PageRow(
             glyph: Glyphs2.sun,
             title: l10n.theme,
             subtitle: _themeLabel(l10n, theme.mode),
-            onTap: () => _open(_Section.theme),
+            page: ThemePage(
+              theme: widget.theme,
+              floatingNavigation: widget.floatingNavigation,
+              onFloatingNavigationChanged: widget.onFloatingNavigationChanged,
+              tabAnimation: widget.tabAnimation,
+              onTabAnimationChanged: widget.onTabAnimationChanged,
+            ),
           ),
           SelectRow<String>(
             glyph: Glyphs2.globe,
@@ -202,17 +167,18 @@ class _SettingsPageState extends State<SettingsPage> {
               _ => null,
             }),
           ),
-          _EntryRow(
+          _PageRow(
             glyph: Glyphs2.doc,
             title: l10n.logs,
             subtitle: _logsSubtitle(l10n, live),
-            onTap: () => _open(_Section.logs),
+            page: const LogsPage(),
+            onClosed: () => setState(() => _logSummary = null),
           ),
-          _EntryRow(
+          _PageRow(
             glyph: Glyphs2.agents,
             title: l10n.about,
             subtitle: l10n.version(AppInfo.version),
-            onTap: () => _open(_Section.about),
+            page: const _AboutSection(),
           ),
         ]),
         const SizedBox(height: 20),
@@ -297,6 +263,55 @@ class _EntryRow extends StatelessWidget {
         trailing: const GlyphIcon(Glyphs.chevronForward),
         onPressed: onTap,
       ),
+    );
+  }
+}
+
+/// A row that opens [page] by growing its card into it, as FlClash's
+/// OpenContainer does: the rows around shift away, the page fades in over the
+/// expansion, and back or a drag shrinks the page into the row again.
+class _PageRow extends StatelessWidget {
+  const _PageRow({
+    required this.glyph,
+    required this.title,
+    required this.subtitle,
+    required this.page,
+    this.onClosed,
+  });
+
+  final Glyph glyph;
+  final String title;
+  final String subtitle;
+  final Widget page;
+
+  /// Called once the page is closed, so the row's summary can be read again.
+  final VoidCallback? onClosed;
+
+  @override
+  Widget build(BuildContext context) {
+    final position = ItemPositionProvider.of(context)?.position;
+    Widget row(VoidCallback onTap) =>
+        _EntryRow(glyph: glyph, title: title, subtitle: subtitle, onTap: onTap);
+    final onClosed = this.onClosed;
+    if (!context.isMobileView) {
+      return row(
+        () => unawaited(
+          BaseNavigator.push<void>(context, page).then((_) => onClosed?.call()),
+        ),
+      );
+    }
+    // The widened row is no longer under the group's position provider.
+    return OpenContainer<void>(
+      clipBehavior: Clip.none,
+      transition: OpenContainerTransition.zoom,
+      closedShape: position == null
+          ? null
+          : AppShape.of(listItemRadiusOf(position)),
+      closedBuilder: (context, open) => position == null
+          ? row(open)
+          : ItemPositionProvider(position: position, child: row(open)),
+      onClosed: (_) => onClosed?.call(),
+      openBuilder: (context, close) => page,
     );
   }
 }

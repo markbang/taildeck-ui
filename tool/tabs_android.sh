@@ -76,8 +76,18 @@ geometry() {
   [ -n "${W:-}" ] || fail "no screen size"
 }
 dock() {
-  local point
-  point=$(ui tap Services) || fail "no 'Services' in the dock; the shell did not start"
+  local point attempt
+  # The dock's labels reach the accessibility tree a moment after the shell
+  # paints; wait for them instead of calling the shell missing.
+  for attempt in $(seq 1 15); do
+    point=$(ui tap Services) && break
+    sleep 2
+  done
+  [ -n "${point:-}" ] || {
+    shot dock-fail
+    ui texts "$SH" > "$out/dock-fail.txt" 2> /dev/null || true
+    fail "no 'Services' in the dock after 30 s; the shell did not start"
+  }
   DOCK_Y=${point#* }
   TAP=(
     "$((W / 8)) $DOCK_Y"
