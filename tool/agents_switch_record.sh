@@ -53,8 +53,21 @@ adb shell svc power stayon true > /dev/null 2>&1 || true
 adb shell settings put system screen_off_timeout 2147483647 > /dev/null 2>&1 || true
 adb shell wm dismiss-keyguard > /dev/null 2>&1 || true
 
+# A freshly booted emulator takes a moment before its package service answers;
+# an install that meets it too early dies with a broken pipe.
+for _ in $(seq 1 30); do
+  adb shell pm path android > /dev/null 2>&1 && break
+  sleep 2
+done
 adb uninstall "$app" > /dev/null 2>&1 || true
-adb install -g "$apk" > "$out/install.txt" 2>&1 || fail "adb install failed, see install.txt"
+installed=0
+for attempt in 1 2 3; do
+  if adb install -g "$apk" > "$out/install.txt" 2>&1; then installed=1; break; fi
+  cat "$out/install.txt" >> "$summary"
+  adb wait-for-device > /dev/null 2>&1 || true
+  sleep 10
+done
+[ "$installed" = 1 ] || fail "adb install failed, see install.txt"
 component=$(adb shell cmd package resolve-activity --brief "$app" 2> /dev/null | tail -n 1 | tr -d '\r' || true)
 [ -n "$component" ] || fail "no launcher activity for $app"
 
