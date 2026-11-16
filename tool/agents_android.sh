@@ -44,7 +44,7 @@ in_front() { gate_in_front "$app"; }
 # The page under test must be our process, in front: a dismissed app would
 # make every "no error on screen" check true for the wrong reason.
 alive() { # $1: step
-  local pid front tries=10
+  local pid front tries=5
   pid=$(adb shell pidof "$app" 2>/dev/null | tr -d '\r' || true)
   [ -n "$pid" ] || fail "$1: $app is not running (crashed or was killed)"
   # uiautomator dumps the window that is on screen, so its package is the
@@ -66,7 +66,9 @@ alive() { # $1: step
 
 ui() {
   local attempt
-  for attempt in $(seq 1 10); do
+  # A dump on this emulator costs seconds and fails while the spinner runs, so
+  # a miss is retried a few times, not ten.
+  for attempt in 1 2 3 4; do
     adb shell uiautomator dump /sdcard/ui.xml > "$out/uiautomator.txt" 2>&1 || true
     adb pull /sdcard/ui.xml "$out/ui.xml" > /dev/null 2>&1 || true
     if python3 tool/ui.py "$out/ui.xml" "$@" 2> /dev/null; then return 0; fi
@@ -79,10 +81,19 @@ ui() {
 # idles; an empty tree is that, not a page without the text.
 tree_readable() { grep -q '<node' "$out/ui.xml" 2>/dev/null; }
 
-# Every string the page must never show while the node is not Running. Without
-# a tree there is nothing to read, and the summary says so.
+# Every string the page must never show while the node is not Running. The
+# tree is read once and every string is matched against that dump: one dump
+# per check, not one per string.
 forbidden() {
-  local needle
+  local needle tries=3
+  while [ "$tries" -gt 0 ]; do
+    rm -f "$out/ui.xml"
+    adb shell uiautomator dump /sdcard/ui.xml > "$out/uiautomator.txt" 2>&1 || true
+    adb pull /sdcard/ui.xml "$out/ui.xml" > /dev/null 2>&1 || true
+    tree_readable && break
+    tries=$((tries - 1))
+  done
+  # Without a tree there is nothing to read, and the summary says so.
   tree_readable || { note "note: no UI tree (uiautomator could not idle); the strings below are unchecked this pass"; return 0; }
   for needle in \
     "no such host" \
@@ -91,7 +102,7 @@ forbidden() {
     "Could not connect to herdr" \
     "Connect herdr" \
     "Retry"; do
-    if ui has "$needle"; then
+    if python3 tool/ui.py "$out/ui.xml" has "$needle" 2> /dev/null; then
       fail "the Agents page shows \"$needle\" before the tailnet is Running"
     fi
   done
@@ -107,7 +118,7 @@ launch() {
     > "$out/launch.txt" 2>&1 || return 1
   grep -q "Activity: $app/" "$out/launch.txt" || return 1
   local _i
-  for _i in $(seq 1 60); do
+  for _i in $(seq 1 30); do
     if adb logcat -d 2>/dev/null | grep -q "taildeck agents: "; then return 0; fi
     sleep 1
   done
