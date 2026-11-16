@@ -294,9 +294,12 @@ new_toolbar() {
 # Chinese without a Chinese IME: print it from octal escapes, copy it from the
 # grid, and let Compose paste it.
 compose_flow() {
-  send_command "clear" 1
+  # The script clears with ANSI and prints 你好 on the first row, so the
+  # long press lands on the CJK line and not on the SSH banner above it.
   send_command "sh /tmp/tapzh.sh" 2
-  long_press_grid 0.06 0.06
+  send_command "sh /tmp/tapzh.sh" 2
+  sleep 1
+  long_press_grid 0.06 0.03
   tap_label 'Copy' || { note "compose: the selection toolbar had no Copy"; return 1; }
   sleep 1
   tap_label 'Compose' || { note "compose: no Compose button"; return 1; }
@@ -340,9 +343,11 @@ launch || { note "cannot launch the app"; exit 0; }
 sign_in || true
 cat > /tmp/tapzh.sh <<'ZH'
 #!/bin/sh
+printf '\033[2J\033[H'
 printf '\344\275\240\345\245\275\n'
 ZH
 record sheet-open 25 new_open
+sleep 5
 shot sheet-dark
 record sheet-compose 26 compose_flow
 record sheet-tap 10 new_tap
