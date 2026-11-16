@@ -273,7 +273,10 @@ light_flow() {
 
 # ---- run -----------------------------------------------------------------
 if [ -n "$old" ] && [ -s "$old" ]; then
-  adb install -r -d -g "$old" > "$out/install-old.txt" 2>&1 \
+  # The new APK's signature differs from the published release; the old build
+  # only installs after the app is gone.
+  adb uninstall "$app" > /dev/null 2>&1 || true
+  adb install -g "$old" > "$out/install-old.txt" 2>&1 \
     || note "old APK install failed, see install-old.txt"
   if launch; then
     sign_in || true

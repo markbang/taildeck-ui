@@ -547,13 +547,13 @@ class AppLocalizations implements UiLocalizations {
   String a11ySwitch(String label, bool on) =>
       _zh ? '$label，${on ? '已开启' : '已关闭'}' : '$label, ${on ? 'on' : 'off'}';
   String get terminalKeyRowWithKeyboard =>
-      _zh ? '外接键盘时显示键行' : 'Key row with a hardware keyboard';
+      _zh ? '桌面窗口显示工具栏' : 'Toolbar on a desktop window';
   String get terminalKeyRowWithKeyboardOn => _zh
-      ? '接着外接键盘也显示扩展键行。'
-      : 'Keeps the extra key row while a keyboard is attached.';
+      ? '手机上始终显示悬浮工具栏；打开后桌面窗口也显示。'
+      : 'Phones always show the floating toolbar; this adds it to desktop windows.';
   String get terminalKeyRowWithKeyboardOff => _zh
-      ? '接着外接键盘时隐藏，把屏幕留给终端。'
-      : 'Hidden while a keyboard is attached, to give the screen to the grid.';
+      ? '桌面窗口隐藏工具栏，硬件键盘就够了。'
+      : 'Desktop windows hide the toolbar; the hardware keyboard has the keys.';
 
   // Appearance, snippets and sessions.
   String get terminalColors => _zh ? '颜色主题' : 'Color theme';

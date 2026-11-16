@@ -15,7 +15,6 @@ import '../glyphs.dart';
 import '../data.dart';
 import '../l10n.dart';
 import '../native/bridge.dart';
-import '../native/hardware_keyboard.dart';
 import '../native/keys.dart';
 import '../native/term.dart';
 import '../demo/demo.dart';
@@ -97,7 +96,7 @@ class TerminalPage extends StatefulWidget {
 }
 
 class _TerminalPageState extends State<TerminalPage>
-    with WidgetsBindingObserver, TickerProviderStateMixin {
+    with TickerProviderStateMixin {
   /// The hidden IME target: the soft keyboard types into this field, the
   /// handler sends each committed character, and the field is emptied again,
   /// so no input line is ever shown.
@@ -166,9 +165,6 @@ class _TerminalPageState extends State<TerminalPage>
   double? _pinchFont;
   Timer? _fontSave;
 
-  /// Android's `Configuration.keyboard`; null when the platform cannot say.
-  bool? _physicalKeyboard;
-
   @override
   void initState() {
     super.initState();
@@ -195,10 +191,8 @@ class _TerminalPageState extends State<TerminalPage>
     // Hardware keys go through the emulator's encoder in the demo too, so a
     // keyboard can be tried without a tailnet.
     if (terminal.live) _output = terminal.frames.listen(_onOutput);
-    WidgetsBinding.instance.addObserver(this);
     _ime.addListener(_onImeChanged);
     _inset.addListener(_onInsetTick);
-    unawaited(_readKeyboard());
   }
 
   void _onInsetTick() {
@@ -226,24 +220,6 @@ class _TerminalPageState extends State<TerminalPage>
       ..forward().whenComplete(() {
         if (mounted) setState(() => _insetValue = target);
       });
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    // A keyboard can be plugged in while the app is in the background.
-    if (state == AppLifecycleState.resumed) unawaited(_readKeyboard());
-  }
-
-  @override
-  void didChangeMetrics() {
-    // ...or while the terminal is on screen.
-    unawaited(_readKeyboard());
-  }
-
-  Future<void> _readKeyboard() async {
-    final attached = await physicalKeyboardAttached();
-    if (!mounted || attached == null || attached == _physicalKeyboard) return;
-    setState(() => _physicalKeyboard = attached);
   }
 
   void _onOutput(SshOutput frame) {
@@ -555,6 +531,7 @@ class _TerminalPageState extends State<TerminalPage>
   }
 
   Future<void> _openSnippets() async {
+    _hideKeyboard();
     final backend = BackendScope.of(context);
     await showTerminalSnippetsSheet(
       context,
@@ -639,7 +616,6 @@ class _TerminalPageState extends State<TerminalPage>
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
     _fontSave?.cancel();
     // Detach only; the session stays up in the store and back reattaches.
     _output?.cancel();
@@ -840,23 +816,17 @@ class _TerminalPageState extends State<TerminalPage>
     );
   }
 
-  /// A desktop window always has a hardware keyboard, so the toolbar would
-  /// only take room. On a phone it hides while a physical keyboard is
-  /// attached, unless Settings keeps it or the soft keyboard is up.
+  /// On a phone the toolbar is always there: it is the only way to open the
+  /// keyboard, so hiding it while Android reports a physical keyboard (the
+  /// emulator does) would leave no way in. A desktop window has a hardware
+  /// keyboard, so it hides unless Settings or `?keys=1` asks for it.
   bool _showToolbar(BuildContext context) {
     if (BackendScope.of(context).terminalKeyRowWithKeyboard) return true;
-    // `?keys=1` keeps the toolbar on a preview build that reports a keyboard.
     if (previewParam('keys') == '1') return true;
-    final mobile = switch (defaultTargetPlatform) {
+    return switch (defaultTargetPlatform) {
       TargetPlatform.android || TargetPlatform.iOS => true,
       _ => false,
     };
-    if (!mobile) return false;
-    if ((_physicalKeyboard ?? false) &&
-        MediaQuery.viewInsetsOf(context).bottom == 0) {
-      return false;
-    }
-    return true;
   }
 
   /// The keyboard reaches the page as a view inset on every platform: nothing
@@ -1073,11 +1043,7 @@ class _TitleBar extends StatelessWidget {
                           ),
                         ),
                         child: Center(
-                          child: GlyphIcon(
-                            Glyphs2.terminal,
-                            size: 14,
-                            color: palette.accent,
-                          ),
+                          child: _AppMark(palette: palette, size: 14),
                         ),
                       ),
                       const SizedBox(width: 6),
@@ -1152,6 +1118,46 @@ class _TitleBar extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// The launcher icon's 3x3 node grid, one node lit: the app mark, drawn small
+/// enough for the title bar.
+class _AppMark extends StatelessWidget {
+  const _AppMark({required this.palette, required this.size});
+
+  final TerminalPalette palette;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final dot = size / 6;
+    return SizedBox(
+      width: size,
+      height: size,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          for (var row = 0; row < 3; row++)
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                for (var column = 0; column < 3; column++)
+                  Container(
+                    width: dot,
+                    height: dot,
+                    decoration: BoxDecoration(
+                      color: row == 1 && column == 1
+                          ? palette.accent
+                          : palette.foreground.withValues(alpha: 0.45),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+              ],
+            ),
+        ],
       ),
     );
   }
