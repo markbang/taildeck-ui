@@ -20,7 +20,7 @@ control_url=${CONTROL_URL:-}
 here=$(cd "$(dirname "$0")" && pwd)
 # shellcheck source=tool/android_gate.sh
 . "$here/android_gate.sh"
-mkdir -p "$out"
+mkdir -p "$out/files"
 summary="$out/summary.txt"
 : > "$summary"
 
