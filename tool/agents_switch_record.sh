@@ -106,9 +106,15 @@ capture_window() { # <dir> <tap-ms> <window-ms>
   while :; do
     i=$((i + 1))
     file=$(printf '%s/frame-%03d.png' "$dir" "$i")
-    echo "$(date +%s%3N)" >> "$dir/times.txt"
     adb exec-out screencap -p > "$file" 2> /dev/null || rm -f "$file"
-    [ -s "$file" ] || { i=$((i - 1)); sed -i '$d' "$dir/times.txt"; }
+    # The still shows a moment between the call and its return; the later time
+    # is what the frame is counted at, so a card cannot be blamed on a still
+    # that finished before it appeared.
+    if [ -s "$file" ]; then
+      echo "$(date +%s%3N)" >> "$dir/times.txt"
+    else
+      i=$((i - 1))
+    fi
     [ $(( $(date +%s%3N) - tap )) -ge "$window" ] && break
     [ "$i" -ge 24 ] && break
   done
@@ -192,6 +198,9 @@ switch_to_agents() { # <tag> <point> <frames?>
   local tag=$1 point=$2 frames=${3:-} started
   adb logcat -c > /dev/null 2>&1 || true
   sleep 0.2
+  # The first screencap of a session pays adb's start (~5 s here); pay it
+  # before the tap so the series covers the switch itself.
+  adb exec-out screencap -p > /dev/null 2>&1 || true
   started=$(date +%s%3N)
   echo "$started" > "$out/$tag-tap.txt"
   tap_dock $point
