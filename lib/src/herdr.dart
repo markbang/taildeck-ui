@@ -383,6 +383,8 @@ class HerdrController extends ChangeNotifier {
   Timer? _debounce;
   HerdrFailure _failure = HerdrFailure.none;
   bool _waking = false;
+  int _dials = 0;
+  int _failureDial = 0;
 
   final Map<String, List<HerdrCommand>> _commands = {};
   final Map<String, DateTime> _commandsAt = {};
@@ -398,6 +400,13 @@ class HerdrController extends ChangeNotifier {
   /// pages translate.
   String get detail => _detail;
   HerdrFailure get failure => _failure;
+
+  /// Dials started so far. A page records this when its tab opens, so a
+  /// failure left by an earlier dial is never painted as this visit's.
+  int get dials => _dials;
+
+  /// The dial whose failure [link] carries; 0 when the link holds no failure.
+  int get failureDial => _failureDial;
 
   /// A connect dial is in flight.
   bool get waking => _waking;
@@ -431,6 +440,7 @@ class HerdrController extends ChangeNotifier {
       return;
     }
     _node = node;
+    _dials++;
     _waking = true;
     _failure = HerdrFailure.none;
     _link = HerdrLink.connecting;
@@ -451,6 +461,7 @@ class HerdrController extends ChangeNotifier {
       _link = HerdrLink.ready;
       _detail = '';
       _failure = HerdrFailure.none;
+      _failureDial = 0;
       await refresh();
       _waking = false;
       notifyListeners();
@@ -461,6 +472,7 @@ class HerdrController extends ChangeNotifier {
           ? 'connect timed out'
           : _message(error);
       _failure = HerdrFailure.of(_detail);
+      _failureDial = _dials;
       _link = _classify(_detail);
     }
     // A dial that timed out may still land after the page gave up.
@@ -490,6 +502,7 @@ class HerdrController extends ChangeNotifier {
     _commands.clear();
     _commandsAt.clear();
     _failure = HerdrFailure.none;
+    _failureDial = 0;
     _waking = false;
     notifyListeners();
     await _bridge?.herdrClose();
@@ -564,6 +577,7 @@ class HerdrController extends ChangeNotifier {
         _connId = 0;
         _agents = const [];
         _link = HerdrLink.idle;
+        _failureDial = 0;
         _detail = event.reason;
         notifyListeners();
     }

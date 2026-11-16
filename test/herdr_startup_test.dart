@@ -206,7 +206,9 @@ Widget _nodesApp(TaildeckBackend backend) => MediaQuery(
   ),
 );
 
-Widget _app(TaildeckBackend backend) => MediaQuery(
+/// The Agents page as the shell shows it: `TabSwitcher` keeps it alive but
+/// only ticks the tab on screen, which is how the page knows it was opened.
+Widget _app(TaildeckBackend backend, {bool live = true}) => MediaQuery(
   data: const MediaQueryData(size: Size(414, 896)),
   child: MaterialApp(
     locale: const Locale('en'),
@@ -214,10 +216,15 @@ Widget _app(TaildeckBackend backend) => MediaQuery(
     supportedLocales: const [Locale('en'), Locale('zh')],
     home: BackendScope(
       backend: backend,
-      child: const Scaffold(body: AgentsPage()),
+      child: TickerMode(
+        enabled: live,
+        child: const Scaffold(body: AgentsPage()),
+      ),
     ),
   ),
 );
+
+const _humanError = "Can't find node bangwu — is it online and is MagicDNS on?";
 
 void main() {
   group('agentsPhaseOf', () {
@@ -227,12 +234,14 @@ void main() {
       HerdrLink link = HerdrLink.idle,
       bool tailnet = false,
       bool target = false,
+      bool stale = false,
     }) => agentsPhaseOf(
       herdrReady: ready,
       waking: waking,
       link: link,
       tailnetReady: tailnet,
       hasTarget: target,
+      staleFailure: stale,
     );
 
     test('waits for the tailnet before any herdr state matters', () {
@@ -266,6 +275,25 @@ void main() {
       expect(
         phase(tailnet: true, target: true, link: HerdrLink.notInstalled),
         AgentsPhase.failed,
+      );
+    });
+
+    test('a failure from an earlier dial is progress, not an error', () {
+      // The dial that failed ran before the tab opened: the page wakes the
+      // target instead of painting an error the user never saw begin.
+      expect(
+        phase(tailnet: true, target: true, link: HerdrLink.failed, stale: true),
+        AgentsPhase.connecting,
+      );
+      // With no target there is nothing to wake: first setup, never an error.
+      expect(
+        phase(tailnet: true, link: HerdrLink.failed, stale: true),
+        AgentsPhase.setup,
+      );
+      // A stale failure never paints while the node is still coming up.
+      expect(
+        phase(target: true, link: HerdrLink.failed, stale: true),
+        AgentsPhase.tailnet,
       );
     });
   });
@@ -432,7 +460,7 @@ void main() {
     expect(find.text('Retry'), findsNothing);
   });
 
-  testWidgets('a saved target auto-connects once and reports a human error', (
+  testWidgets('a saved target dials at launch, again on opening the tab', (
     tester,
   ) async {
     final bridge = _FakeBridge()
@@ -445,11 +473,10 @@ void main() {
     await tester.pump();
     await tester.pump();
 
-    expect(bridge.herdrDials, 1);
-    expect(
-      find.text("Can't find node bangwu — is it online and is MagicDNS on?"),
-      findsOneWidget,
-    );
+    // One dial at launch, then the wake the opened tab started: the launch
+    // failure ran while the page was not on screen, so it never painted.
+    expect(bridge.herdrDials, 2);
+    expect(find.text(_humanError), findsOneWidget);
     expect(find.textContaining('no such host'), findsNothing);
     expect(find.text('Retry'), findsOneWidget);
     // The form is behind the settings row, not on the page.
@@ -476,7 +503,7 @@ void main() {
     await tester.pumpWidget(_app(backend));
     await tester.pump();
     await tester.pump();
-    expect(bridge.herdrDials, 1);
+    expect(bridge.herdrDials, 2);
     expect(find.text('Retry'), findsOneWidget);
 
     bridge.herdrGate = Completer<void>();
@@ -484,19 +511,106 @@ void main() {
     await tester.pump();
     // Let the swap animation finish so only the new phase is on screen.
     await tester.pump(const Duration(milliseconds: 400));
-    expect(bridge.herdrDials, 2);
+    expect(bridge.herdrDials, 3);
     expect(find.text('Connecting to herdr · bangwu'), findsOneWidget);
     expect(find.text('Retry'), findsNothing);
 
     bridge.herdrGate!.complete();
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
-    expect(bridge.herdrDials, 2);
-    expect(
-      find.text("Can't find node bangwu — is it online and is MagicDNS on?"),
-      findsOneWidget,
-    );
+    expect(bridge.herdrDials, 3);
+    expect(find.text(_humanError), findsOneWidget);
     expect(find.text('Retry'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox());
+    backend.dispose();
+    await tester.pump();
+  });
+
+  testWidgets(
+    'a failure from an earlier dial never paints after the tab opens',
+    (tester) async {
+      final bridge = _FakeBridge()
+        ..herdrError = 'connect bangwu:22: lookup bangwu: no such host';
+      final backend = TaildeckBackend(
+        bridge: bridge,
+        storage: _MemoryStorage()
+          ..config = const StoredConfig(signedIn: true, herdrNode: 'bangwu'),
+      );
+      // The launch dial fails while another tab is on screen.
+      await backend.init();
+      await tester.pump();
+      expect(backend.herdr!.link, HerdrLink.failed);
+
+      // The tab opens; the wake it starts stays in flight for every frame.
+      bridge.herdrGate = Completer<void>();
+      await tester.pumpWidget(_app(backend, live: false));
+      await tester.pumpWidget(_app(backend));
+      for (var frame = 0; frame < 20; frame++) {
+        await tester.pump(const Duration(milliseconds: 16));
+        expect(find.text(_humanError), findsNothing, reason: 'frame $frame');
+        expect(
+          find.text('Connecting to herdr · bangwu'),
+          findsOneWidget,
+          reason: 'frame $frame',
+        );
+      }
+      expect(bridge.herdrDials, 2);
+
+      // The attempt this visit started fails: that one is the user's to see.
+      bridge.herdrGate!.complete();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.text(_humanError), findsOneWidget);
+      expect(find.text('Retry'), findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox());
+      backend.dispose();
+      await tester.pump();
+    },
+  );
+
+  testWidgets('reopening the tab never fades in the failure left on screen', (
+    tester,
+  ) async {
+    final bridge = _FakeBridge()
+      ..herdrError = 'connect bangwu:22: lookup bangwu: no such host';
+    final backend = TaildeckBackend(
+      bridge: bridge,
+      storage: _MemoryStorage()
+        ..config = const StoredConfig(signedIn: true, herdrNode: 'bangwu'),
+    );
+    await backend.init();
+    await tester.pumpWidget(_app(backend));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.text(_humanError), findsOneWidget);
+
+    // Another tab is up long enough for anything frozen to settle unseen.
+    await tester.pumpWidget(_app(backend, live: false));
+    await tester.pump(const Duration(milliseconds: 400));
+
+    bridge.herdrGate = Completer<void>();
+    await tester.pumpWidget(_app(backend));
+    await tester.pump(const Duration(milliseconds: 16));
+    // The opened tab starts its own transition, so the card it left behind is
+    // not even in the tree to fade in.
+    expect(find.text(_humanError, skipOffstage: false), findsNothing);
+    for (var frame = 0; frame < 20; frame++) {
+      await tester.pump(const Duration(milliseconds: 16));
+      expect(find.text(_humanError), findsNothing, reason: 'frame $frame');
+      expect(
+        find.text('Connecting to herdr · bangwu'),
+        findsOneWidget,
+        reason: 'frame $frame',
+      );
+    }
+    expect(bridge.herdrDials, 3);
+
+    bridge.herdrGate!.complete();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.text(_humanError), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox());
     backend.dispose();

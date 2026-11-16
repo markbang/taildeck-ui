@@ -7,6 +7,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -32,6 +33,7 @@ func main() {
 	port := flag.Int("port", 3000, "tailnet port to serve")
 	sshPort := flag.Int("ssh-port", 22, "tailnet port for the SSH shell")
 	dropAddr := flag.String("drop-addr", "127.0.0.1:3999", "loopback address that closes SSH sessions")
+	hangPort := flag.Int("hang-port", 0, "tailnet port that accepts a dial and never answers it")
 	flag.Parse()
 
 	srv := &tsnet.Server{
@@ -71,10 +73,34 @@ func main() {
 	if c, ok := ln.(net.Listener); ok {
 		log.Printf("serving on %v (net %s)", c.Addr(), status.TailscaleIPs)
 	}
+	if *hangPort != 0 {
+		go serveHang(srv, fmt.Sprintf(":%d", *hangPort))
+	}
 	if addr, err := serveSSH(srv, fmt.Sprintf(":%d", *sshPort)); err != nil {
 		log.Printf("ssh on %d: %v", *sshPort, err)
 	} else {
 		log.Printf("ssh shell on %s", addr)
 	}
 	log.Fatal(http.Serve(ln, mux))
+}
+
+// serveHang takes a dial and holds it without a byte back, so a client waiting
+// for a protocol greeting runs into its own timeout.
+func serveHang(srv *tsnet.Server, addr string) {
+	ln, err := srv.Listen("tcp", addr)
+	if err != nil {
+		log.Printf("hang on %s: %v", addr, err)
+		return
+	}
+	log.Printf("hang on %v", ln.Addr())
+	for {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		go func(conn net.Conn) {
+			defer conn.Close()
+			_, _ = io.Copy(io.Discard, conn)
+		}(conn)
+	}
 }

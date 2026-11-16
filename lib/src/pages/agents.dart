@@ -34,12 +34,42 @@ class AgentsPage extends StatefulWidget {
 class _AgentsPageState extends State<AgentsPage> {
   /// The last phase logged, so the smoke test can follow the page in logcat.
   AgentsPhase? _loggedPhase;
+
   /// Demo list: the web preview and hosts without the shared library.
   late final List<({String section, List<DemoAgent> items})> _demo = [
     for (final group in demoAgents)
       (section: group.section, items: [...group.items]),
   ];
   String _notice = '';
+
+  /// Whether this page's tab is the one on screen; `TabSwitcher` keeps every
+  /// page alive and ticks only the current one.
+  bool _live = false;
+
+  /// Dials started when the tab opened, and whether one was already running:
+  /// the two together say which failures belong to this visit.
+  int _dialsAtOpen = 0;
+  bool _dialOpenAtOpen = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final live = TickerMode.valuesOf(context).enabled;
+    if (live == _live) return;
+    _live = live;
+    if (!live) return;
+    final backend = BackendScope.of(context);
+    final herdr = backend.herdr;
+    if (herdr != null) {
+      _dialsAtOpen = herdr.dials;
+      _dialOpenAtOpen = herdr.waking || herdr.link == HerdrLink.connecting;
+    }
+    // Opening the tab wakes the saved target: one dial, and a listener cannot
+    // be told to rebuild inside this build.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) backend.wakeHerdr();
+    });
+  }
 
   Future<void> _addDemoAgent() async {
     final choice = await showNewAgentSheet(context);
@@ -126,7 +156,10 @@ class _AgentsPageState extends State<AgentsPage> {
                   ),
                   const SizedBox(height: 14),
                 ],
+                // Opening the tab starts the switcher over: a transition
+                // frozen while another tab was up would fade its old phase in.
                 ScaleFadeSwitcher(
+                  key: ValueKey(_live),
                   child: KeyedSubtree(
                     key: ValueKey(_phaseKey(phase, herdr)),
                     child: _body(context, l10n, backend, herdr, phase),
@@ -151,14 +184,25 @@ class _AgentsPageState extends State<AgentsPage> {
 
   /// What the page shows: the node comes up first, then herdr, and only a
   /// real failure gets an error.
-  static AgentsPhase _phaseOf(TaildeckBackend backend, HerdrController herdr) =>
+  AgentsPhase _phaseOf(TaildeckBackend backend, HerdrController herdr) =>
       agentsPhaseOf(
         herdrReady: herdr.ready,
         waking: backend.herdrWaking,
         link: herdr.link,
         tailnetReady: backend.tailnetReady,
         hasTarget: backend.herdrTarget.node.isNotEmpty,
+        staleFailure: _staleFailure(herdr),
       );
+
+  /// A failure is this page's to show only when its dial started in this visit
+  /// or was already running when the tab opened; one left over from an earlier
+  /// dial (while another tab was up) would paint a stale error.
+  bool _staleFailure(HerdrController herdr) {
+    final dial = herdr.failureDial;
+    if (dial == 0) return false;
+    if (dial > _dialsAtOpen) return false;
+    return !(_dialOpenAtOpen && dial == _dialsAtOpen);
+  }
 
   /// Which of herdr's states the page is drawing, so the swap animates only
   /// when that changes (Kotlin's `AnimatedContent(state?.javaClass)`).
