@@ -45,6 +45,8 @@ screen_size() {
 }
 
 dump() {
+  # A failed pull must not leave the previous screen's nodes in place.
+  rm -f "$out/ui.xml"
   adb shell uiautomator dump /sdcard/ui.xml > /dev/null 2>&1 || true
   adb pull /sdcard/ui.xml "$out/ui.xml" > /dev/null 2>&1 || true
 }
@@ -88,7 +90,12 @@ hide_ime() {
 }
 
 open_keyboard() {
-  ui has 'Hide keyboard' > /dev/null 2>&1 && return 0
+  # Hide first when the capsule thinks the IME is up: the hidden IME field
+  # then takes focus again on Show, which a stale connection would not.
+  if ui has 'Hide keyboard' > /dev/null 2>&1; then
+    tap_label 'Hide keyboard' > /dev/null 2>&1 || true
+    sleep 1
+  fi
   tap_label 'Show keyboard'
 }
 
