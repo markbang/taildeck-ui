@@ -141,10 +141,18 @@ tap_text "Connect" || {
 # Not wait_home: a loaded emulator can take longer than its three dumps to
 # paint the shell after the route is logged.
 wait_for "Services" 90 || fail "sign-in did not reach the shell; see ui.xml"
+# The app persists `signedIn` right after the node comes up; a force-stop this
+# close to the shell can drop that write.
+sleep 4
 note "signed in against $control_url"
 
 adb shell am force-stop "$app" > /dev/null 2>&1 || true
-config=$(adb shell run-as "$app" cat files/config.json 2> /dev/null | tr -d '\r' || true)
+config=$(timeout 30 adb shell run-as "$app" cat files/config.json 2> /dev/null | tr -d '\r' || true)
+for _ in 1 2 3; do
+  [ -n "$config" ] && break
+  sleep 2
+  config=$(timeout 30 adb shell run-as "$app" cat files/config.json 2> /dev/null | tr -d '\r' || true)
+done
 [ -n "$config" ] || fail "no saved config after sign-in (is the APK debuggable?)"
 patched=$(printf '%s' "$config" | python3 -c '
 import json, sys
