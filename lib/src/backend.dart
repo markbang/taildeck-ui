@@ -1018,7 +1018,7 @@ class TaildeckBackend extends ChangeNotifier {
     _anyStatus = true;
     if (true) {
       _netmapSeen = _statusHasNetmap(status);
-      _netmapAt ??= _nodeClock.elapsed;
+      if (_netmapSeen) _netmapAt ??= _nodeClock.elapsed;
       _tailnet = status['tailnet'] as String? ?? _tailnet;
       final self = status['self'];
       _self = self is Map<String, dynamic>
