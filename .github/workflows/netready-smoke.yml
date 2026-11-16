@@ -99,9 +99,15 @@ jobs:
           done
           grep 'serving on' /tmp/peer.log || { cat /tmp/peer.log; exit 1; }
           echo "control_url=http://10.0.2.2:8080" >> "$GITHUB_OUTPUT"
-          echo "auth_key=tskey-test" >> "$GITHUB_OUTPUT"
           derp=$(sed -n 's/.*DERP httpsrv listener: 127\.0\.0\.1:\([0-9]*\).*/\1/p' /tmp/control.log | head -1)
           echo "derp_port=$derp" >> "$GITHUB_OUTPUT"
+      - name: Seed a node key for the app
+        # The app starts from a key already registered here, so no login tap can
+        # fall back to the browser flow mid-gate.
+        run: |
+          tool/build_native.sh linux
+          dart run tool/seed_state.dart linux/lib/libtaildeck_bridge.so /tmp/seed \
+            http://127.0.0.1:8080 tskey-test taildeck
       - name: Install the recording tools
         run: |
           sudo apt-get update -qq
@@ -123,8 +129,8 @@ jobs:
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: >-
             CONTROL_URL='${{ steps.control.outputs.control_url }}'
-            AUTH_KEY='${{ steps.control.outputs.auth_key }}'
             DERP_PORT='${{ steps.control.outputs.derp_port }}'
+            SEED_STATE=/tmp/seed/tailscaled.state
             bash tool/netready_android.sh build/netready.apk "$APP_ID" netready-smoke
       - name: Job summary
         if: always()

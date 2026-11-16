@@ -4,10 +4,11 @@
 # peer table. The gate fails when a page draws that window as content (the OS
 # hostname, "No nodes yet", "Can't find node" for a peer that is online) or
 # drops its loading state before the app logs that the netmap is in.
-# Needs CONTROL_URL, AUTH_KEY and a peer named bangwu on that control plane
+# Needs CONTROL_URL, a node key seeded against that control plane
+# (tool/seed_state.dart, SEED_STATE) and a peer named bangwu on it
 # (tool/motion/peer -hostname bangwu), plus a debuggable APK: the netmap cache
 # is dropped through run-as before each start.
-# Usage: CONTROL_URL=http://10.0.2.2:8080 AUTH_KEY=tskey-test \
+# Usage: CONTROL_URL=http://10.0.2.2:8080 SEED_STATE=/tmp/seed/tailscaled.state \
 #          tool/netready_android.sh <apk> [application-id] [out-dir]
 set -euo pipefail
 
@@ -15,7 +16,6 @@ apk=${1:?usage: tool/netready_android.sh <apk> [application-id] [out-dir]}
 app=${2:-top.bangwu.taildeck}
 out=${3:-netready}
 control_url=${CONTROL_URL:-}
-auth_key=${AUTH_KEY:-}
 runs=${RUNS:-20}
 # The runner's side of the control plane: POST arms one held-netmap window, so
 # every cold start meets the same 2 s delay.
@@ -41,8 +41,8 @@ fail() {
 }
 note() { echo "$*" | tee -a "$summary"; }
 
-[ -n "$control_url" ] && [ -n "$auth_key" ] \
-  || { echo "CONTROL_URL and AUTH_KEY are required: a test control plane is what signs the node in"; exit 2; }
+[ -n "$control_url" ] \
+  || { echo "CONTROL_URL is required: the config has to point the node at the test control plane"; exit 2; }
 
 adb wait-for-device
 if [ -n "${DERP_PORT:-}" ]; then
@@ -53,57 +53,6 @@ adb shell svc power stayon true > /dev/null 2>&1 || true
 adb shell settings put system screen_off_timeout 2147483647 > /dev/null 2>&1 || true
 adb shell wm dismiss-keyguard > /dev/null 2>&1 || true
 
-ui() {
-  local attempt
-  for attempt in 1 2 3; do
-    adb shell uiautomator dump /sdcard/ui.xml > /dev/null 2>&1 || true
-    adb pull /sdcard/ui.xml "$out/ui.xml" > /dev/null 2>&1 || true
-    if python3 "$here/ui.py" "$out/ui.xml" "$@" 2> /dev/null; then return 0; fi
-    sleep 0.5
-  done
-  return 1
-}
-
-# One dump per second: the retrying ui() would triple the dump cost while a
-# loaded emulator paints.
-wait_for() { # <marker> <seconds>
-  local waited=0
-  while [ "$waited" -lt "$2" ]; do
-    dump_page && page_has "$1" && return 0
-    sleep 1
-    waited=$((waited + 1))
-  done
-  return 1
-}
-
-tap_text() {
-  local point
-  point=$(ui tap "$1") || return 1
-  # shellcheck disable=SC2086
-  adb shell input tap $point > /dev/null 2>&1 || true
-  sleep 0.8
-}
-
-fill_field() { # <index> <value>
-  local point
-  point=$(ui edit "$1") || return 1
-  # shellcheck disable=SC2086
-  adb shell input tap $point > /dev/null 2>&1 || true
-  sleep 0.5
-  adb shell input text "$(printf '%s' "$2" | sed 's/ /%s/g')" > /dev/null 2>&1 || true
-  sleep 0.4
-  adb shell input keyevent 4 > /dev/null 2>&1 || true
-  sleep 0.6
-}
-
-screen_size() {
-  adb shell wm size | sed -n 's/.*: \([0-9]*\)x\([0-9]*\).*/\1 \2/p' | tr -d '\r'
-}
-
-# One dump per check: a page is read once and scanned for every string it may
-# not show, so the window costs one dump, not one per string.
-# A failed dump leaves the previous file on the device, so the success line is
-# the only proof the tree on screen is the current one.
 dump_page() {
   rm -f "$out/ui.xml"
   timeout 60 adb shell uiautomator dump /sdcard/ui.xml 2> /dev/null | grep -q 'dumped to' || return 1
@@ -113,92 +62,6 @@ dump_page() {
 
 page_has() { # <needle>
   python3 "$here/ui.py" "$out/ui.xml" has "$1" 2> /dev/null
-}
-
-# --- sign in once, then give the saved session a herdr target on the peer -----
-
-adb uninstall "$app" > /dev/null 2>&1 || true
-adb install -g "$apk" > "$out/install.txt" 2>&1 || fail "adb install failed, see install.txt"
-
-component=${LAUNCH_ACTIVITY:-$(adb shell cmd package resolve-activity --brief "$app" 2>/dev/null | tail -n 1 | tr -d '\r' || true)}
-[ -n "$component" ] || fail "no launcher activity for $app"
-
-adb shell am force-stop "$app" > /dev/null 2>&1 || true
-adb shell "am start -W -a android.intent.action.VIEW -d 'taildeck://preview/?login=1&lang=en&splash=0' -n $component" \
-  > "$out/login-launch.txt" 2>&1 || true
-wait_for "Continue in browser" 60 || fail "the login page never opened; see ui.xml"
-
-tap_text "Control server" || fail "no Control server toggle"
-fill_field 0 "$control_url" || fail "no control server field"
-tap_text "Use an auth key" || fail "no auth key toggle"
-# The Connect button lives inside the key block, so its presence is the proof
-# that the toggle opened; the expand animates, so the dump has to wait.
-wait_for "Connect" 20 || fail "the auth key field did not open"
-sleep 0.5
-fill_field 0 "$auth_key" || fail "no auth key field"
-read -r w h <<< "$(screen_size)"
-tap_text "Connect" || {
-  adb shell input swipe "$((w / 2))" "$((h * 3 / 4))" "$((w / 2))" "$((h / 2))" 300 > /dev/null 2>&1
-  sleep 1
-  tap_text "Connect" || fail "no Connect button"
-}
-# Not wait_home: a loaded emulator can take longer than its three dumps to
-# paint the shell after the route is logged.
-signed=0
-for _ in $(seq 1 90); do
-  if dump_page && page_has "Services"; then signed=1; break; fi
-  # Connect without a key falls back to the browser flow, which never returns.
-  page_has "Waiting for approval" && fail "the auth key was not entered; the login page fell back to the browser"
-  sleep 1
-done
-[ "$signed" -eq 1 ] || fail "sign-in did not reach the shell; see ui.xml"
-# The app persists `signedIn` right after the node comes up; a force-stop this
-# close to the shell can drop that write.
-sleep 4
-note "signed in against $control_url"
-
-adb shell am force-stop "$app" > /dev/null 2>&1 || true
-config=$(timeout 30 adb shell run-as "$app" cat files/config.json 2> /dev/null | tr -d '\r' || true)
-for _ in 1 2 3; do
-  [ -n "$config" ] && break
-  sleep 2
-  config=$(timeout 30 adb shell run-as "$app" cat files/config.json 2> /dev/null | tr -d '\r' || true)
-done
-[ -n "$config" ] || fail "no saved config after sign-in (is the APK debuggable?)"
-patched=$(printf '%s' "$config" | python3 -c '
-import json, sys
-cfg = json.load(sys.stdin)
-cfg.update({"herdrNode": "bangwu", "herdrUser": "root", "herdrPort": 22, "herdrAuth": "tailscale"})
-print(json.dumps(cfg, separators=(",", ":")))
-')
-# base64 keeps the pty from rewriting the JSON on its way in.
-encoded=$(printf '%s' "$patched" | base64 -w0)
-adb shell "run-as $app sh -c 'echo $encoded | base64 -d > files/config.json'" > /dev/null 2>&1 || true
-adb shell run-as "$app" cat files/config.json 2> /dev/null | tr -d '\r' | grep -q '"herdrNode":"bangwu"' \
-  || fail "the saved herdr target was not written; see ui.xml"
-adb shell run-as "$app" test -f files/tsnet/tailscaled.state \
-  || fail "run-as cannot read the app's state dir; this gate needs a debuggable APK"
-note "saved herdr target: bangwu"
-
-# --- 20 cold starts per page, sampling the window ----------------------------
-
-# These strings are wrong on either page at any time: bangwu is online, and a
-# node that is not found was looked up before its netmap. Retry is different:
-# a real herdr failure may offer it, so it is only forbidden while loading.
-forbidden_common=("Can't find node" "Connect herdr" "localhost" "No nodes yet")
-
-cold_start() { # <tag> <query>
-  adb shell am force-stop "$app" > /dev/null 2>&1 || true
-  # Without this the node answers from its on-disk netmap in ~70 ms and the
-  # window this gate exists for never opens.
-  adb shell run-as "$app" rm -rf files/tsnet/profile-data > /dev/null 2>&1 || true
-  curl -fsS -X POST "$hold_url" > /dev/null 2>&1 \
-    || fail "no held-netmap control plane at $hold_url (start tool/motion/control -hold-map)"
-  adb logcat -c > /dev/null 2>&1 || true
-  # No -W: the page is what this gate samples, not the first frame.
-  adb shell "am start -a android.intent.action.VIEW -d 'taildeck://preview/?$2' -n $component" \
-    > "$out/$1-launch.txt" 2>&1 || return 1
-  grep -q "^Starting: Intent" "$out/$1-launch.txt"
 }
 
 # The app's own lines, filtered on the host: the log is cleared per run, so one
