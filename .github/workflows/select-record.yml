@@ -67,6 +67,8 @@ jobs:
         # the close so the clip holds every frame of it.
         run: |
           set -o pipefail
+          git fetch --no-tags --depth=1 origin \
+            main:refs/remotes/origin/main
           flutter pub get
           tool/build_native.sh android-x86_64 | tee /tmp/build_native.log
           tool/build_term.sh android-x86_64 | tee /tmp/build_term.log
