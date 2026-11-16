@@ -19,12 +19,18 @@ gate_in_front() { # <app>
 }
 
 # One dump, parsed with tool/ui.py: `gate_ui <out> <tools> has Services`.
+# A dump taken while Flutter is still publishing its tree can come back
+# without labels, so a miss is retried before it is believed.
 gate_ui() { # <out-dir> <tool-dir> <ui.py args...>
-  local out=$1 tools=$2
+  local out=$1 tools=$2 attempt
   shift 2
-  adb shell uiautomator dump /sdcard/ui.xml > /dev/null 2>&1 || true
-  adb pull /sdcard/ui.xml "$out/ui.xml" > /dev/null 2>&1 || true
-  python3 "$tools/ui.py" "$out/ui.xml" "$@" 2> /dev/null
+  for attempt in 1 2 3; do
+    adb shell uiautomator dump /sdcard/ui.xml > /dev/null 2>&1 || true
+    adb pull /sdcard/ui.xml "$out/ui.xml" > /dev/null 2>&1 || true
+    python3 "$tools/ui.py" "$out/ui.xml" "$@" 2> /dev/null && return 0
+    sleep 0.5
+  done
+  return 1
 }
 
 # The shell is painted and the launch screen has faded. The cheap signals come
@@ -36,12 +42,13 @@ wait_home() { # <app> <out-dir> <tool-dir> [marker] [seconds]
   while [ "$waited" -lt "$limit" ]; do
     if gate_in_front "$app" &&
       adb logcat -d 2>/dev/null | grep -q 'taildeck route: shell'; then
-      # The launch screen fades over 340 ms after the route is decided.
+      # The launch screen fades over 340 ms after the route is decided; the
+      # tree can then take a few more seconds to carry the dock's labels.
       sleep 0.8
-      for attempt in 1 2 3; do
+      for attempt in $(seq 1 10); do
         gate_in_front "$app" || return 1
         gate_ui "$out" "$tools" has "$marker" > /dev/null 2>&1 && return 0
-        sleep 1
+        sleep 2
       done
       return 1
     fi
