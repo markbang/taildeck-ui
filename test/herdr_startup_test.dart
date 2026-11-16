@@ -367,6 +367,21 @@ void main() {
       backend.dispose();
     });
 
+    test('a netmap that lags Running is already ready', () async {
+      // The state string trails the netmap by seconds on a slow start; the
+      // pages and the herdr dial only need the netmap and a self address.
+      final bridge = _FakeBridge()
+        ..statusReply = {..._FakeBridge.readyStatus, 'state': 'Starting'};
+      final backend = signedIn(bridge);
+      await backend.init();
+
+      expect(backend.tailnetReady, isTrue);
+      expect(backend.tailnetStarting, isFalse);
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+      expect(bridge.herdrDials, 1);
+      backend.dispose();
+    });
+
     test('the first netmap makes it ready and dials herdr once', () async {
       final bridge = _FakeBridge();
       final backend = signedIn(bridge);

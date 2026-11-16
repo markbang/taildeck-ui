@@ -131,6 +131,7 @@ class TaildeckBackend extends ChangeNotifier {
   bool _netmapSeen = false;
   bool _selfIpSeen = false;
   bool _netmapGapLogged = false;
+  Duration _netstateTick = Duration.zero;
   bool _netmapLogged = false;
   bool _netstateLogged = false;
   final Stopwatch _nodeClock = Stopwatch();
@@ -162,12 +163,21 @@ class TaildeckBackend extends ChangeNotifier {
     selfIp: _selfIpSeen,
   );
 
-  /// The node is Running over a netmap that knows this node's address, so peer
-  /// names resolve and a dial cannot race the first map. Before this, a status
-  /// only carries the OS hostname and an empty peer table.
+  /// A netmap knows this node's address, so peer names resolve and a dial
+  /// cannot race the first map. `Running` is not required: the state string
+  /// lags the netmap by seconds on a slow start, and the netmap is the fact the
+  /// pages and herdr need. Before it, a status only carries the OS hostname and
+  /// an empty peer table.
   bool get tailnetReady {
     final signals = tailnetSignals;
-    return signals.running && signals.netmap && signals.selfIp;
+    if (!signals.netmap || !signals.selfIp) return false;
+    return switch (_state) {
+      BackendState.stopped ||
+      BackendState.unavailable ||
+      BackendState.error ||
+      BackendState.needsLogin => false,
+      _ => true,
+    };
   }
 
   String get error => _error;
@@ -636,7 +646,10 @@ class TaildeckBackend extends ChangeNotifier {
     if (herdr == null) {
       throw const BridgeException('native backend is unavailable');
     }
-    if (!signedIn) {
+    // A netmap and a self address are enough to dial: the state string turns
+    // Running a few seconds later, and waiting for it only delays the first
+    // connection.
+    if (!tailnetReady) {
       throw const BridgeException('the tailnet node is not running');
     }
     var keyPath = '';
@@ -1055,12 +1068,20 @@ class TaildeckBackend extends ChangeNotifier {
   String _at(Duration? at) => at == null ? '-' : '${at.inMilliseconds}ms';
 
   void _logNetmapGap() {
-    if (_netmapGapLogged) return;
+    // While the pages wait, say every half second what is missing: a start
+    // whose netmap never lands is otherwise guesswork from a screenshot.
+    final at = _nodeClock.elapsed;
+    if (_netmapGapLogged &&
+        at - _netstateTick < const Duration(milliseconds: 500)) {
+      return;
+    }
     _netmapGapLogged = true;
+    _netstateTick = at;
     final state = _rawState.isEmpty ? 'NoState' : _rawState;
     debugPrint(
-      'taildeck netstate: no netmap at ${_at(_nodeClock.elapsed)} '
-      '($state); pages wait',
+      'taildeck netstate: waiting at ${_at(at)} ($state, netmap: '
+      '${_netmapSeen ? _at(_netmapAt) : '-'}, self ip: ${_self?.ip ?? '-'}, '
+      'peers: ${_peers.length}); pages wait',
     );
   }
 
@@ -1075,19 +1096,20 @@ class TaildeckBackend extends ChangeNotifier {
     );
   }
 
-  /// One line per start with the three readiness milestones, so a slow netmap
-  /// is visible in a log instead of guessed from a screenshot.
+  /// One line per start with the readiness milestones, so a slow netmap is
+  /// visible in a log instead of guessed from a screenshot.
   void _logNetstate() {
     if (_netstateLogged || !tailnetReady) return;
     _netstateLogged = true;
     debugPrint(
-      'taildeck netstate: Running at ${_at(_runningAt)}, '
-      'netmap at ${_at(_netmapAt)}, '
-      'self ip ${_self?.ip ?? '-'} at ${_at(_selfIpAt)}',
+      'taildeck netstate: ready at ${_at(_nodeClock.elapsed)} '
+      '(Running: ${_at(_runningAt)}, netmap: ${_at(_netmapAt)}, '
+      'self ip: ${_self?.ip ?? '-'}); pages serve',
     );
   }
 
   void _resetNetstate() {
+    _netstateTick = Duration.zero;
     _netmapSeen = false;
     _selfIpSeen = false;
     _netmapGapLogged = false;

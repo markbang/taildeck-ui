@@ -89,7 +89,11 @@ adb shell "chown -R $appuid:$appuid $data/files" > /dev/null 2>&1 || fail "could
 size=$(adb shell stat -c %s "$data/files/tsnet/tailscaled.state" 2> /dev/null | tr -d '\r')
 [ "$size" = "$(stat -c%s "$seed")" ] \
   || fail "the node key landed at ${size:-nothing} bytes, want $(stat -c%s "$seed")"
-note "node key pushed: $size bytes, herdr target bangwu"
+want_sha=$(sha256sum "$seed" | cut -d' ' -f1)
+got_sha=$(adb shell sha256sum "$data/files/tsnet/tailscaled.state" 2> /dev/null | tr -d '\r' | cut -d' ' -f1)
+[ "$got_sha" = "$want_sha" ] \
+  || fail "the node key is not intact on the device ($got_sha, want $want_sha)"
+note "node key pushed: $size bytes, sha ${want_sha:0:12}, herdr target bangwu"
 
 
 dump_page() {
@@ -117,13 +121,33 @@ cold_start() { # <tag> <query>
   # Without this the node answers from its on-disk netmap in ~70 ms and the
   # window this gate exists for never opens.
   adb shell rm -rf "$data/files/tsnet/profile-data" > /dev/null 2>&1 || true
-  curl -fsS -X POST "$hold_url" > /dev/null 2>&1 \
+  curl -fsS -X POST "$hold_url?host=$hostname" > /dev/null 2>&1 \
     || fail "no held-netmap control plane at $hold_url (start tool/motion/control -hold-map)"
   adb logcat -c > /dev/null 2>&1 || true
   # No -W: the page is what this gate samples, not the first frame.
   adb shell "am start -a android.intent.action.VIEW -d 'taildeck://preview/?$2' -n $component" \
     > "$out/$1-launch.txt" 2>&1 || return 1
   grep -q "^Starting: Intent" "$out/$1-launch.txt"
+}
+
+# A plain start, no window armed: proves the seeded session signs in and lists
+# the peer before the gate starts judging the window.
+preflight() {
+  adb shell am force-stop "$app" > /dev/null 2>&1 || true
+  adb shell rm -rf "$data/files/tsnet/profile-data" > /dev/null 2>&1 || true
+  adb logcat -c > /dev/null 2>&1 || true
+  adb shell "am start -a android.intent.action.VIEW -d 'taildeck://preview/?tab=0&lang=en&splash=0' -n $component" \
+    > "$out/preflight-launch.txt" 2>&1 || return 1
+  local t0 waited
+  t0=$(date +%s%3N)
+  while [ $(( $(date +%s%3N) - t0 )) -lt 40000 ]; do
+    dump_page && page_has "Services" && page_has "bangwu" && {
+      preflight_ms=$(( $(date +%s%3N) - t0 ))
+      return 0
+    }
+    sleep 1
+  done
+  return 1
 }
 
 # Samples the page until it shows content, and counts the runs that saw the
@@ -136,7 +160,7 @@ sample_until_ready() { # <tag> <phase>
   t0=$(date +%s%3N)
   while :; do
     ready=0
-    flutter_log | grep -q 'taildeck netstate: Running at' && ready=1
+    flutter_log | grep -q 'taildeck netstate: ready at' && ready=1
     # The page is read before the log: a sample that still shows the loading
     # card while the log says ready is the transition, not a bug.
     if dump_page; then
@@ -160,23 +184,27 @@ sample_until_ready() { # <tag> <phase>
     sleep 0.3
   done
   # One more read after the log says ready: the page has to be content now.
+  content_ms=$(( $(date +%s%3N) - t0 ))
   sleep 1
   [ -s "$out/$tag.png" ] || adb exec-out screencap -p > "$out/$tag.png" 2>/dev/null || true
-  runs_done=$((runs_done + 1))
   loading_runs=$((loading_runs + loading))
+  runs_done=$((runs_done + 1))
 }
 
+# Returns 1 when the run met no delayed netmap: the arming raced another map
+# request, so the run proves nothing and is repeated instead of judged.
+netmap_seen_ms=''
 check_netstate() { # <tag> <phase>
   local tag=$1 phase=$2 netmap_ms
   flutter_log > "$out/$tag-logcat.txt" || true
-  grep -q 'taildeck netstate: no netmap at' "$out/$tag-logcat.txt" \
-    || fail "$tag: the cold start never reported a netmap-less status; the window was not exercised"
   # The netmap line comes before readiness; the ready line repeats its time.
-  netmap_ms=$(sed -n -e 's/.*netstate: Running at [^,]*, netmap at \([0-9]*\)ms.*/\1/p' \
+  netmap_ms=$(sed -n -e 's/.*netstate: ready at [^(]*(Running: [^,]*, netmap: \([0-9]*\)ms.*/\1/p' \
     -e 's/.*netstate: netmap at \([0-9]*\)ms.*/\1/p' "$out/$tag-logcat.txt" | tail -1)
-  [ -n "$netmap_ms" ] || fail "$tag: no ready netstate line; see $tag-logcat.txt"
-  [ "$netmap_ms" -ge 1000 ] \
-    || fail "$tag: the netmap was in after ${netmap_ms}ms; the delayed-netmap window was not in effect"
+  [ -n "$netmap_ms" ] || { note "$tag: no netstate line, retrying"; return 1; }
+  netmap_seen_ms=$netmap_ms
+  [ "$netmap_ms" -ge 1000 ] || { note "$tag: netmap at ${netmap_ms}ms, retrying"; return 1; }
+  grep -q 'taildeck netstate: waiting at' "$out/$tag-logcat.txt" \
+    || { note "$tag: no netmap-less status, retrying"; return 1; }
   # After ready the page has to be content, not the loading state.
   sleep 0.5
   dump_page || true
@@ -196,14 +224,28 @@ check_netstate() { # <tag> <phase>
   note "$tag: netmap at ${netmap_ms}ms, ready line present, no forbidden string"
 }
 
+preflight || fail "the seeded session never reached the node page; see preflight-launch.txt"
+note "preflight: node page with bangwu after ${preflight_ms}ms, no held netmap"
+
 for phase in node agents; do
   tab=0
   [ "$phase" = agents ] && tab=2
   for n in $(seq 1 "$runs"); do
     tag=$(printf '%s-%02d' "$phase" "$n")
-    cold_start "$tag" "tab=$tab&lang=en&splash=0" || fail "$tag: the launch did not start the app"
-    sample_until_ready "$tag" "$phase"
-    check_netstate "$tag" "$phase"
+    for attempt in 1 2 3; do
+      cold_start "$tag" "tab=$tab&lang=en&splash=0" || fail "$tag: the launch did not start the app"
+      sample_until_ready "$tag" "$phase"
+      # A run whose held netmap never applied is setup noise, not a verdict.
+      check_netstate "$tag" "$phase" && break
+      [ "$attempt" -eq 3 ] && fail "$tag: no delayed netmap in three starts"
+    done
+    # The app's own clock is what says the skeleton was short; the wall clock
+    # includes a slow emulator's launch.
+    case "$tag" in *-01)
+      note "$tag: netmap at ${netmap_seen_ms}ms, skeleton left after wall ${content_ms}ms"
+      [ "$netmap_seen_ms" -le 12000 ] \
+        || fail "$tag: the netmap took ${netmap_seen_ms}ms, the skeleton waited for it" ;;
+    esac
   done
 done
 
