@@ -15,8 +15,18 @@ Future<ServiceOpen> openService(BuildContext context, Service service) async {
   final url = gatewayUrl(service, backend.gatewayPort);
   if (backend.openInApp && inAppWebViewSupported) {
     if (url == null) return ServiceOpen.needsGateway;
-    await Navigator.of(context)
-        .push(ServiceWebViewPage.route(service: service, url: url));
+    // https stays on the gateway URL: the gateway accepts tailnet services'
+    // self-signed certificates, the WebView would refuse them.
+    final direct =
+        !service.secure && await useGatewayProxy(backend.gatewayPort);
+    if (!context.mounted) return ServiceOpen.inApp;
+    await Navigator.of(context).push(
+      ServiceWebViewPage.route(
+        service: service,
+        url: direct ? service.url : url,
+        browserUrl: url,
+      ),
+    );
     return ServiceOpen.inApp;
   }
   if (url == null) return ServiceOpen.needsGateway;
