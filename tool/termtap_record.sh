@@ -530,16 +530,15 @@ drag_vim() {
 #!/bin/sh
 seq 1 400 | sed 's/^/vim line /' > /tmp/dragvim.txt
 rm -f /tmp/dragvim-top /tmp/dragvim-arrow
-exec vim -u NONE -c 'set mouse=a' -c 'set laststatus=2' \
+exec vim -u NONE -N -c 'set mouse=a' -c 'set laststatus=2' \
   -c 'nnoremap <Up> :call writefile(["up"], "/tmp/dragvim-arrow", "a")<CR>' \
   -c 'nnoremap <Down> :call writefile(["down"], "/tmp/dragvim-arrow", "a")<CR>' \
   -c 'call timer_start(500, {-> writefile([line("w0")], "/tmp/dragvim-top")}, {"repeat": -1})' \
-  -c 'call timer_start(25000, {-> execute("qa!")})' \
   +200 /tmp/dragvim.txt
 VIM
   send_command "sh /tmp/dragvim.sh" 4
   collapse_panel
-  local before mid after waited=0
+  local before mid after
   before=$(cat /tmp/dragvim-top 2> /dev/null || echo '')
   shot drag-vim-0
   drag_grid 0.15 0.6
@@ -561,7 +560,6 @@ VIM
   else
     fail "vim: the drag did not scroll the window (top ${before:-none} -> ${mid:-none} -> ${after:-none})"
   fi
-  while pgrep -f dragvim.txt > /dev/null && [ "$waited" -lt 30 ]; do sleep 1; waited=$((waited + 1)); done
   pkill -f dragvim.txt > /dev/null 2>&1 || true
   sleep 1
 }
