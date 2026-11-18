@@ -305,7 +305,9 @@ jobs:
             return 1
           }
           if [ "${{ steps.mode.outputs.full }}" = "true" ]; then
-            apk=$(pick profile.apk) || { echo "::error::the profile APK was not built"; exit 1; }
+            # A gate-only dispatch (netready, node) builds no profile APK.
+            apk=$(pick profile.apk || pick netready.apk || pick demo.apk) \
+              || { echo "::error::no APK was built for the selected gates"; exit 1; }
           else
             # Ship mode: the APK the caller uploaded, under its release name.
             apk=$(pick smoke.apk || pick taildeck-android-x64.apk ||
