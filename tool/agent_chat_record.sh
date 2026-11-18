@@ -2,8 +2,10 @@
 # Records the agent chat page on the emulator against the in-memory herdr
 # (`?chat=w1:p1&herdr=demo`, a TAILDECK_DEMO build): the body scrolling under
 # the header, the task strip and the composer; the keyboard going up and down;
-# overscroll at both ends; a light still. The page logs its layer rects
-# (`taildeck chat layers:`), which the summary keeps next to each step.
+# overscroll at both ends; a light still. Then the model capsule: its picker,
+# a switch with its spinner, a refused switch (`modelfail=1`) and the
+# long-press details. The page logs its layer rects (`taildeck chat layers:`),
+# which the summary keeps next to each step.
 # Usage: tool/agent_chat_record.sh <apk> [app-id] [out-dir]
 set -euo pipefail
 
@@ -95,6 +97,10 @@ launch() { # <query>
   return 1
 }
 
+ui() { # <tool/ui.py args...>
+  gate_ui "$out" "$here" "$@"
+}
+
 ime_shown() {
   adb shell dumpsys input_method 2> /dev/null | grep -q 'mInputShown=true'
 }
@@ -173,6 +179,57 @@ launch "preview=1&chat=w1:p1&herdr=demo&splash=0&lang=zh&theme=light"
 swipe "$mid" "$(dp 220)" "$mid" "$((height / 2))" 900
 sleep 1.5
 shot agent-sticky-light
+
+# ---- the model capsule ----------------------------------------------------
+# An idle agent: nothing on the page animates, so uiautomator reaches idle.
+idle="preview=1&chat=w1:p1&herdr=demo&splash=0&lang=zh&status=idle"
+open_panel() {
+  local point
+  point=$(ui tap '模型：') || { note "no model capsule"; return 1; }
+  # shellcheck disable=SC2086
+  adb shell input tap $point > /dev/null 2>&1 || true
+  sleep 2
+}
+pick_sonnet() {
+  local point
+  point=$(ui tap 'Sonnet') || { note "no Sonnet row"; return 1; }
+  # shellcheck disable=SC2086
+  adb shell input tap $point > /dev/null 2>&1 || true
+}
+switch_story() {
+  open_panel || return 0
+  pick_sonnet || return 0
+  # The demo agent takes 1.5 s; the capsule's label has cross-faded by 1 s.
+  sleep 1
+  shot agent-model-switching
+  sleep 3
+}
+
+launch "$idle&theme=dark"
+shot agent-model-capsule
+open_panel && shot agent-model-picker
+adb shell input keyevent KEYCODE_BACK > /dev/null 2>&1 || true
+sleep 1.5
+record agent-model-switch 8 switch_story
+shot agent-model-switched
+if ui has 'Sonnet 4.5'; then note "switch: capsule reads Sonnet 4.5"; else note "switch: capsule did NOT change"; fi
+
+launch "$idle&theme=dark&modelfail=1"
+open_panel && pick_sonnet
+sleep 3.5
+shot agent-model-error
+if ui has 'Opus 4.1'; then note "error: capsule kept Opus 4.1"; else note "error: capsule lost the model"; fi
+
+launch "$idle&theme=dark"
+point=$(ui tap '模型：') && {
+  read -r px py <<< "$point"
+  swipe "$px" "$py" "$px" "$py" 900
+  sleep 2
+  shot agent-model-details
+}
+
+launch "$idle&theme=light"
+open_panel && shot agent-model-picker-light
 
 adb logcat -d 2> /dev/null | grep -E 'taildeck|FATAL|AndroidRuntime' > "$out/logcat.txt" || true
 if grep -q 'FATAL EXCEPTION' "$out/logcat.txt"; then note "crash: see logcat.txt"; exit 1; fi

@@ -17,7 +17,7 @@ class DemoHerdrBridge implements NativeBridge {
   /// `?modelfail=1`: the agent refuses a model switch, for the error state.
   final bool failModel;
 
-  String _model = 'opus';
+  String _model = 'claude-opus-4-1-20250805';
   String _effort = 'high';
 
   static const pane = 'w1:p1';
@@ -54,14 +54,21 @@ class DemoHerdrBridge implements NativeBridge {
       case 'agent.prompt':
         final params = jsonDecode(paramsJSON) as Map<String, dynamic>;
         final text = params['text'] as String? ?? '';
-        await Future<void>.delayed(const Duration(milliseconds: 900));
         if (text.startsWith('/model ') || text.startsWith('/effort ')) {
+          // Long enough for the capsule's spinner to be seen and recorded.
+          await Future<void>.delayed(const Duration(milliseconds: 1500));
           if (failModel) {
             throw const BridgeException('agent.prompt: pane w1:p1 is busy');
           }
           final value = text.substring(text.indexOf(' ') + 1).trim();
           if (text.startsWith('/model ')) {
-            _model = value;
+            // What Claude Code records once it runs the alias.
+            _model = switch (value) {
+              'opus' => 'claude-opus-4-1-20250805',
+              'sonnet' => 'claude-sonnet-4-5-20250929',
+              'haiku' => 'claude-haiku-4-5-20251001',
+              _ => value,
+            };
           } else {
             _effort = value;
           }

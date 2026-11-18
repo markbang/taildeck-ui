@@ -341,19 +341,91 @@ class QueuedPrompt {
 }
 
 class HerdrModel {
-  const HerdrModel(this.id, this.name);
+  const HerdrModel(
+    this.id,
+    this.name, {
+    this.efforts = const [],
+    this.defaultEffort = '',
+  });
 
   final String id;
   final String name;
+
+  /// The reasoning levels this model takes, when the agent says (Codex).
+  final List<String> efforts;
+  final String defaultEffort;
 }
 
 class HerdrModels {
-  const HerdrModels({this.models = const [], this.custom = false});
+  const HerdrModels({
+    this.models = const [],
+    this.efforts = const [],
+    this.custom = false,
+  });
 
   final List<HerdrModel> models;
 
+  /// The agent's reasoning levels, for models that name none of their own.
+  final List<String> efforts;
+
   /// The agent accepts model ids that are not listed.
   final bool custom;
+
+  List<String> effortsFor(HerdrModel? model) =>
+      model != null && model.efforts.isNotEmpty ? model.efforts : efforts;
+}
+
+/// Agents whose model herdr can switch by typing their own command.
+bool canSwitchModel(String kind) =>
+    const {'claude', 'codex', 'pi', 'omp'}.contains(kind);
+
+/// Whether [current], as the transcript records it, is the model [id] names.
+bool isCurrentModel(String kind, String current, String id) {
+  if (current.isEmpty || id.isEmpty) return false;
+  return switch (kind) {
+    'claude' => current.toLowerCase().contains(id.toLowerCase()),
+    // pi ids are provider/model; a session may record the model alone.
+    'pi' || 'omp' =>
+      current == id ||
+          id.substring(id.indexOf('/') + 1) == current ||
+          current.split('/').last == id.split('/').last,
+    _ => current == id,
+  };
+}
+
+/// The command that switches to [model], keeping [effort] where it applies.
+String modelCommand(String kind, String model, String? effort) =>
+    kind == 'codex' && effort != null
+    ? '/model $model --reasoning=$effort'
+    : '/model $model';
+
+String effortCommand(String kind, String effort) => switch (kind) {
+  'claude' => '/effort $effort',
+  'codex' => '/model --reasoning=$effort',
+  _ => '/thinking $effort',
+};
+
+final _claudeModel = RegExp(
+  r'^claude-([a-z]+)-(\d+)(?:-(\d{1,2}))?(?:-\d{8})?(\[1m\])?$',
+  caseSensitive: false,
+);
+
+/// A model id as people say it: `claude-opus-4-1-20250805` is Opus 4.1,
+/// `openai/gpt-5` is gpt-5.
+String modelShortName(String model) {
+  final id = model.trim();
+  final match = _claudeModel.firstMatch(id);
+  if (match == null) {
+    final last = id.split('/').last;
+    return last.isEmpty ? id : '${last[0].toUpperCase()}${last.substring(1)}';
+  }
+  final family = match.group(1)!;
+  final version = [
+    match.group(2),
+    match.group(3),
+  ].whereType<String>().join('.');
+  return '${family[0].toUpperCase()}${family.substring(1)} $version'
+      '${match.group(4) != null ? ' (1M)' : ''}';
 }
 
 class CreatedAgent {
@@ -612,22 +684,37 @@ class HerdrController extends ChangeNotifier {
     final bridge = _need();
     final raw = jsonDecode(await bridge.herdrModels(kind, pane));
     if (raw is! Map<String, dynamic>) return const HerdrModels();
+    List<String> strings(Object? list) => [
+      for (final item in list as List? ?? const [])
+        if (item is String && item.isNotEmpty) item,
+    ];
     return HerdrModels(
       custom: raw['custom'] == true,
+      efforts: strings(raw['efforts']),
       models: [
         for (final item in raw['models'] as List? ?? const [])
-          if (item is Map)
+          if (item is Map && (item['id'] as String? ?? '').isNotEmpty)
             HerdrModel(
-              item['id'] as String? ?? '',
-              item['name'] as String? ?? item['id'] as String? ?? '',
+              item['id'] as String,
+              item['name'] as String? ?? item['id'] as String,
+              efforts: strings(item['efforts']),
+              defaultEffort: item['default'] as String? ?? '',
             ),
       ],
     );
   }
 
-  /// Switches the agent's model by sending its own `/model` command.
-  Future<void> setModel(String pane, String model) =>
-      prompt(pane, '/model $model');
+  /// Switches the agent's model with its own command; it takes effect from
+  /// the agent's next turn.
+  Future<void> switchModel(
+    String pane,
+    String kind,
+    String model, {
+    String? effort,
+  }) => prompt(pane, modelCommand(kind, model, effort));
+
+  Future<void> switchEffort(String pane, String kind, String effort) =>
+      prompt(pane, effortCommand(kind, effort));
 
   /// Commands herdr reads from the node, cached for a minute per kind + cwd.
   Future<List<HerdrCommand>> commands(String kind, String cwd) async {

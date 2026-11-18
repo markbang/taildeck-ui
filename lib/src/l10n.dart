@@ -327,6 +327,44 @@ class AppLocalizations implements UiLocalizations {
   String get agentModel => _zh ? '模型' : 'Model';
   String get agentModelEmpty =>
       _zh ? '这个代理没有报告可切换的模型。' : 'This agent reports no models to switch to.';
+  String get agentModelPanel => _zh ? '模型与思考强度' : 'Model and thinking';
+  String get agentEffort => _zh ? '思考强度' : 'Thinking level';
+  String get agentModelSession => _zh ? '代理' : 'Agent';
+  String get agentModelNextTurn =>
+      _zh ? '从代理的下一轮开始生效。' : 'Applies from the agent’s next turn.';
+  String get agentModelFixed => _zh
+      ? 'herdr 不能切换这个代理的模型。'
+      : 'herdr can’t switch this agent’s model.';
+  String get agentModelBusy =>
+      _zh ? '等代理做完这一轮再切换。' : 'Switch once the agent has finished this turn.';
+  String agentModelCapsule(String model, String effort) => effort.isEmpty
+      ? (_zh ? '模型：$model' : 'Model: $model')
+      : (_zh ? '模型：$model，思考强度 $effort' : 'Model: $model, thinking $effort');
+  String agentModelDefault(String effort) =>
+      _zh ? '默认 $effort' : 'default $effort';
+  String agentModelSwitching(String target) =>
+      _zh ? '正在切换到 $target…' : 'Switching to $target…';
+  String agentModelSwitched(String target) =>
+      _zh ? '下一轮起使用 $target' : 'Next turn uses $target';
+  String agentModelSwitchFailed(String error) =>
+      _zh ? '切换失败：$error' : 'Couldn’t switch: $error';
+  String get agentModelSwitchFailedShort => _zh ? '切换失败' : 'Switch failed';
+  String get agentModelDetails => _zh ? '本会话的模型' : 'This session’s model';
+  String get agentModelUnknown => _zh ? '尚未记录' : 'Not recorded yet';
+  String agentModelPending(String target) => _zh
+      ? '已切换到 $target，代理下一轮起生效。'
+      : 'Switched to $target; the agent uses it from its next turn.';
+  String get agentContext => _zh ? '已用上下文' : 'Context used';
+  String get agentKind => _zh ? '代理类型' : 'Agent';
+  String get effortOff => _zh ? '关闭' : 'off';
+  String get effortMinimal => _zh ? '极低' : 'minimal';
+  String get effortLow => _zh ? '低' : 'low';
+  String get effortMedium => _zh ? '中' : 'medium';
+  String get effortHigh => _zh ? '高' : 'high';
+  String get effortXhigh => _zh ? '超高' : 'extra high';
+  String get effortMax => _zh ? '最大' : 'max';
+  String get effortUltra => _zh ? '极限' : 'ultra';
+  String get effortAuto => _zh ? '自动' : 'auto';
   String agentCreated(String name) => _zh ? '已创建 $name' : 'Created $name';
   String agentPromptFailed(String error) => _zh
       ? '代理已启动，但首条消息发送失败：$error'
