@@ -1,6 +1,8 @@
+import 'dart:async';
+
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 import 'package:prism_ui/context.dart';
-import 'package:prism_ui/ripple.dart';
 
 /// Makes a widget pressable: tap, hover, focus and keyboard activation, with
 /// the plain state layer [overlay] paints over [fill] inside [shape]. A widget
@@ -54,6 +56,12 @@ class PressRegion extends StatefulWidget {
   State<PressRegion> createState() => _PressRegionState();
 }
 
+/// The grey a held row or menu item lays over its whole background, as a
+/// grouped table cell highlights on iOS.
+Color pressHighlightOf(Brightness brightness) => brightness == Brightness.dark
+    ? const Color(0x40CCCCCC)
+    : const Color(0x66BCBCBC);
+
 /// Resolved against the region's brightness, which [WidgetStateProperty] has no
 /// way to ask for; see [_PressRegionState._overlayColor].
 class _StateOverlay implements WidgetStateProperty<Color?> {
@@ -68,7 +76,7 @@ class _StateOverlay implements WidgetStateProperty<Color?> {
   Color? resolveFor(Set<WidgetState> states, Brightness brightness) {
     final dark = brightness == Brightness.dark;
     if (pressed && states.contains(WidgetState.pressed)) {
-      return dark ? const Color(0x40CCCCCC) : const Color(0x66BCBCBC);
+      return pressHighlightOf(brightness);
     }
     if (states.contains(WidgetState.focused)) {
       return dark ? const Color(0x1FFFFFFF) : const Color(0x1F000000);
@@ -80,8 +88,7 @@ class _StateOverlay implements WidgetStateProperty<Color?> {
   }
 }
 
-class _PressRegionState extends State<PressRegion>
-    with TickerProviderStateMixin {
+class _PressRegionState extends State<PressRegion> {
   static const _overlayFade = Duration(milliseconds: 50);
 
   late final _actions = <Type, Action<Intent>>{
@@ -93,13 +100,7 @@ class _PressRegionState extends State<PressRegion>
     ),
   };
   final _states = <WidgetState>{};
-  late final _ripple = PressRipple(vsync: this);
-
-  @override
-  void dispose() {
-    _ripple.dispose();
-    super.dispose();
-  }
+  bool _downInThisEvent = false;
 
   bool get _enabled => widget.onTap != null;
 
@@ -120,6 +121,24 @@ class _PressRegionState extends State<PressRegion>
   void _setPressed(bool pressed) {
     _setState(WidgetState.pressed, pressed);
     widget.onPressedChanged?.call(pressed);
+  }
+
+  void _pressDown() {
+    _setPressed(true);
+    _downInThisEvent = true;
+    scheduleMicrotask(() => _downInThisEvent = false);
+  }
+
+  // A tap too quick for a scroll view to let its press through reports down
+  // and up together; the highlight still shows for a frame before it fades.
+  void _pressUp() {
+    if (!_downInThisEvent) {
+      _setPressed(false);
+      return;
+    }
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _setPressed(false);
+    });
   }
 
   Color? _overlayColor(BuildContext context) {
@@ -155,16 +174,12 @@ class _PressRegionState extends State<PressRegion>
     final shape = widget.shape ?? const RoundedSuperellipseBorder();
     final overlay = TweenAnimationBuilder<Color?>(
       tween: ColorTween(end: _overlayColor(context) ?? const Color(0x00000000)),
-      duration: _overlayFade,
-      builder: (context, color, child) => RippleLayer(
-        ripple: _ripple,
-        color: context.colorScheme.onSurface.withValues(alpha: 0.1),
-        shape: shape,
-        child: CustomPaint(
-          painter: _OverlayPainter(color, shape),
-          child: child,
-        ),
-      ),
+      // A press shows at once; only its release fades.
+      duration: _states.contains(WidgetState.pressed)
+          ? Duration.zero
+          : _overlayFade,
+      builder: (context, color, child) =>
+          CustomPaint(painter: _OverlayPainter(color, shape), child: child),
       child: widget.child,
     );
     return widget.fill == null
@@ -194,26 +209,9 @@ class _PressRegionState extends State<PressRegion>
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         excludeFromSemantics: true,
-        onTapDown: _enabled
-            ? (details) {
-                _setPressed(true);
-                _ripple
-                  ..still = context.disableAnimations
-                  ..press(details.localPosition);
-              }
-            : null,
-        onTapUp: _enabled
-            ? (_) {
-                _setPressed(false);
-                _ripple.release();
-              }
-            : null,
-        onTapCancel: _enabled
-            ? () {
-                _setPressed(false);
-                _ripple.release();
-              }
-            : null,
+        onTapDown: _enabled ? (_) => _pressDown() : null,
+        onTapUp: _enabled ? (_) => _pressUp() : null,
+        onTapCancel: _enabled ? () => _setPressed(false) : null,
         onTap: _enabled ? _activate : null,
         child: _painted(context),
       ),

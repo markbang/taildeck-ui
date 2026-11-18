@@ -135,7 +135,7 @@ void main() {
         .length;
 
     // Open from the value, as a thumb does, and let the menu unfold.
-    await tester.tap(find.text('English'));
+    await tester.tapAt(tester.getCenter(find.text('English')));
     for (var i = 0; i < 40; i++) {
       await tester.pump(const Duration(milliseconds: 16));
     }

@@ -50,13 +50,18 @@ class _SelectRowState<T> extends State<SelectRow<T>> {
       leading: widget.glyph == null ? null : GlyphIcon(widget.glyph!),
       title: Text(widget.label),
       subtitle: widget.subtitle == null ? null : Text(widget.subtitle!),
-      onPressed: () => _openMenu?.call(),
+      onPressed: widget.enabled ? () => _openMenu?.call() : null,
       trailing: PopupAnchor(
         targetBuilder: (open) {
           _openMenu = open;
-          return SelectValueButton(
-            label: shown,
-            onPressed: widget.enabled ? open : null,
+          // The whole row takes the press, so it highlights as one.
+          return IgnorePointer(
+            child: ExcludeFocus(
+              child: SelectValueButton(
+                label: shown,
+                onPressed: widget.enabled ? open : null,
+              ),
+            ),
           );
         },
         popupBuilder: (_) => PopupMenu(

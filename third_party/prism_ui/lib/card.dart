@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
+import 'package:prism_ui/card_surface.dart';
 import 'package:prism_ui/color.dart';
 import 'package:prism_ui/common_button.dart';
 import 'package:prism_ui/context.dart';
@@ -206,6 +207,7 @@ class Card extends StatelessWidget {
         _ => level.colorOf(colorScheme),
       },
       shape: shape ?? AppShape.all(radius ?? AppCorner.md),
+      look: PressLook.highlight,
       inkColor: _filled ? content.text : null,
       ringColor: isError ? colorScheme.error : null,
       padding: paddingOf(context, padding ?? EdgeInsets.zero),

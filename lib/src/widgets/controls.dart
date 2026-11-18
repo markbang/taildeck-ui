@@ -308,17 +308,20 @@ class _AnimatedGroupCardState extends State<AnimatedGroupCard>
     return Card(
       radius: AppCorner.xl,
       padding: EdgeInsets.zero,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          for (final entry in _entries)
-            EntryTransition(
-              key: entry.key,
-              animation: _transitions.animationOf(entry.key!),
-              leaving: _transitions.isLeaving(entry.key!),
-              child: entry,
-            ),
-        ],
+      child: ClipRSuperellipse(
+        borderRadius: AppRadius.all(AppCorner.xl),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (final entry in _entries)
+              EntryTransition(
+                key: entry.key,
+                animation: _transitions.animationOf(entry.key!),
+                leaving: _transitions.isLeaving(entry.key!),
+                child: entry,
+              ),
+          ],
+        ),
       ),
     );
   }
