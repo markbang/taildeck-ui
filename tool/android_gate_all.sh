@@ -28,8 +28,14 @@ gates=${GATES:-all}
 # runs and reports, but failures are warnings and the exit code is 0, for
 # "before" and evidence runs that are expected to show a bug.
 record=${RECORD:-false}
-level=error
-[ "$record" = true ] && level=warning
+# SHIP=true (the release's APK under test): the gates in RECORD_GATES run and
+# save their evidence but never fail the job, while every other gate blocks.
+# The settings stills hit a known qemu freeze on the CI emulator (see
+# docs/TESTING.md, "Release gate"); test/theme_open_test.dart in ci guards
+# what they guarded.
+ship=${SHIP:-false}
+record_gates=${RECORD_GATES:-stills}
+[ "$ship" = true ] || record_gates=""
 mkdir -p "$out"
 results="$out/gate-results.txt"
 : > "$results"
@@ -46,6 +52,7 @@ fi
 adb shell getprop ro.build.version.release 2>/dev/null | tr -d '\r' | sed 's/^/boot: android /' | tee -a "$results"
 
 failed=0
+recorded=0
 total=0
 skipped=0
 
@@ -61,10 +68,23 @@ selected() { # <label>
   return 1
 }
 
+record_only() { # <label>
+  case " $record_gates " in
+    *" $1 "*) return 0 ;;
+  esac
+  return 1
+}
+
 gate() { # <label> <timeout-seconds> <command...>
-  local label=$1 limit=$2 start secs status
+  local label=$1 limit=$2 start secs status level=error
   shift 2
   selected "$label" || { skip "$label" "not in GATES"; return 0; }
+  if [ "$record" = true ]; then
+    level=warning
+  elif record_only "$label"; then
+    level=warning
+    echo "::notice title=android gate $label is record-only::ship mode: $label runs and keeps its evidence, but never fails the release (docs/TESTING.md, Release gate)"
+  fi
   start=$(date +%s)
   total=$((total + 1))
   echo "::group::gate $label"
@@ -77,7 +97,11 @@ gate() { # <label> <timeout-seconds> <command...>
     note "ok $label: ${secs}s"
     return 0
   fi
-  failed=$((failed + 1))
+  if [ "$level" = warning ] && [ "$record" != true ]; then
+    recorded=$((recorded + 1))
+  else
+    failed=$((failed + 1))
+  fi
   if [ "$status" -eq 124 ] || [ "$status" -eq 137 ]; then
     note "FAIL $label: timed out after ${secs}s (limit ${limit}s)"
     echo "::$level title=android gate $label::timed out after ${secs}s; see the $label summary in the artifact"
@@ -94,6 +118,27 @@ gate cold-start 600 bash tool/smoke_android.sh "$apk" "$app" smoke
 gate splash 600 bash tool/splash_shots.sh "$apk" "$app" smoke-splash
 gate agents 600 bash tool/agents_android.sh "$apk" "$app" smoke-agents
 gate stills 600 bash tool/screenshots_android.sh "$apk" "$app" smoke-shots
+stills_status=$?
+
+# One machine-readable line for the release: "stills: ok 13/13", "stills: lost
+# emulator 4/13", "stills: failed 9/13" or "stills: skipped".
+stills_outcome() {
+  local want got missing
+  selected stills || { echo "stills: skipped"; return; }
+  want=$(grep -cE '^[[:space:]]*(shot|record) [a-z]' tool/screenshots_android.sh)
+  got=$(grep -cE '^[a-z-]+: [0-9]+ bytes$' smoke-shots/summary.txt 2> /dev/null)
+  missing=$(grep -cE ': no (screenshot|recording)$' smoke-shots/summary.txt 2> /dev/null)
+  if [ "$stills_status" -eq 0 ] && [ "${missing:-0}" -eq 0 ] && [ "${got:-0}" -ge "$want" ] &&
+    grep -qx 'done' smoke-shots/summary.txt 2> /dev/null; then
+    echo "stills: ok $got/$want"
+  elif ! pgrep -f qemu-system > /dev/null || ! timeout 15 adb shell true > /dev/null 2>&1 ||
+    grep -q 'stopped answering adb' smoke-shots/summary.txt 2> /dev/null; then
+    echo "stills: lost emulator ${got:-0}/$want"
+  else
+    echo "stills: failed ${got:-0}/$want"
+  fi
+}
+stills_outcome | tee "$out/ship-stills.txt" | tee -a "$results"
 
 if [ -n "$demo" ]; then
   gate tabs 900 bash tool/tabs_android.sh "$demo" "$app" smoke-tabs
@@ -142,7 +187,7 @@ pgrep -f qemu-system > /dev/null || note "emulator: the qemu process is gone"
   sudo dmesg -T 2> /dev/null | tail -30
 } > "$out/host.txt" 2>&1
 
-note "ran $total gates: $((total - failed)) passed, $failed failed, $skipped skipped"
+note "ran $total gates: $((total - failed - recorded)) passed, $failed failed, $recorded failed record-only, $skipped skipped"
 if [ "$record" = true ]; then
   note "record mode: $failed gate(s) failed, see summary"
   echo "::notice title=android-smoke record mode::$failed gate(s) failed, see summary"

@@ -48,6 +48,43 @@ The goldens are tagged `golden` and excluded from CI: a runner's rasterizer is
 not pixel-stable enough to gate a PR, and `tool/golden.sh` is the same check on
 the machine that made them.
 
+## Release gate
+
+`platform-release` calls `android-smoke` in ship mode on the signed x86_64 APK
+it just built. To run the same gates on an older build, dispatch with
+`full-gate=false`:
+
+```sh
+gh workflow run android-smoke --ref main -f full-gate=false \
+  -f apk-artifact=android -f apk-run-id=<platform-release run> \
+  -f gates="cold-start splash agents stills"
+```
+
+| Gate | In ship mode |
+| --- | --- |
+| `cold-start`, `splash`, `agents` | block the release |
+| `stills` | record-only: runs, keeps its stills, never fails the job |
+
+Stills are record-only because the CI emulator has a known qemu freeze on the
+settings pages that has nothing to do with the app: a Settings row tap freezes
+the guest within ~0.7 s, the last logcat line is from `EGL_emulation`, qemu
+exits ~60 s later with no OOM or segfault, and the gate results end with
+`emulator: the qemu process is gone`. The regression the stills used to catch,
+a page that never stops redrawing, is guarded by `test/theme_open_test.dart`
+in the required `ci` job.
+
+Each ship run writes one line, `stills: ok 13/13`, `stills: lost emulator
+4/13` or `stills: failed 9/13`, to the job summary, the `ship-stills`
+artifact, the release notes and the release asset `ship-stills.txt`. The
+release job fails when neither the previous published release nor this run
+has `stills: ok`: two releases in a row without visual evidence is a gate to
+fix, not one to ship past. A release from before this line ran stills as a
+blocking gate, so it counts as green.
+
+When a blocking gate fails and the only error is `emulator: the qemu process
+is gone`, rerun the failed jobs once (`gh run rerun <run-id> --failed`) and
+say so in the release report. Any other red stops the release.
+
 ## Adding a golden
 
 Put the test in `test/golden/`, wrap the app in `goldenApp` and the view in

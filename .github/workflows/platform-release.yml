@@ -263,7 +263,8 @@ jobs:
     with:
       apk-artifact: android
       # Ship mode: the cold start, splash, Agents and stills gates on the APK
-      # this run built. The pull request that produced it ran the rest.
+      # this run built (stills record-only). The pull request that produced it
+      # ran the rest.
       full-gate: false
 
   linux:
@@ -514,6 +515,46 @@ jobs:
         with:
           path: dist
           merge-multiple: true
+      - name: Two releases without stills
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STILLS: ${{ needs.android_smoke.outputs.stills }}
+        run: |
+          set -euo pipefail
+          # The stills gate does not block a release (docs/TESTING.md, "Release
+          # gate"), but two releases in a row without green stills is a broken
+          # gate to fix, not one to ship past.
+          now=${STILLS:-stills: failed (no outcome)}
+          echo "$now" > dist/ship-stills.txt
+          prev_tag=$(gh api "repos/${{ github.repository }}/releases?per_page=20" \
+            --jq "[.[] | select(.draft == false and .tag_name != \"${VERSION}\")][0].tag_name // \"\"")
+          prev=""
+          if [ -n "$prev_tag" ]; then
+            prev=$(gh release download "$prev_tag" -R "${{ github.repository }}" -p ship-stills.txt -O - 2> /dev/null \
+              | head -1 || true)
+            [ -n "$prev" ] || prev=$(gh release view "$prev_tag" -R "${{ github.repository }}" --json body --jq .body \
+              | grep -oE 'stills: (ok|failed|lost emulator|skipped)[^`]*' | head -1 || true)
+          fi
+          # A release from before this record ran stills as a blocking gate,
+          # so it shipped only with green stills.
+          [ -n "$prev" ] || prev="stills: ok (blocking gate, before the record)"
+          {
+            echo "### Stills"
+            echo
+            echo "- this run (${VERSION}): \`$now\`"
+            echo "- previous release (${prev_tag:-none}): \`$prev\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "this run: $now; previous release ${prev_tag:-none}: $prev"
+          case "$now" in "stills: ok"*) exit 0 ;; esac
+          case "$prev" in
+            "stills: ok"*)
+              echo "::warning title=stills not green::$now; the release ships, but the next one must have green stills"
+              ;;
+            *)
+              echo "::error title=two releases without stills::${prev_tag} had '$prev' and ${VERSION} has '$now': fix the stills gate before shipping (docs/TESTING.md, Release gate)"
+              exit 1
+              ;;
+          esac
       - name: Checksums
         run: |
           cd dist
@@ -531,6 +572,8 @@ jobs:
           sha256sum taildeck-* > SHA256SUMS
           cat SHA256SUMS
       - name: Compose release notes
+        env:
+          STILLS: ${{ needs.android_smoke.outputs.stills }}
         run: |
           cat > notes.md <<EOF
           ## Taildeck ${VERSION}
@@ -559,6 +602,7 @@ jobs:
             own signing profile.
           - \`SHA256SUMS\` lists the SHA-256 of every asset.
           - Web UI preview: https://markbang.github.io/taildeck-ui/
+          - Emulator settings stills (record-only): \`${STILLS:-stills: failed (no outcome)}\`
 
           ## 中文
 
@@ -584,6 +628,7 @@ jobs:
           - Windows、macOS、iOS 安装包未签名：SmartScreen 与 Gatekeeper 会告警，iOS 需自备签名。
           - \`SHA256SUMS\` 包含所有文件的 SHA-256。
           - Web 界面预览：https://markbang.github.io/taildeck-ui/
+          - 模拟器设置页截图（仅记录）：\`${STILLS:-stills: failed (no outcome)}\`
           EOF
           cat notes.md
       - uses: softprops/action-gh-release@v2
@@ -594,4 +639,5 @@ jobs:
           files: |
             dist/taildeck-*
             dist/SHA256SUMS
+            dist/ship-stills.txt
           fail_on_unmatched_files: true
