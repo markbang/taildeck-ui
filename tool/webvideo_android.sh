@@ -63,7 +63,10 @@ printf '[{"id":"webvideo","node":"%s","name":"Video gate","url":"http://%s:3000/
 adb push "$out/files/config.json" "$data/files/config.json" >> "$out/push.txt" 2>&1 || fail "could not push the config"
 adb push "$out/files/services.json" "$data/files/services.json" >> "$out/push.txt" 2>&1 || fail "could not push the services"
 appuid=$(adb shell stat -c %u "$data" 2> /dev/null | tr -d '\r')
-adb shell "chown -R $appuid:$appuid $data/files" > /dev/null 2>&1 || fail "could not chown $data/files"
+[ -n "$appuid" ] || fail "no owner for $data"
+adb shell "chown -R $appuid:$appuid $data/files && restorecon -R $data/files" >> "$out/push.txt" 2>&1 \
+  || fail "could not hand $data/files to the app; see push.txt"
+adb shell "ls -lZR $data/files" >> "$out/push.txt" 2>&1 || true
 
 ui() { # <ui.py args...>
   local attempt
