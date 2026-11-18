@@ -123,14 +123,6 @@ class DemoHerdrBridge implements NativeBridge {
     },
     {'role': 'tool', 'name': 'Edit', 'input': 'lib/src/pages/agent_chat.dart'},
     {
-      'role': 'output',
-      'text':
-          '\$ flutter test test/agent_chat_layers_test.dart\n'
-          '00:02 +1: layers are measured\n'
-          '00:03 +2: the keyboard lifts the dock\n'
-          '00:03 +3: All tests passed!',
-    },
-    {
       'role': 'assistant',
       'text':
           'The list now runs the full height of the page. Its top and bottom '

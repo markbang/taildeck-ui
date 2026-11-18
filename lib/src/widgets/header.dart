@@ -199,11 +199,51 @@ class PageHeader extends StatelessWidget {
   static const _material = 0.97;
 }
 
+/// The layer a page keeps at its foot (a chat's task strip and composer): the
+/// page's colour, solid behind [child] and easing out above it as
+/// [PageHeader] eases out below, so the content scrolls under it instead of
+/// being cut at its edge.
+class PageFooter extends StatelessWidget {
+  const PageFooter({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Positioned(
+          top: -PageHeader._overhang,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          child: IgnorePointer(
+            child: _Scrim(
+              color: SurfaceLevel.page.colorOf(context.colorScheme),
+              opacity: 1,
+              fadeUp: true,
+            ),
+          ),
+        ),
+        child,
+      ],
+    );
+  }
+}
+
 class _Scrim extends StatelessWidget {
-  const _Scrim({required this.color, required this.opacity});
+  const _Scrim({
+    required this.color,
+    required this.opacity,
+    this.fadeUp = false,
+  });
 
   final Color color;
   final double opacity;
+
+  /// Fades out towards the top edge (a footer) instead of the bottom.
+  final bool fadeUp;
 
   @override
   Widget build(BuildContext context) {
@@ -228,8 +268,8 @@ class _Scrim extends StatelessWidget {
         return DecoratedBox(
           decoration: BoxDecoration(
             gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
+              begin: fadeUp ? Alignment.bottomCenter : Alignment.topCenter,
+              end: fadeUp ? Alignment.topCenter : Alignment.bottomCenter,
               stops: stops,
               colors: colors,
             ),
