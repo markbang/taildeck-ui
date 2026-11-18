@@ -1,6 +1,6 @@
 # Agent chat evidence on the KVM emulator: a release build with the in-memory
 # herdr (TAILDECK_DEMO) records the body under the header, task strip and
-# composer, the keyboard, overscroll and a light still
+# composer, the keyboard, overscroll, a light still and the model switch
 # (tool/agent_chat_record.sh). Clips, stills and the layer log go in the
 # artifact.
 name: agent-chat-record

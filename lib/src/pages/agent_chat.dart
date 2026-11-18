@@ -14,8 +14,8 @@ import '../widgets/foundation.dart';
 import '../widgets/header.dart';
 import '../widgets/snackbar.dart';
 import '../widgets/loading.dart';
-import '../widgets/bottom_sheet.dart';
 import 'agent_chat_layers.dart';
+import 'agent_model.dart';
 
 /// One agent pane: its transcript, a prompt box, restart and model switching.
 class AgentChatPage extends StatefulWidget {
@@ -48,6 +48,10 @@ class _AgentChatPageState extends State<AgentChatPage> {
   bool _sending = false;
   bool _restarting = false;
   bool _switchingModel = false;
+  String _switchTarget = '';
+  bool _switchFailed = false;
+  ModelSettings? _pickedFrom;
+  ModelSettings? _picked;
   Timer? _reload;
   List<HerdrCommand> _commands = const [];
   List<HerdrCommand> _suggestions = const [];
@@ -340,85 +344,92 @@ class _AgentChatPageState extends State<AgentChatPage> {
     }
   }
 
-  Future<void> _pickModel() async {
-    final l10n = AppLocalizations.of(context);
-    HerdrModels options;
-    try {
-      options = await widget.herdr.models(_agent.kind, _pane);
-    } on Object catch (error) {
-      if (mounted) {
-        _say(l10n.agentActionFailed(_message(error)));
-      }
-      return;
-    }
-    if (!mounted) return;
-    if (options.models.isEmpty) {
-      _say(l10n.agentModelEmpty);
-      return;
-    }
-    final current = _transcript?.model ?? '';
-    final chosen = await showMotionSheet<String>(
-      context: context,
-      builder: (context) => Padding(
-        padding: EdgeInsets.fromLTRB(
-          20,
-          20,
-          20,
-          20 + MediaQuery.paddingOf(context).bottom,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              l10n.agentModel,
-              style: AppTextStyle.title2.of(context, emphasized: true),
-            ),
-            const SizedBox(height: 10),
-            GroupCard(
-              dividerInset: 16,
-              children: [
-                for (final model in options.models)
-                  TapFeedback(
-                    onTap: () => Navigator.of(context).pop(model.id),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 12,
-                      ),
-                      child: Row(
-                        children: [
-                          Expanded(child: Text(model.name)),
-                          if (model.id == current)
-                            GlyphIcon(
-                              Glyphs.check,
-                              size: 16,
-                              color: context.colorScheme.primary,
-                            ),
-                        ],
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ],
-        ),
-      ),
+  ModelSettings get _recorded =>
+      (model: _transcript?.model ?? '', effort: _transcript?.effort ?? '');
+
+  /// A model or level just picked shows until the transcript records a change,
+  /// as the Kotlin chat does.
+  ModelSettings get _shownSettings {
+    final picked = _picked;
+    return picked != null && _pickedFrom == _recorded ? picked : _recorded;
+  }
+
+  /// pi would take a command typed mid-turn as a steering message.
+  bool get _modelBusy =>
+      _agent.status == HerdrStatus.blocked ||
+      _working && const {'pi', 'omp'}.contains(_agent.kind);
+
+  Future<void> _openModelPanel() async {
+    if (_switchingModel || _restarting) return;
+    final kind = _agent.kind;
+    final pick = await showModelPanel(
+      context,
+      options: canSwitchModel(kind)
+          ? widget.herdr.models(kind, _pane)
+          : Future.value(const HerdrModels()),
+      kind: kind,
+      current: _shownSettings,
+      busy: _modelBusy,
     );
-    if (chosen == null || !mounted) return;
+    if (pick == null || !mounted) return;
+    if (pick.restart) {
+      await _restart();
+      return;
+    }
+    await _switch(pick);
+  }
+
+  Future<void> _switch(ModelPick pick) async {
+    final l10n = AppLocalizations.of(context);
+    final kind = _agent.kind;
+    final from = _recorded;
+    final shown = _shownSettings;
+    final model = pick.model;
+    final target = model != null
+        ? modelShortName(model)
+        : effortLabel(l10n, pick.effort ?? '');
     setState(() {
       _switchingModel = true;
+      _switchFailed = false;
+      _switchTarget = target;
     });
     try {
-      await widget.herdr.setModel(_pane, chosen);
-      await _load();
-    } on Object catch (error) {
-      if (mounted) {
-        _say(l10n.agentActionFailed(_message(error)));
+      if (model != null) {
+        await widget.herdr.switchModel(_pane, kind, model, effort: pick.effort);
+      } else {
+        await widget.herdr.switchEffort(_pane, kind, pick.effort ?? '');
       }
+      if (!mounted) return;
+      setState(() {
+        _pickedFrom = from;
+        _picked = (
+          model: model ?? shown.model,
+          effort: pick.effort ?? shown.effort,
+        );
+      });
+      _say(l10n.agentModelSwitched(target));
+      unawaited(_load());
+    } on Object catch (error) {
+      if (!mounted) return;
+      setState(() => _switchFailed = true);
+      _say(l10n.agentModelSwitchFailed(_message(error)));
     } finally {
       if (mounted) setState(() => _switchingModel = false);
     }
+  }
+
+  void _openModelDetails() {
+    unawaited(
+      showModelDetails(
+        context,
+        kind: _agent.kind,
+        pane: _pane,
+        recorded: _recorded,
+        shown: _shownSettings,
+        contextUsed: _transcript?.contextUsed ?? 0,
+        contextWindow: _transcript?.contextWindow ?? 0,
+      ),
+    );
   }
 
   void _openSubagent(HerdrMessage message) {
@@ -552,32 +563,17 @@ class _AgentChatPageState extends State<AgentChatPage> {
                                 _agent.status == HerdrStatus.blocked,
                           ),
                         ),
-                        const SizedBox(width: 4),
-                        IconButton(
-                          onPressed: _restarting || _switchingModel
-                              ? null
-                              : () => unawaited(_pickModel()),
-                          icon: _switchingModel
-                              ? LoadingIndicator(
-                                  size: 16,
-                                  semanticLabel: l10n.pleaseWait,
-                                )
-                              : const GlyphIcon(Glyphs2.sliders),
-                          tooltip: l10n.agentModel,
-                        ),
-                        IconButton(
-                          onPressed: _restarting || _switchingModel
-                              ? null
-                              : () => unawaited(_restart()),
-                          icon: _restarting
-                              ? LoadingIndicator(
-                                  size: 16,
-                                  semanticLabel: l10n.agentRestarting,
-                                )
-                              : const GlyphIcon(Glyphs2.refresh),
-                          tooltip: _restarting
+                        const SizedBox(width: 6),
+                        ModelCapsule(
+                          settings: _shownSettings,
+                          busyLabel: _restarting
                               ? l10n.agentRestarting
-                              : l10n.agentRestart,
+                              : _switchingModel
+                              ? l10n.agentModelSwitching(_switchTarget)
+                              : null,
+                          failed: _switchFailed,
+                          onTap: () => unawaited(_openModelPanel()),
+                          onLongPress: _openModelDetails,
                         ),
                       ],
                     ),

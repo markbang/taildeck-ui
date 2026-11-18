@@ -15,7 +15,7 @@ class DemoHerdrBridge implements NativeBridge {
   /// `?modelfail=1`: the agent refuses a model switch, for the error state.
   final bool failModel;
 
-  String _model = 'opus';
+  String _model = 'claude-opus-4-1-20250805';
   String _effort = 'high';
 
   static const pane = 'w1:p1';
@@ -59,7 +59,13 @@ class DemoHerdrBridge implements NativeBridge {
           }
           final value = text.substring(text.indexOf(' ') + 1).trim();
           if (text.startsWith('/model ')) {
-            _model = value;
+            // What Claude Code records once it runs the alias.
+            _model = switch (value) {
+              'opus' => 'claude-opus-4-1-20250805',
+              'sonnet' => 'claude-sonnet-4-5-20250929',
+              'haiku' => 'claude-haiku-4-5-20251001',
+              _ => value,
+            };
           } else {
             _effort = value;
           }
