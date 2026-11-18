@@ -52,6 +52,11 @@ class MainActivity : FlutterActivity() {
                         if (port <= 0 || !WebViewFeature.isFeatureSupported(WebViewFeature.PROXY_OVERRIDE)) {
                             result.success(false)
                         } else {
+                            // This WebView plays HLS through the platform MediaPlayer,
+                            // which fetches with the app's Java HTTP stack, not the
+                            // WebView's: point that stack at the gateway as well.
+                            System.setProperty("http.proxyHost", "127.0.0.1")
+                            System.setProperty("http.proxyPort", port.toString())
                             val config = ProxyConfig.Builder().addProxyRule("127.0.0.1:$port").build()
                             ProxyController.getInstance()
                                 .setProxyOverride(config, { it.run() }) { result.success(true) }

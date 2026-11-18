@@ -2,8 +2,8 @@
 # In-app web view video gate: a saved service on the test peer opens in the web
 # view and plays four clips (tool/motion/peer/video.go). H.264 from a relative
 # source and from an absolute tailnet URL (how AList/OpenList link raw files)
-# must both play past 1.5 s with no error event; HLS and H.265 are recorded,
-# not failed. The verdicts come from the page's own reports in the peer's log.
+# and an HLS playlist must play past 1.5 s with no error event; H.265 is
+# recorded, not failed. The verdicts come from the page's own reports in the peer's log.
 # Needs CONTROL_URL, SEED_STATE (tool/seed_state.dart), the motionpeer peer and
 # adb root (google_apis emulator).
 # Usage: CONTROL_URL=http://10.0.2.2:8080 SEED_STATE=/tmp/seed/tailscaled.state \
@@ -131,7 +131,7 @@ fi
 evidence
 reports | sed 's/.*video-report /report: /' | tee -a "$summary"
 status=0
-for c in h264-rel h264-abs; do
+for c in h264-rel h264-abs hls; do
   line=$(reports | grep -a "case=$c " | tail -1)
   case "$line" in
     *" ok=1 "*) note "ok $c" ;;
@@ -139,7 +139,7 @@ for c in h264-rel h264-abs; do
     *) note "FAIL $c: ${line#*video-report }"; status=1 ;;
   esac
 done
-for c in hls hevc; do
+for c in hevc; do
   line=$(reports | grep -a "case=$c " | tail -1)
   note "info $c: ${line#*video-report }"
 done
