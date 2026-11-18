@@ -3,6 +3,8 @@ import 'dart:typed_data';
 
 import '../herdr.dart';
 import '../native/bridge.dart';
+import '../preview_env.dart';
+import 'demo_transcript.dart';
 
 /// `?chat=<pane>&herdr=demo`: a herdr that answers from memory, so the chat
 /// page can be reviewed (and recorded on an emulator) without a node running
@@ -70,16 +72,18 @@ class DemoHerdrBridge implements NativeBridge {
   }
 
   @override
-  Future<String> herdrTranscript(String pane) async => jsonEncode({
-    'settings': {'model': _model, 'effort': _effort},
-    'context': {'used': 58400, 'window': 200000},
-    'todos': [
-      {'text': '读一遍 agent_chat.dart 的布局', 'status': 'completed'},
-      {'text': '三层吸顶各自量高度', 'status': 'in_progress'},
-      {'text': '键盘弹出时一起上移', 'status': 'pending'},
-    ],
-    'messages': _messages,
-  });
+  Future<String> herdrTranscript(String pane) async =>
+      demoTranscript(previewParam('transcript')) ??
+      jsonEncode({
+        'settings': {'model': _model, 'effort': _effort},
+        'context': {'used': 58400, 'window': 200000},
+        'todos': [
+          {'text': '读一遍 agent_chat.dart 的布局', 'status': 'completed'},
+          {'text': '三层吸顶各自量高度', 'status': 'in_progress'},
+          {'text': '键盘弹出时一起上移', 'status': 'pending'},
+        ],
+        'messages': _messages,
+      });
 
   static const _messages = <Map<String, Object>>[
     {'role': 'user', 'text': '看一下 taildeck-ui 这个项目的结构，讲讲主要内容'},

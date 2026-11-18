@@ -28,6 +28,7 @@ needles=(
   "Synology DSM"
   "Jellyfin"
   "keep the body readable under the bars"
+  "Why the cold-start dial fails"
 )
 
 work=$(mktemp -d)

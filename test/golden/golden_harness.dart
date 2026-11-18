@@ -98,13 +98,13 @@ void usePhone(WidgetTester tester, {Size size = phoneSize}) {
 
 /// The app's own theme, language and fonts. Glass stays off: its shader needs
 /// a GPU the test host has not, and the goldens judge layout and motion.
-Widget goldenApp({required Widget home}) {
+Widget goldenApp({required Widget home, ThemeMode themeMode = ThemeMode.dark}) {
   final theme = TaildeckTheme();
   return PrismApp(
     title: 'Taildeck',
     theme: theme.light,
     darkTheme: theme.dark,
-    themeMode: ThemeMode.dark,
+    themeMode: themeMode,
     locale: const Locale('en'),
     localizationsDelegates: const [AppLocalizations.delegate],
     supportedLocales: const [Locale('en'), Locale('zh')],
