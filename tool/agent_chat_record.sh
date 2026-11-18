@@ -199,7 +199,8 @@ pick_sonnet() {
 switch_story() {
   open_panel || return 0
   pick_sonnet || return 0
-  sleep 0.6
+  # The demo agent takes 1.5 s; the capsule's label has cross-faded by 1 s.
+  sleep 1
   shot agent-model-switching
   sleep 3
 }
@@ -215,7 +216,7 @@ if ui has 'Sonnet 4.5'; then note "switch: capsule reads Sonnet 4.5"; else note 
 
 launch "$idle&theme=dark&modelfail=1"
 open_panel && pick_sonnet
-sleep 2
+sleep 3.5
 shot agent-model-error
 if ui has 'Opus 4.1'; then note "error: capsule kept Opus 4.1"; else note "error: capsule lost the model"; fi
 
