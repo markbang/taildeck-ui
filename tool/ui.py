@@ -7,6 +7,7 @@ Usage: ui.py dump.xml tap <needle>     -> prints "x y" for the smallest match
        ui.py dump.xml bounds <needle>  -> prints "x1 y1 x2 y2"
        ui.py dump.xml texts <ymax>     -> every labelled node above ymax
        ui.py dump.xml toptexts <ymax>  -> every labelled node whose top edge is above ymax
+       ui.py dump.xml heads <ymax>     -> like toptexts, without the clickable nodes
        ui.py dump.xml edits            -> prints every text-field point, top first
        ui.py dump.xml edit <index>     -> prints "x y" for one of those fields
        ui.py dump.xml all <needle>     -> every match's bounds, top first
@@ -85,14 +86,17 @@ def texts(path, ymax):
             print(label.replace("\n", " "), *box)
 
 
-def toptexts(path, ymax):
+def toptexts(path, ymax, heads=False):
     """Like texts, but by the node's top edge: a page whose body is one merged
     node carries its title over the whole screen, so the centre of that node
-    says nothing about where the title sits."""
+    says nothing about where the title sits. A title is never clickable, so
+    heads drops the rows and buttons that merely start with a page's name."""
     root = ET.parse(path).getroot()
     for node in root.iter("node"):
         box = bounds(node)
         if box is None or box[1] >= ymax:
+            continue
+        if heads and node.get("clickable") == "true":
             continue
         label = (node.get("text") or node.get("content-desc") or "").strip()
         if label:
@@ -116,8 +120,8 @@ def main():
     if command == "texts":
         texts(path, int(sys.argv[3]))
         return 0
-    if command == "toptexts":
-        toptexts(path, int(sys.argv[3]))
+    if command in ("toptexts", "heads"):
+        toptexts(path, int(sys.argv[3]), heads=command == "heads")
         return 0
     needle = sys.argv[3]
     found = matches(path, needle)
