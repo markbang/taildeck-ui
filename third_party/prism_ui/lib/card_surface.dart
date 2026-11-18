@@ -15,6 +15,10 @@ enum PressLook {
 
   /// Tints the whole surface, as iOS 27 tints a held button.
   tint,
+
+  /// Fills the whole surface with [CardSurface.inkColor] while held, as a
+  /// grouped table cell highlights: no ink spreads from the press.
+  highlight,
   none,
 }
 
@@ -756,7 +760,8 @@ class RenderCardSurface extends RenderShiftedBox
       fill = Color.alphaBlend(_hover, fill);
     }
     final pressed = _pressed.value;
-    if (pressed > 0 && _look == PressLook.ink) {
+    if (pressed > 0 &&
+        (_look == PressLook.ink || _look == PressLook.highlight)) {
       fill = Color.alphaBlend(
         _inkColor.withValues(alpha: _inkColor.a * pressed),
         fill,

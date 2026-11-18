@@ -69,7 +69,7 @@ void main() {
       matchesGoldenFile('goldens/select_rest.png'),
     );
 
-    await tester.tap(row);
+    await tester.tapAt(tester.getCenter(row));
     await pumpFrames(tester, const Duration(milliseconds: 96));
     await expectLater(
       find.byType(PrismApp),
@@ -113,7 +113,7 @@ void main() {
 
     // Choose the value already set: closing must return the row to the very
     // pixels it had before the menu opened, with no layer left over it.
-    await tester.tap(row);
+    await tester.tapAt(tester.getCenter(row));
     await pumpFrames(tester, const Duration(milliseconds: 500));
     await tester.tap(find.text('Follow system').last);
     await pumpFrames(tester, const Duration(seconds: 1));

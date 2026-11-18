@@ -5,6 +5,7 @@ import 'package:flutter/widgets.dart';
 import 'package:prism_ui/card_surface.dart';
 import 'package:prism_ui/context.dart';
 import 'package:prism_ui/focus.dart';
+import 'package:prism_ui/press_region.dart';
 import 'package:prism_ui/ripple.dart';
 import 'package:prism_ui/surface.dart';
 import 'package:prism_ui/theme_data.dart';
@@ -93,6 +94,7 @@ class _PressSurfaceState extends State<PressSurface>
   static const _revealDelay = Duration(milliseconds: 150);
   static const _lookDuration = Duration(milliseconds: 200);
   static const _tintRelease = Duration(milliseconds: 250);
+  static const _highlightRelease = Duration(milliseconds: 100);
   // Material's ink fades its state layer in and out in 15 ms, linear.
   static const _inkFade = Duration(milliseconds: 15);
 
@@ -172,6 +174,11 @@ class _PressSurfaceState extends State<PressSurface>
     _pointer = event.pointer;
     _tap.addPointer(event);
     _inking = widget.look == PressLook.ink;
+    // The tap reports down once no scroll can claim the touch: at once
+    // outside a scroll view, after kPressTimeout or on release inside one.
+    if (widget.look == PressLook.highlight) {
+      return;
+    }
     if (_inking) {
       _ripple
         ..still = context.disableAnimations
@@ -213,6 +220,10 @@ class _PressSurfaceState extends State<PressSurface>
   }
 
   void _handleTapDown(TapDownDetails details) {
+    if (widget.look == PressLook.highlight) {
+      _showPress();
+      return;
+    }
     if (!_inking) {
       return;
     }
@@ -298,12 +309,20 @@ class _PressSurfaceState extends State<PressSurface>
       _cancelPress();
       return;
     }
-    final ink = widget.look == PressLook.ink;
+    final release = switch (widget.look) {
+      PressLook.ink => _inkFade,
+      PressLook.highlight => _highlightRelease,
+      _ => _tintRelease,
+    };
     press
         .animateTo(
           0,
-          duration: context.motionDuration(ink ? _inkFade : _tintRelease),
-          curve: ink ? Curves.linear : Curves.easeInOut,
+          duration: context.motionDuration(release),
+          curve: switch (widget.look) {
+            PressLook.ink => Curves.linear,
+            PressLook.highlight => Curves.easeOut,
+            _ => Curves.easeInOut,
+          },
         )
         .whenCompleteOrCancel(() {
           if (mounted && press.value == 0) {
@@ -418,8 +437,10 @@ class _PressSurfaceState extends State<PressSurface>
           ? colorScheme.onSurface.withValues(alpha: _hoverAlpha)
           : const Color(0x00000000),
       ripple: _ripple,
-      inkColor: (widget.inkColor ?? widget.foreground ?? colorScheme.onSurface)
-          .withValues(alpha: _inkAlpha),
+      inkColor: widget.look == PressLook.highlight
+          ? pressHighlightOf(colorScheme.brightness)
+          : (widget.inkColor ?? widget.foreground ?? colorScheme.onSurface)
+                .withValues(alpha: _inkAlpha),
       look: widget.look,
       brightness: colorScheme.brightness,
       padding: widget.padding,

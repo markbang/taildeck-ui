@@ -246,9 +246,12 @@ class GroupCard extends StatelessWidget {
         Card(
           radius: AppCorner.xl,
           padding: EdgeInsets.zero,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: rows,
+          child: ClipRSuperellipse(
+            borderRadius: AppRadius.all(AppCorner.xl),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: rows,
+            ),
           ),
         ),
       ],

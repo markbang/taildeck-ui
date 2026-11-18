@@ -89,7 +89,7 @@ Future<Rect> _open(WidgetTester tester, Widget page) async {
   usePhone(tester);
   await tester.pumpWidget(goldenApp(home: page));
   await tester.pump(const Duration(milliseconds: 400));
-  await tester.tap(find.byType(SelectValueButton));
+  await tester.tapAt(tester.getCenter(find.byType(SelectValueButton)));
   await pumpFrames(tester, const Duration(milliseconds: 600));
   return tester.getRect(find.byType(PopupMenuCard));
 }
@@ -134,7 +134,7 @@ void main() {
     await tester.pumpWidget(goldenApp(home: const _SelectPage()));
     await tester.pump(const Duration(milliseconds: 400));
     final value = tester.getRect(find.byType(SelectValueButton));
-    await tester.tap(find.byType(SelectValueButton));
+    await tester.tapAt(tester.getCenter(find.byType(SelectValueButton)));
     await pumpFrames(tester, const Duration(milliseconds: 600));
     final card = tester.getRect(find.byType(PopupMenuCard));
 
