@@ -12,6 +12,9 @@ on:
       out:
         description: Output directory and artifact name
         default: row-press
+      base:
+        description: Ref or commit the "before" APK is built from
+        default: main
 
 permissions:
   contents: read
@@ -89,6 +92,8 @@ jobs:
       - name: Build the release APKs, after and before
         # The demo flag only fills the preview pages; these APKs are evidence,
         # never shipped.
+        env:
+          BASE: ${{ inputs.base }}
         run: |
           set -o pipefail
           build() {
@@ -97,8 +102,8 @@ jobs:
             cp build/app/outputs/flutter-apk/app-x86_64-release.apk "build/$1.apk"
           }
           build ui-after
-          git fetch --no-tags --depth=1 origin main:refs/remotes/origin/main
-          git checkout origin/main -- lib third_party
+          git fetch --no-tags --depth=1 origin "$BASE"
+          git checkout FETCH_HEAD -- lib third_party
           build ui-before
           git checkout HEAD -- lib third_party
           ls -l build/ui-after.apk build/ui-before.apk
@@ -117,6 +122,7 @@ jobs:
           sudo udevadm trigger --name-match=kvm
           ls -l /dev/kvm
       - uses: reactivecircus/android-emulator-runner@v2
+        timeout-minutes: 30
         with:
           api-level: 34
           target: google_apis

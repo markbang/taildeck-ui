@@ -18,6 +18,9 @@ mkdir -p "$out"
 summary="$out/summary.txt"
 : > "$summary"
 note() { echo "$*" | tee -a "$summary"; }
+# A wedged emulator must not hang the run: every adb call gets 60 s.
+adb_bin=$(command -v adb)
+adb() { timeout 60 "$adb_bin" "$@"; }
 
 adb wait-for-device
 adb shell settings put global hide_error_dialogs 1 > /dev/null 2>&1 || true
