@@ -62,6 +62,9 @@ func main() {
 		log.Printf("control on 127.0.0.1%s", *dropAddr)
 		log.Print(http.ListenAndServe(*dropAddr, mux))
 	}()
+	mux.HandleFunc("/video", videoPage)
+	mux.HandleFunc("/media/", serveMedia)
+	mux.HandleFunc("/report", videoReport)
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		fmt.Fprint(w, page)

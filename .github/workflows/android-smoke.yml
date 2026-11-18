@@ -46,7 +46,7 @@ on:
         type: string
         default: top.bangwu.taildeck
       full-gate:
-        description: Run the routing, termtap and netready gates too (needs the signed-in test control plane)
+        description: Run the webvideo, routing, termtap and netready gates too (needs the signed-in test control plane)
         type: boolean
         default: false
   workflow_dispatch:
@@ -56,7 +56,7 @@ on:
         type: boolean
         default: false
       gates:
-        description: Space-separated gate labels to run (cold-start splash agents stills tabs back ping node termtap remember routing netready)
+        description: Space-separated gate labels to run (cold-start splash agents stills tabs back ping node webvideo termtap remember routing netready)
         type: string
         default: all
       full-gate:
@@ -144,7 +144,7 @@ jobs:
             return 1
           }
           profile=false demo=false netready=false control=false
-          for gate in cold-start splash agents stills termtap remember routing; do
+          for gate in cold-start splash agents stills webvideo termtap remember routing; do
             wants "$gate" && profile=true
           done
           for gate in tabs back ping node; do
@@ -152,7 +152,7 @@ jobs:
           done
           wants netready && netready=true
           if [ "$full" = true ]; then
-            for gate in termtap remember routing netready; do
+            for gate in webvideo termtap remember routing netready; do
               wants "$gate" && control=true
             done
           fi
@@ -487,6 +487,7 @@ jobs:
               "back key:smoke-back" \
               "ping:smoke-ping" \
               "node page:smoke-node" \
+              "web view video:webvideo" \
               "terminal tap and IME:termtap" \
               "remembered connection:remember" \
               "startup routing (20 cold starts):routing" \
@@ -516,6 +517,7 @@ jobs:
             smoke-node/
             smoke-agents/
             smoke-shots/
+            webvideo/
             termtap/
             remember/
             routing/
