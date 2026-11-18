@@ -190,50 +190,40 @@ class _ServiceSheetState extends State<_ServiceSheet> {
               ],
             ),
             const SizedBox(height: 14),
-            Card(
-              radius: AppCorner.xl,
-              padding: EdgeInsets.zero,
-              child: Column(
-                children: [
-                  SelectRow<String>(
-                    label: l10n.serviceNode,
-                    value: _node,
-                    options: [for (final node in _nodes) (node, node)],
-                    enabled: !_busy,
-                    onChanged: (value) => setState(() => _node = value),
-                  ),
-                  const _RowDivider(),
-                  EntryRow(
-                    label: l10n.serviceName,
-                    controller: _name,
-                    hintText: l10n.serviceNameHint,
-                  ),
-                  const _RowDivider(),
-                  SelectRow<String>(
-                    label: l10n.serviceScheme,
-                    value: _scheme,
-                    options: const [('http', 'http'), ('https', 'https')],
-                    enabled: !_busy,
-                    onChanged: (value) => setState(() => _scheme = value),
-                  ),
-                  const _RowDivider(),
-                  EntryRow(
-                    label: l10n.servicePort,
-                    controller: _port,
-                    hintText: '3000',
-                    numeric: true,
-                    errorText: portError ? l10n.portInvalid : null,
-                    onChanged: (_) => setState(() {}),
-                  ),
-                  const _RowDivider(),
-                  EntryRow(
-                    label: l10n.servicePath,
-                    controller: _path,
-                    hintText: l10n.servicePathHint,
-                  ),
-                ],
+            generateGroup([
+              SelectRow<String>(
+                label: l10n.serviceNode,
+                value: _node,
+                options: [for (final node in _nodes) (node, node)],
+                enabled: !_busy,
+                onChanged: (value) => setState(() => _node = value),
               ),
-            ),
+              EntryRow(
+                label: l10n.serviceName,
+                controller: _name,
+                hintText: l10n.serviceNameHint,
+              ),
+              SelectRow<String>(
+                label: l10n.serviceScheme,
+                value: _scheme,
+                options: const [('http', 'http'), ('https', 'https')],
+                enabled: !_busy,
+                onChanged: (value) => setState(() => _scheme = value),
+              ),
+              EntryRow(
+                label: l10n.servicePort,
+                controller: _port,
+                hintText: '3000',
+                numeric: true,
+                errorText: portError ? l10n.portInvalid : null,
+                onChanged: (_) => setState(() {}),
+              ),
+              EntryRow(
+                label: l10n.servicePath,
+                controller: _path,
+                hintText: l10n.servicePathHint,
+              ),
+            ]),
             if (_error.isNotEmpty) ...[
               const SizedBox(height: 12),
               InlineNotice(text: _error),
@@ -249,18 +239,6 @@ class _ServiceSheetState extends State<_ServiceSheet> {
           ],
         ),
       ),
-    );
-  }
-}
-
-class _RowDivider extends StatelessWidget {
-  const _RowDivider();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Padding(
-      padding: EdgeInsets.only(left: 16),
-      child: Divider(height: 0.5, thickness: 0.5),
     );
   }
 }

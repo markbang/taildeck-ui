@@ -7,6 +7,7 @@ import '../l10n.dart';
 import '../ssh_identities.dart';
 import '../widgets/controls.dart';
 import '../widgets/bottom_sheet.dart';
+import '../widgets/entry_row.dart';
 
 /// Imports a private key as `ssh/<name>.key`; null when dismissed.
 Future<SshIdentity?> showKeySheet(
@@ -111,78 +112,36 @@ class _KeySheetState extends State<_KeySheet> {
               ],
             ),
             const SizedBox(height: 14),
-            Card(
-              radius: AppCorner.xl,
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _FieldLabel(l10n.keyName),
-                  TextField(
-                    controller: _name,
-                    style: context.listTitleStyle,
-                    decoration: InputDecoration(
-                      hintText: l10n.keyNameHint,
-                      hintStyle: context.listCaptionStyle,
-                      filled: true,
-                      fillColor: SurfaceLevel.block.colorOf(scheme),
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 11,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  _FieldLabel(l10n.privateKey),
-                  TextField(
-                    controller: _key,
-                    minLines: 6,
-                    maxLines: 10,
-                    autocorrect: false,
-                    enableSuggestions: false,
-                    style: AppTextStyle.footnote
-                        .of(context)
-                        .copyWith(fontFamily: 'DejaVuSansMono', fontSize: 11),
-                    decoration: InputDecoration(
-                      hintText: l10n.privateKeyHint,
-                      hintStyle: context.listCaptionStyle,
-                      filled: true,
-                      fillColor: SurfaceLevel.block.colorOf(scheme),
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 11,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  _FieldLabel(l10n.passphrase),
-                  TextField(
-                    controller: _passphrase,
-                    obscureText: true,
-                    style: context.listTitleStyle,
-                    decoration: InputDecoration(
-                      hintText: l10n.passphraseOptional,
-                      hintStyle: context.listCaptionStyle,
-                      filled: true,
-                      fillColor: SurfaceLevel.block.colorOf(scheme),
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 11,
-                      ),
-                    ),
-                  ),
-                  if (_error.isNotEmpty) ...[
-                    const SizedBox(height: 12),
-                    Text(
-                      _error,
-                      style: AppTextStyle.footnote
-                          .of(context)
-                          .copyWith(color: scheme.error),
-                    ),
-                  ],
-                ],
+            generateGroup([
+              EntryRow(
+                label: l10n.keyName,
+                controller: _name,
+                hintText: l10n.keyNameHint,
               ),
-            ),
+              EntryRow(
+                label: l10n.privateKey,
+                controller: _key,
+                hintText: l10n.privateKeyHint,
+                monospace: true,
+                minLines: 6,
+                maxLines: 10,
+              ),
+              EntryRow(
+                label: l10n.passphrase,
+                controller: _passphrase,
+                hintText: l10n.passphraseOptional,
+                obscure: true,
+              ),
+            ]),
+            if (_error.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Text(
+                _error,
+                style: AppTextStyle.footnote
+                    .of(context)
+                    .copyWith(color: scheme.error),
+              ),
+            ],
             const SizedBox(height: 16),
             LoadingButton(
               label: l10n.importKey,
@@ -190,25 +149,6 @@ class _KeySheetState extends State<_KeySheet> {
               onPressed: _save,
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _FieldLabel extends StatelessWidget {
-  const _FieldLabel(this.text);
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Text(
-        text,
-        style: context.listCaptionStyle.copyWith(
-          color: context.colorScheme.onSurfaceVariant,
         ),
       ),
     );
