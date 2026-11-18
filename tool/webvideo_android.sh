@@ -63,8 +63,11 @@ printf '[{"id":"webvideo","node":"%s","name":"Video gate","url":"http://%s:3000/
 adb push "$out/files/config.json" "$data/files/config.json" >> "$out/push.txt" 2>&1 || fail "could not push the config"
 adb push "$out/files/services.json" "$data/files/services.json" >> "$out/push.txt" 2>&1 || fail "could not push the services"
 appuid=$(adb shell stat -c %u "$data" 2> /dev/null | tr -d '\r')
-[ -n "$appuid" ] || fail "no owner for $data"
-adb shell "chown -R $appuid:$appuid $data/files && restorecon -R $data/files" >> "$out/push.txt" 2>&1 \
+# The app's SELinux categories come from its uid; restorecon guesses others,
+# so the files take the label of the app's own data dir.
+appctx=$(adb shell stat -c %C "$data" 2> /dev/null | tr -d '\r')
+[ -n "$appuid" ] && [ -n "$appctx" ] || fail "no owner or label for $data"
+adb shell "chown -R $appuid:$appuid $data/files && chcon -R $appctx $data/files" >> "$out/push.txt" 2>&1 \
   || fail "could not hand $data/files to the app; see push.txt"
 adb shell "ls -lZR $data/files" >> "$out/push.txt" 2>&1 || true
 
