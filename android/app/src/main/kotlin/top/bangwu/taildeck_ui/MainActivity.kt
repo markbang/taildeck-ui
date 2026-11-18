@@ -41,9 +41,10 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
-        // As in the Kotlin app: every WebView goes through the gateway, which is
-        // also a forward proxy, so pages load from their tailnet URL and
-        // absolute links to tailnet hosts (a NAS's raw file URLs) resolve.
+        // While a service page is open its WebView goes through the gateway,
+        // which is also a forward proxy, so pages load from their tailnet URL
+        // and absolute links to tailnet hosts (a NAS's raw file URLs) resolve.
+        // The override is process-wide, so the page clears it when it closes.
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "taildeck/webview")
             .setMethodCallHandler { call, result ->
                 when (call.method) {
@@ -60,6 +61,16 @@ class MainActivity : FlutterActivity() {
                             val config = ProxyConfig.Builder().addProxyRule("127.0.0.1:$port").build()
                             ProxyController.getInstance()
                                 .setProxyOverride(config, { it.run() }) { result.success(true) }
+                        }
+                    }
+                    "clear" -> {
+                        System.clearProperty("http.proxyHost")
+                        System.clearProperty("http.proxyPort")
+                        if (WebViewFeature.isFeatureSupported(WebViewFeature.PROXY_OVERRIDE)) {
+                            ProxyController.getInstance()
+                                .clearProxyOverride({ it.run() }) { result.success(true) }
+                        } else {
+                            result.success(false)
                         }
                     }
                     else -> result.notImplemented()

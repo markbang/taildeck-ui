@@ -12,3 +12,5 @@ WebPageController? create({
 }) => null;
 
 Future<bool> useGatewayProxy(int port) async => false;
+
+Future<void> clearGatewayProxy() async {}
