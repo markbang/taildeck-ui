@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Waits shared by the emulator gates. Sourced by tabs/agents/back, not run.
+# Waits shared by the emulator gates. Sourced by each gate, not run.
 #
 # The startup route holds a launch screen over the shell until the saved login
 # is read (up to 1.5 s). A gate that starts tapping as soon as a dock label

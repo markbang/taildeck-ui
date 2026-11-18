@@ -9,6 +9,9 @@ set -euo pipefail
 apk=${1:?usage: tool/screenshots_android.sh <flutter-apk> [app-id] [out-dir]}
 app=${2:-top.bangwu.taildeck}
 out=${3:-shots}
+here=$(cd "$(dirname "$0")" && pwd)
+# shellcheck source=tool/android_gate.sh
+. "$here/android_gate.sh"
 mkdir -p "$out"
 summary="$out/summary.txt"
 : > "$summary"
@@ -87,21 +90,33 @@ record() { # <name> <seconds> <shell function>
 }
 
 launch() { # [url]
-  local url=${1:-} attempt resumed
+  local url=${1:-} attempt resumed shown anrs=0
   for attempt in 1 2 3; do
     adb shell am force-stop "$app" > /dev/null 2>&1 || true
     sleep 1
+    adb logcat -c > /dev/null 2>&1 || true
     if [ -n "$url" ]; then
       adb shell "am start -W -a android.intent.action.VIEW -d '$url' '$app'" > /dev/null 2>&1 || true
     else
       adb shell monkey -p "$app" -c android.intent.category.LAUNCHER 1 > /dev/null 2>&1 || true
     fi
+    shown=$SECONDS
     sleep 6
     resumed=$(adb shell dumpsys activity activities 2> /dev/null \
       | grep -m1 -E 'mResumedActivity|topResumedActivity' || true)
     case "$resumed" in
-      *"$app"*) return 0 ;;
+      *"$app"*)
+        if gate_survived_focus "$app" "$shown" "$summary"; then return 0; fi
+        anrs=$((anrs + 1))
+        if [ "$anrs" -ge 2 ]; then
+          note "launch failed: $app stopped answering input on two cold starts in a row"
+          return 1
+        fi
+        note "launch attempt $attempt: the app was killed after an ANR at cold start"
+        continue
+        ;;
     esac
+    anrs=0
     note "launch attempt $attempt: ${resumed:-no resumed activity}"
     sleep 3
   done

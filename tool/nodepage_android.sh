@@ -8,6 +8,9 @@ set -euo pipefail
 apk=${1:?usage: tool/nodepage_android.sh <apk> [application-id] [out-dir]}
 app=${2:-top.bangwu.taildeck}
 out=${3:-smoke-node}
+here=$(cd "$(dirname "$0")" && pwd)
+# shellcheck source=tool/android_gate.sh
+. "$here/android_gate.sh"
 mkdir -p "$out"
 
 fail() {
@@ -36,9 +39,11 @@ open_node_page() {
   adb shell "am start -W -a android.intent.action.VIEW -d 'taildeck://preview/?node=*' -n $activity" \
     > "$out/launch.txt" 2>&1 || return 1
   grep -q "Activity: $app/" "$out/launch.txt" || return 1
+  local shown=$SECONDS
   for _ in $(seq 1 60); do
     if adb logcat -d 2>/dev/null | grep -q "taildeck preview: node="; then
       sleep 5
+      gate_survived_focus "$app" "$shown" "$out/summary.txt" || { launch_anr=1; return 1; }
       return 0
     fi
     sleep 1
@@ -46,7 +51,16 @@ open_node_page() {
   return 1
 }
 
-open_node_page || fail "the node page never opened; see launch.txt and logcat.txt"
+launch_anr=0
+if ! open_node_page; then
+  [ "$launch_anr" = 1 ] || fail "the node page never opened; see launch.txt and logcat.txt"
+  echo "launch attempt 1: the app was killed after an ANR at cold start" | tee -a "$out/summary.txt"
+  launch_anr=0
+  if ! open_node_page; then
+    [ "$launch_anr" = 0 ] || fail "$app stopped answering input on two cold starts in a row"
+    fail "the node page never opened; see launch.txt and logcat.txt"
+  fi
+fi
 
 shot node-page
 

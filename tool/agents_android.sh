@@ -117,6 +117,7 @@ launch() {
   adb shell "am start -W -a android.intent.action.VIEW -d 'taildeck://preview/?preview=1&tab=2&lang=en&splash=0' -n $activity" \
     > "$out/launch.txt" 2>&1 || return 1
   grep -q "Activity: $app/" "$out/launch.txt" || return 1
+  shown=$SECONDS
   local _i
   for _i in $(seq 1 30); do
     if adb logcat -d 2>/dev/null | grep -q "taildeck agents: "; then return 0; fi
@@ -127,8 +128,15 @@ launch() {
 
 # A cold start on a loaded emulator can ANR the debug build; one retry.
 settled=0
+anrs=0
 for attempt in 1 2; do
   if launch && wait_home "$app" "$out" "$here" '' 45 && in_front; then
+    if ! gate_survived_focus "$app" "$shown" "$out/summary.txt"; then
+      anrs=$((anrs + 1))
+      [ "$anrs" -lt 2 ] || fail "$app stopped answering input on two cold starts in a row"
+      note "Agents cold start attempt $attempt: the app was killed after an ANR at cold start"
+      continue
+    fi
     sleep 2
     if ui has "Connecting to the tailnet"; then settled=1; break; fi
     if ! tree_readable && adb logcat -d 2>/dev/null | grep -q 'taildeck agents: tailnet'; then
