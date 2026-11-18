@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter/widgets.dart';
 
+import 'connection_memory.dart';
 import 'data.dart';
 import 'demo/demo.dart';
 import 'favicons.dart';
@@ -126,6 +127,7 @@ class TaildeckBackend extends ChangeNotifier {
   String _herdrIdentity = '';
   Map<String, String> _sshUsers = const {};
   Map<String, int> _sshPorts = const {};
+  Map<String, SavedConnection> _connections = const {};
   bool _foreground = true;
   bool _refreshing = false;
   bool _netmapSeen = false;
@@ -281,6 +283,33 @@ class TaildeckBackend extends ChangeNotifier {
     await _persist();
   }
 
+  /// What was saved for [node]: by its stable id, then by hostname for an
+  /// entry from before ids were kept.
+  SavedConnection? connectionFor(NodeItem node) =>
+      (node.id.isEmpty ? null : _connections[node.id]) ??
+      _connections[node.name];
+
+  /// Saves how [node] was reached, under its stable id; the hostname entry it
+  /// may have come from goes. SSH logins also feed the login suggestions.
+  Future<void> rememberConnection(
+    NodeItem node,
+    SavedConnection connection,
+  ) async {
+    final key = deviceKey(node);
+    _connections = {
+      for (final entry in _connections.entries)
+        if (entry.key != node.name) entry.key: entry.value,
+      key: connection,
+    };
+    if (connection.action == ConnectionAction.ssh &&
+        connection.user.isNotEmpty) {
+      _sshUsers = {..._sshUsers, node.name: connection.user};
+      _sshPorts = {..._sshPorts, node.name: connection.port};
+    }
+    notifyListeners();
+    await _persist();
+  }
+
   /// What the Agents page prefills the connection form with.
   ({String node, String user, int port, String auth, String identity})
   get herdrTarget => (
@@ -368,6 +397,7 @@ class TaildeckBackend extends ChangeNotifier {
       _herdrIdentity = config.herdrIdentity;
       _sshUsers = config.sshUsers;
       _sshPorts = config.sshPorts;
+      _connections = config.connections;
       _hasPersistedLogin = config.signedIn || await storage.hasSavedLogin();
     } on Object catch (error) {
       _fail(error);
@@ -1263,6 +1293,7 @@ class TaildeckBackend extends ChangeNotifier {
           herdrIdentity: _herdrIdentity,
           sshUsers: _sshUsers,
           sshPorts: _sshPorts,
+          connections: _connections,
         ),
       );
     } on Object catch (error) {

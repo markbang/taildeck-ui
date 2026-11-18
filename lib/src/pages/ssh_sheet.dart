@@ -5,6 +5,7 @@ import 'package:prism_ui/icons/icons.dart';
 import 'package:prism_ui/prism_ui.dart';
 
 import '../backend.dart';
+import '../connection_memory.dart';
 import '../data.dart';
 import '../l10n.dart';
 import '../native/bridge.dart';
@@ -22,17 +23,21 @@ import '../widgets/bottom_sheet.dart';
 typedef SshChoice = ({
   String user,
   int port,
+  SshAuth auth,
   String password,
   String identityId,
   SshSession? session,
 });
 
 /// [service] scopes the remembered login to one service on [node], so both
-/// targets keep their own user and port.
+/// targets keep their own user and port. Without one, the sheet opens with
+/// the device's saved connection and saves it again after a connect; [error]
+/// says why the saved one just failed.
 Future<SshChoice?> showSshSheet(
   BuildContext context,
   NodeItem node, {
   Service? service,
+  String error = '',
 }) {
   // The sheet lives on its own route, above the BackendScope in the page tree,
   // so the backend is handed in from here.
@@ -43,17 +48,19 @@ Future<SshChoice?> showSshSheet(
       node: node,
       backend: backend,
       loginKey: sshLoginKey(node.name, service: service?.id ?? ''),
+      saved: service == null ? backend.connectionFor(node) : null,
+      error: error,
     ),
   );
 }
-
-enum _Auth { tailscale, password, key }
 
 class _SshSheet extends StatefulWidget {
   const _SshSheet({
     required this.node,
     required this.backend,
     required this.loginKey,
+    this.saved,
+    this.error = '',
   });
 
   final NodeItem node;
@@ -62,6 +69,10 @@ class _SshSheet extends StatefulWidget {
   /// Config key the last login for this target is saved under.
   final String loginKey;
 
+  /// The device's saved connection; null for a service target.
+  final SavedConnection? saved;
+  final String error;
+
   @override
   State<_SshSheet> createState() => _SshSheetState();
 }
@@ -69,17 +80,17 @@ class _SshSheet extends StatefulWidget {
 class _SshSheetState extends State<_SshSheet> {
   late final _user = TextEditingController(text: _initialUser());
   late final _port = TextEditingController(
-    text: '${widget.backend.sshPortFor(widget.loginKey)}',
+    text: '${widget.saved?.port ?? widget.backend.sshPortFor(widget.loginKey)}',
   );
   String _userError = '';
   String _portError = '';
-  _Auth _auth = _Auth.tailscale;
+  late SshAuth _auth = widget.saved?.auth ?? SshAuth.tailscale;
   final _password = TextEditingController();
   List<SshIdentity> _identities = const [];
-  String _identityId = builtinKeyId;
+  late String _identityId = widget.saved?.dialIdentity ?? builtinKeyId;
   String _keyError = '';
   bool _busy = false;
-  String _error = '';
+  late String _error = widget.error;
 
   @override
   void initState() {
@@ -100,6 +111,7 @@ class _SshSheetState extends State<_SshSheet> {
   /// root.
   late final _userSuggestions = [
     for (final user in {
+      widget.saved?.user ?? '',
       widget.backend.sshUserFor(widget.loginKey),
       if (widget.loginKey != widget.node.name)
         widget.backend.sshUserFor(widget.node.name),
@@ -109,8 +121,11 @@ class _SshSheetState extends State<_SshSheet> {
       if (user.isNotEmpty) user,
   ];
 
-  /// The first suggested login that is not the root default.
+  /// The saved login, else the first suggested one that is not the root
+  /// default.
   String _initialUser() {
+    final saved = widget.saved?.user ?? '';
+    if (saved.isNotEmpty) return saved;
     for (final user in _userSuggestions) {
       if (user != 'root') return user;
     }
@@ -176,11 +191,21 @@ class _SshSheetState extends State<_SshSheet> {
     final user = _user.text.trim();
     final port = portValue(_port.text)!;
     final backend = widget.backend;
+    final saved = SavedConnection(
+      user: user,
+      port: port,
+      auth: _auth,
+      identityId: _auth == SshAuth.key ? _identityId : '',
+    );
+    final device = widget.loginKey == widget.node.name;
     if (!backend.available) {
+      if (device) await backend.rememberConnection(widget.node, saved);
+      if (!mounted) return;
       Navigator.of(context).pop((
         user: user,
         port: port,
-        password: _password.text,
+        auth: _auth,
+        password: _auth == SshAuth.password ? _password.text : '',
         identityId: _identityId,
         session: null,
       ));
@@ -192,14 +217,17 @@ class _SshSheetState extends State<_SshSheet> {
       _error = '';
     });
     try {
-      await backend.rememberSshLogin(widget.loginKey, user: user, port: port);
+      if (!device) {
+        await backend.rememberSshLogin(widget.loginKey, user: user, port: port);
+      }
       final session = await backend.openSshSession(
         host: widget.node.name,
         user: user,
         port: port,
-        password: _auth == _Auth.password ? _password.text : '',
-        identityId: _identityId,
+        password: _auth == SshAuth.password ? _password.text : '',
+        identityId: saved.dialIdentity,
       );
+      if (device) await backend.rememberConnection(widget.node, saved);
       if (!mounted) {
         session.close();
         return;
@@ -207,15 +235,20 @@ class _SshSheetState extends State<_SshSheet> {
       Navigator.of(context).pop((
         user: user,
         port: port,
-        password: _password.text,
-        identityId: _identityId,
+        auth: _auth,
+        password: _auth == SshAuth.password ? _password.text : '',
+        identityId: saved.dialIdentity,
         session: session,
       ));
     } on Object catch (error) {
       if (mounted) {
         setState(() {
           _busy = false;
-          _error = _message(error);
+          _error = sshFailureText(
+            AppLocalizations.of(context),
+            widget.node.name,
+            _message(error),
+          );
         });
       }
     }
@@ -293,23 +326,25 @@ class _SshSheetState extends State<_SshSheet> {
                     enabled: !_busy,
                   ),
                   const _RowDivider(),
-                  SelectRow<_Auth>(
+                  SelectRow<SshAuth>(
                     label: l10n.sshAuth,
                     value: _auth,
                     options: [
-                      (_Auth.tailscale, l10n.authTailscale),
-                      (_Auth.password, l10n.authPassword),
-                      (_Auth.key, l10n.authKey),
+                      for (final auth in SshAuth.values)
+                        (auth, authLabel(l10n, auth)),
                     ],
                     enabled: !_busy,
                     onChanged: (value) => setState(() => _auth = value),
                   ),
-                  if (_auth == _Auth.password) ...[
+                  if (_auth == SshAuth.password) ...[
                     const _RowDivider(),
                     Padding(
                       padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
                       child: TextField(
                         controller: _password,
+                        // A saved password login opens here: the password is
+                        // the one thing it needs.
+                        autofocus: widget.saved?.auth == SshAuth.password,
                         obscureText: true,
                         style: context.listTitleStyle,
                         decoration: InputDecoration(
@@ -326,7 +361,7 @@ class _SshSheetState extends State<_SshSheet> {
                 ],
               ),
             ),
-            if (_auth == _Auth.key) ...[
+            if (_auth == SshAuth.key) ...[
               const SizedBox(height: 12),
               Card(
                 radius: AppCorner.lg,
