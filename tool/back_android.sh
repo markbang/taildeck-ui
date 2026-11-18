@@ -74,25 +74,10 @@ start() { # $1: preview query
   # route is its own.
   wait_home "$app" "$out" "$here" '' 30 'shell|terminal' \
     || fail "the shell did not settle for $1; see launch.txt"
-  survived_focus || return 1
-}
-
-# The emulator's software compositor can stall a cold start's first frames for
-# 6 s, past the 5 s input timeout on the window's focus. That ANR lands 5-6 s
-# after the first frame, and with error dialogs hidden (an earlier gate on
-# this boot sets that) the system kills the app a few seconds later,
-# mid-case. So a launch is only handed over once that window has passed
-# without an ANR; one that hit it waits for the kill and starts again.
-survived_focus() {
-  while [ $((SECONDS - shown_at)) -lt 8 ]; do sleep 1; done
-  adb logcat -d 2>/dev/null | grep -q "ANR in .*$app" || return 0
-  launch_anr=1
-  adb logcat -d 2>/dev/null | grep -m1 "ANR in .*$app" | cut -c1-200 >> "$out/summary.txt"
-  for _ in $(seq 1 20); do
-    adb shell pidof "$app" > /dev/null 2>&1 || break
-    sleep 1
-  done
-  return 1
+  if ! gate_survived_focus "$app" "$shown_at" "$out/summary.txt"; then
+    launch_anr=1
+    return 1
+  fi
 }
 
 launch() { # $1: preview query; one retry, an emulator can stall a cold start
