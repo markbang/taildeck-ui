@@ -449,10 +449,10 @@ class _AgentChatPageState extends State<AgentChatPage> {
       HerdrStatus.idle => (l10n.idle, scheme.onSurfaceVariant),
       HerdrStatus.unknown => ('—', scheme.onSurfaceVariant),
     };
-    // Three layers float over the transcript, each on the page's own
-    // material: the header, and at the foot the task strip with the composer.
-    // The list runs the page's full height under them, padded by their
-    // measured heights; the keyboard lifts the foot as one piece.
+    // Three layers float over the transcript on one frost: the header, and
+    // at the foot the task strip with the composer. The list runs the page's
+    // full height under them, padded by their measured heights; the keyboard
+    // lifts the foot as one piece.
     final keyboard = MediaQuery.viewInsetsOf(context).bottom;
     if (keyboard != _keyboard) {
       _keyboard = keyboard;
@@ -464,6 +464,7 @@ class _AgentChatPageState extends State<AgentChatPage> {
       color: SurfaceLevel.page.colorOf(scheme),
       child: SafeArea(
         top: false,
+        bottom: false,
         child: Padding(
           padding: EdgeInsets.only(bottom: keyboard),
           child: Stack(
@@ -503,6 +504,7 @@ class _AgentChatPageState extends State<AgentChatPage> {
                 end: 0,
                 top: 0,
                 child: PageHeader(
+                  frosted: true,
                   child: PageBar(
                     title: agent.label,
                     onBack: () => Navigator.of(context).maybePop(),
@@ -573,8 +575,7 @@ class _AgentChatPageState extends State<AgentChatPage> {
     final view = MediaQuery.sizeOf(context);
     final top = context.contentTopPadding;
     final keyboard = MediaQuery.viewInsetsOf(context).bottom;
-    final safe = MediaQuery.paddingOf(context).bottom;
-    final footTop = view.height - keyboard - safe - _dock;
+    final footTop = view.height - keyboard - _dock;
     debugPrint(
       'taildeck chat layers: header=0-${(top - 12).round()} '
       'foot=${footTop.round()}-${(footTop + _dock).round()} '

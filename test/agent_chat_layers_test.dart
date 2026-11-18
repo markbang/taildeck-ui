@@ -58,13 +58,21 @@ void main() {
     final foot = _foot(tester);
     expect(header.top, 0);
     expect(header.height, statusBar + _toolbar);
-    expect(foot.bottom, phoneSize.height - gestureBar);
+    expect(foot.bottom, phoneSize.height);
     expect(_strip(tester).top, greaterThanOrEqualTo(foot.top));
     expect(_field(tester).bottom, lessThanOrEqualTo(foot.bottom));
 
+    // Each layer's frost covers that layer and ends at its edge.
+    final frosts = [
+      for (final element in find.byType(Frost).evaluate())
+        (element.renderObject! as RenderBox).localToGlobal(Offset.zero) &
+            (element.renderObject! as RenderBox).size,
+    ];
+    expect(frosts, unorderedEquals([header, foot]));
+
     final list = _rect(tester, find.byType(ListView));
     expect(list.top, 0);
-    expect(list.bottom, phoneSize.height - gestureBar);
+    expect(list.bottom, phoneSize.height);
     final padding = _listPadding(tester);
     expect(padding.top, header.bottom + 12);
     expect(padding.bottom, foot.height + 12);
@@ -100,12 +108,13 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
 
-    // The gesture area lies under the keyboard: the foot rises by the rest.
+    // The gesture area lies under the keyboard, so the foot sheds its
+    // padding for it and rises by the rest.
     const lift = keyboard - gestureBar;
-    expect(_foot(tester).bottom, foot.bottom - lift);
+    expect(_foot(tester).bottom, phoneSize.height - keyboard);
     expect(_strip(tester).top, strip.top - lift);
     expect(_field(tester).top, field.top - lift);
-    expect(_foot(tester).height, foot.height);
+    expect(_foot(tester).height, foot.height - gestureBar);
 
     final position = tester
         .state<ScrollableState>(find.byType(Scrollable).first)
@@ -130,9 +139,9 @@ void main() {
     await _open(tester);
     final band = Rect.fromLTRB(
       0,
-      _header(tester).bottom + 16,
+      _header(tester).bottom,
       phoneSize.width,
-      _foot(tester).top - 16,
+      _foot(tester).top,
     );
     final list = find.byType(ListView);
     final page = Offset.zero & phoneSize;
