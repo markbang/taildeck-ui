@@ -107,14 +107,24 @@ base="preview=1&chat=w1:p1&herdr=demo&lang=en&splash=0"
 swipe_up() { adb shell input swipe 540 1500 540 900 700; sleep 1.2; }
 swipe_down() { adb shell input swipe 540 900 540 1500 700; sleep 1.2; }
 
+# The transcript runs under the floating header and composer, so a node only
+# counts once it sits between them (Pixel 6: 2400 px tall).
+on_screen() { # <needle>
+  local box
+  box=$(ui bounds "$1") || return 1
+  # shellcheck disable=SC2086
+  set -- $box
+  [ "$2" -ge 330 ] && [ "$4" -le 1950 ]
+}
+
 # Scrolls back until [needle] is on screen; the chat opens at its end.
 find_up() { # <needle> [tries]
   local i
   for i in $(seq 1 "${2:-8}"); do
-    ui has "$1" > /dev/null 2>&1 && return 0
+    on_screen "$1" && return 0
     swipe_down
   done
-  ui has "$1" > /dev/null 2>&1
+  on_screen "$1"
 }
 
 markdown_flow() {
