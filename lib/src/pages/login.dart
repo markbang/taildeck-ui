@@ -13,6 +13,7 @@ import '../motion.dart';
 import '../preview_env.dart';
 import '../splash.dart';
 import '../widgets/controls.dart';
+import '../widgets/entry_row.dart';
 import '../widgets/foundation.dart';
 import '../widgets/loading.dart';
 
@@ -394,22 +395,29 @@ class _Choices extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const SizedBox(height: 10),
-                    TextField(
-                      controller: keyController,
-                      obscureText: true,
-                      style: AppTextStyle.footnote
-                          .of(context)
-                          .copyWith(fontFamily: 'DejaVuSansMono', fontSize: 13),
-                      decoration: const InputDecoration(
-                        filled: true,
-                        contentPadding: EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 12,
+                    const Padding(
+                      padding: EdgeInsets.only(top: 4),
+                      child: Divider(height: 0.5, thickness: 0.5),
+                    ),
+                    // An inline value in the card's own row, as the grouped
+                    // forms draw one: no box of its own.
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      child: TextField(
+                        controller: keyController,
+                        obscureText: true,
+                        style: AppTextStyle.footnote
+                            .of(context)
+                            .copyWith(
+                              fontFamily: 'DejaVuSansMono',
+                              fontSize: 13,
+                            ),
+                        decoration: InputDecoration.collapsed(
+                          hintText: l10n.pasteKey,
+                          hintStyle: context.listCaptionStyle,
                         ),
                       ),
                     ),
-                    const SizedBox(height: 10),
                     LoadingButton(
                       label: l10n.connect,
                       loading: busy,
@@ -445,18 +453,13 @@ class _Choices extends StatelessWidget {
           visible: advanced,
           child: Padding(
             padding: const EdgeInsets.only(top: 4),
-            child: TextField(
-              controller: controlController,
-              style: context.listSubtitleStyle,
-              decoration: const InputDecoration(
-                hintText: 'https://controlplane.tailscale.com',
-                filled: true,
-                contentPadding: EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 12,
-                ),
+            child: generateGroup([
+              EntryRow(
+                label: l10n.controlServer,
+                controller: controlController,
+                hintText: 'controlplane.tailscale.com',
               ),
-            ),
+            ]),
           ),
         ),
       ],
