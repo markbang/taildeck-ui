@@ -6,6 +6,10 @@ name: agent-transcript-record
 
 on:
   workflow_dispatch:
+    inputs:
+      flows:
+        description: flows in tool/agent_transcript_record.sh
+        default: markdown steps
 
 permissions:
   contents: read
@@ -112,7 +116,7 @@ jobs:
           profile: pixel_6
           disable-animations: false
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          script: AGENT_FLOWS='markdown' bash tool/agent_transcript_record.sh build/agent-transcript.apk top.bangwu.taildeck agent-transcript
+          script: AGENT_FLOWS='${{ inputs.flows }}' bash tool/agent_transcript_record.sh build/agent-transcript.apk top.bangwu.taildeck agent-transcript
       - name: Job summary
         if: always()
         run: |

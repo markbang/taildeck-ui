@@ -15,6 +15,7 @@ here=$(cd "$(dirname "$0")" && pwd)
 . "$here/android_gate.sh"
 mkdir -p "$out"
 : > "$out/logcat.txt"
+: > "$out/launch-logcat.txt"
 summary="$out/summary.txt"
 : > "$summary"
 failures=0
@@ -96,8 +97,14 @@ launch() { # <query>
     adb shell "am start -W -a android.intent.action.VIEW -d 'taildeck://preview/?$1' '$app'" > /dev/null 2>&1 || true
     shown=$SECONDS
     if wait_home "$app" "$out" "$here" '' 45 chat && gate_survived_focus "$app" "$shown" "$summary"; then
+      # The launch window is kept apart: the emulator's cold-start focus ANR
+      # lands there and is retried above, so only a crash in it counts.
+      adb logcat -d >> "$out/launch-logcat.txt" 2> /dev/null || true
+      adb logcat -c > /dev/null 2>&1 || true
       return 0
     fi
+    adb logcat -d >> "$out/launch-logcat.txt" 2> /dev/null || true
+    adb logcat -c > /dev/null 2>&1 || true
     note "launch attempt $attempt did not reach the chat"
   done
   return 1
@@ -107,14 +114,24 @@ base="preview=1&chat=w1:p1&herdr=demo&lang=en&splash=0"
 swipe_up() { adb shell input swipe 540 1500 540 900 700; sleep 1.2; }
 swipe_down() { adb shell input swipe 540 900 540 1500 700; sleep 1.2; }
 
+# The transcript runs under the floating header and composer, so a node only
+# counts once it sits between them (Pixel 6: 2400 px tall).
+on_screen() { # <needle>
+  local box
+  box=$(ui bounds "$1") || return 1
+  # shellcheck disable=SC2086
+  set -- $box
+  [ "$2" -ge 330 ] && [ "$4" -le 1950 ]
+}
+
 # Scrolls back until [needle] is on screen; the chat opens at its end.
 find_up() { # <needle> [tries]
   local i
   for i in $(seq 1 "${2:-8}"); do
-    ui has "$1" > /dev/null 2>&1 && return 0
+    on_screen "$1" && return 0
     swipe_down
   done
-  ui has "$1" > /dev/null 2>&1
+  on_screen "$1"
 }
 
 markdown_flow() {
@@ -166,12 +183,63 @@ markdown_flow() {
   shot agent-markdown-light-code
 }
 
+# The chat opens at its end: the running turn is on screen, the finished one
+# above it.
+steps_flow() {
+  local i
+  check "running chat launched" launch "$base&transcript=running&theme=dark&status=working"
+  sleep 2
+  check "running turn folded and open" ui has '3 steps · Bash'
+  check "running fold shows its calls" ui has 'go test ./native/bridge/...'
+  shot agent-steps-running
+  rec_start agent-steps
+  check "finished turn folded above" find_up '4 steps · Bash'
+  check "finished turn closed" bash -c "! grep -q 'rg -n' '$out/ui.xml'"
+  shot agent-steps-finished-closed
+  check "open the finished fold" tap '4 steps · Bash'
+  sleep 1.5
+  check "its calls show" ui has 'rg -n'
+  shot agent-steps-opened
+  for i in 1 2 3 4 5 6; do swipe_up; done
+  check "back to the finished fold" find_up '4 steps · Bash'
+  check "still open after scrolling away" ui has 'rg -n'
+  shot agent-steps-kept
+  check "close it again" tap '4 steps · Bash'
+  sleep 1.5
+  ui has '4 steps · Bash' > /dev/null || true
+  check "closed" bash -c "! grep -q 'rg -n' '$out/ui.xml'"
+  for i in 1 2 3 4 5 6; do swipe_up; done
+  check "close the running fold" tap '3 steps · Bash'
+  sleep 1.5
+  ui has '3 steps · Bash' > /dev/null || true
+  check "running fold closed" bash -c "! grep -q 'go test ./native/bridge/' '$out/ui.xml'"
+  shot agent-steps-running-closed
+  rec_stop
+
+  check "finished chat launched" launch "$base&transcript=demo&theme=dark&status=idle"
+  sleep 2
+  check "done: last turn folded" ui has '3 steps · Bash'
+  check "done: last fold closed" bash -c "! grep -q 'go test ./native' '$out/ui.xml'"
+  shot agent-steps-done-dark
+  check "done: first turn folded" find_up '4 steps · Bash'
+  check "done: first fold closed" bash -c "! grep -q 'rg -n' '$out/ui.xml'"
+  check "light chat launched" launch "$base&transcript=demo&theme=light&status=idle"
+  sleep 2
+  tap '3 steps · Bash' > /dev/null || true
+  sleep 1.5
+  shot agent-steps-light
+}
+
 for flow in ${AGENT_FLOWS:-markdown}; do
   "${flow}_flow"
 done
 
 adb logcat -d >> "$out/logcat.txt" 2> /dev/null || true
-if grep -E "FATAL EXCEPTION|ANR in $app" "$out/logcat.txt" > "$out/crashes.txt"; then
+{
+  grep -E "FATAL EXCEPTION|ANR in $app" "$out/logcat.txt"
+  grep "FATAL EXCEPTION" "$out/launch-logcat.txt"
+} > "$out/crashes.txt" || true
+if [ -s "$out/crashes.txt" ]; then
   note "FAIL crash or ANR (crashes.txt)"
   failures=$((failures + 1))
 else

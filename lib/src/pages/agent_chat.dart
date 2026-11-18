@@ -17,6 +17,7 @@ import '../widgets/snackbar.dart';
 import '../widgets/loading.dart';
 import 'agent_chat_layers.dart';
 import 'agent_model.dart';
+import 'agent_steps.dart';
 
 /// One agent pane: its transcript, a prompt box, restart and model switching.
 class AgentChatPage extends StatefulWidget {
@@ -61,6 +62,7 @@ class _AgentChatPageState extends State<AgentChatPage> {
   bool _commandsLoaded = false;
   bool _popup = false;
   bool _nearBottom = true;
+  final _steps = StepsFoldMemory();
   double _dock = 0;
   double _keyboard = 0;
 
@@ -698,8 +700,21 @@ class _AgentChatPageState extends State<AgentChatPage> {
                   .copyWith(color: scheme.onSurfaceVariant),
             ),
           ),
-        for (final row in _rows(transcript.messages))
-          if (row is List<HerdrMessage>)
+        for (final row in chatRows(transcript.messages, working: _working))
+          if (row is StepsFold)
+            StepsBlock(
+              key: ValueKey('steps-${row.key}'),
+              fold: row,
+              memory: _steps,
+              live: _working,
+              itemBuilder: (message) => _MessageBlock(
+                message: message,
+                herdr: widget.herdr,
+                onOpenImage: _openImage,
+                onOpenSubagent: _openSubagent,
+              ),
+            )
+          else if (row is List<HerdrMessage>)
             _ToolGroup(
               key: ValueKey(
                 'tools-${row.first.call.isNotEmpty ? row.first.call : row.first.name}',
@@ -719,29 +734,6 @@ class _AgentChatPageState extends State<AgentChatPage> {
             ),
       ],
     );
-  }
-
-  /// Consecutive tool calls read as one collapsible group, as the Kotlin
-  /// timeline shows them; subagent calls keep their own row.
-  static List<Object> _rows(List<HerdrMessage> messages) {
-    final rows = <Object>[];
-    var group = <HerdrMessage>[];
-    void flush() {
-      if (group.isEmpty) return;
-      rows.add(group);
-      group = <HerdrMessage>[];
-    }
-
-    for (final message in messages) {
-      if (message.isTool && !message.isSubagent) {
-        group.add(message);
-        continue;
-      }
-      flush();
-      rows.add(message);
-    }
-    flush();
-    return rows;
   }
 
   /// What the agent is doing right now: its newest running tool call.
