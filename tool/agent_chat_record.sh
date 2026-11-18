@@ -100,7 +100,7 @@ ime_shown() {
 }
 
 # The composer's field sits right above the system bars.
-input_point() { echo "$((width * 2 / 5)) $((height - $(dp 96)))"; }
+input_point() { echo "$((width * 2 / 5)) $((height - $(dp 62)))"; }
 
 swipe() { adb shell input swipe "$@" > /dev/null 2>&1 || true; }
 

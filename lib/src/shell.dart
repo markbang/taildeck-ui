@@ -131,6 +131,7 @@ class _TaildeckShellState extends State<TaildeckShell>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _terminals.addListener(_onTerminalsChanged);
+    _demoHerdr?.addListener(_onDemoHerdr);
     final node = _querySsh();
     if (node != null) {
       _attached = _terminals.open(
@@ -173,9 +174,16 @@ class _TaildeckShellState extends State<TaildeckShell>
     });
   }
 
+  void _onDemoHerdr() {
+    if (_demoHerdr?.ready != true) return;
+    _demoHerdr?.removeListener(_onDemoHerdr);
+    setState(() {});
+  }
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _demoHerdr?.removeListener(_onDemoHerdr);
     _alerts?.removeListener(_openTappedPane);
     _terminals
       ..removeListener(_onTerminalsChanged)
@@ -554,6 +562,9 @@ class _TaildeckShellState extends State<TaildeckShell>
     // the agent's state so the queue chip can be reviewed on a desk.
     final previewChat = previewParam('chat');
     final herdr = _demoHerdr ?? backend.herdr;
+    if (previewChat != null && _demoHerdr?.ready == false) {
+      return (key: 'boot', depth: 0, child: const SizedBox.shrink());
+    }
     if (previewChat != null && herdr != null) {
       return (
         key: 'chat',
