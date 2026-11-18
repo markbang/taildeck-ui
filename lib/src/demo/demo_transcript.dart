@@ -5,12 +5,18 @@ import 'demo.dart';
 /// `?chat=w1:p1&herdr=demo&transcript=demo`: the demo herdr answers with a
 /// Claude session whose reply exercises the Markdown renderer. Its shape is
 /// what `native/bridge/transcript.go` returns.
+/// `running` stops the last turn mid-way, its newest call still pending.
 String? demoTranscript(String? which) {
-  if (!demoData || which != 'demo') return null;
+  if (!demoData || (which != 'demo' && which != 'running')) return null;
+  final messages = <Map<String, Object>>[..._messages];
+  if (which == 'running') {
+    messages.removeLast();
+    messages.last = {...messages.last, 'pending': true}..remove('output');
+  }
   return jsonEncode({
     'model': 'claude-opus-4-1',
     'context': {'used': 48210, 'window': 200000},
-    'messages': _messages,
+    'messages': messages,
   });
 }
 
