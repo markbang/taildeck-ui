@@ -3,10 +3,7 @@
 # tailnet's SSH peers (tool/motion/peer): the first tap goes through the
 # actions and the sheet; after a force-stop the same tap dials straight in;
 # Edit connection switches the auth and the next tap uses it; a second device
-# keeps its own. Stills and clips are named remember-connection-*. The first
-# connect and the straight-in taps fail the gate; the steps through the auth
-# select are recorded only, since uiautomator often cannot dump the screen
-# while that menu is open.
+# keeps its own. Stills and clips are named remember-connection-*.
 # Usage: tool/remember_record.sh <flutter-apk> [app-id] [out-dir]
 set -euo pipefail
 
@@ -40,8 +37,10 @@ screen_size() {
   W=${W:-1080}; SH=${SH:-2400}
 }
 
+# A failed dump must not be read off the last one: both copies go first.
 dump() {
   rm -f "$out/ui.xml"
+  adb shell rm -f /sdcard/ui.xml > /dev/null 2>&1 || true
   adb shell uiautomator dump /sdcard/ui.xml > /dev/null 2>&1 || true
   adb pull /sdcard/ui.xml "$out/ui.xml" > /dev/null 2>&1 || true
 }
@@ -192,19 +191,37 @@ to_list() {
   return 1
 }
 
-# The select's menu can miss the first tap while the sheet settles, so the
-# row is tapped again until the option shows.
+# Opens the auth select once and waits for the option. While the menu opens
+# over the sheet the app can report an empty tree for seconds, and a second
+# tap on the row would land on the menu's barrier and close it, so the row is
+# tapped again only when a dump shows the sheet without the menu.
 pick_auth() { # <option>
-  local attempt point
-  for attempt in 1 2 3; do
-    tap_label "Authentication" || { sleep 1; continue; }
-    sleep 1.5
-    if point=$(ui tap "$1"); then
-      tap_xy "$point"
+  local opened=0 waited point
+  while [ "$opened" -lt 2 ]; do
+    tap_label "Authentication" || { note "pick $1: no Authentication row"; break; }
+    opened=$((opened + 1))
+    for waited in $(seq 1 15); do
       sleep 1
-      return 0
-    fi
+      if point=$(ui tap "$1"); then
+        [ "$waited" -gt 2 ] && note "pick $1: option showed after ${waited}s"
+        tap_xy "$point"
+        sleep 1
+        return 0
+      fi
+      if [ "$waited" -eq 3 ]; then
+        shot "pick-$1-wait-$opened"
+        cp "$out/ui.xml" "$out/pick-$1-wait-$opened.xml" 2> /dev/null || true
+      fi
+      # The sheet is back without the menu: the tap missed it.
+      if [ "$waited" -ge 3 ] && python3 tool/ui.py "$out/ui.xml" has Authentication > /dev/null 2>&1 \
+        && ! python3 tool/ui.py "$out/ui.xml" has Password > /dev/null 2>&1; then
+        note "pick $1: menu not open after ${waited}s (tap $opened)"
+        break
+      fi
+    done
   done
+  note "pick $1: focus $(adb shell dumpsys window 2> /dev/null | grep -m1 mCurrentFocus | tr -d '\r')"
+  shot "pick-$1-miss"
   note "no auth option '$1'"
   return 1
 }
@@ -280,17 +297,17 @@ fi
 to_list || true
 sleep 1
 record 03-edit-key 16 edit_to_key
-ui has "Terminal output" > /dev/null 2>&1 || note "edit to Key did not connect"
+ui has "Terminal output" > /dev/null 2>&1 || fail "edit to Key did not connect"
 relaunch || fail "relaunch"
 if ui has "· Key" > /dev/null 2>&1; then
   note "after edit: $(ui text "· Key" || true)"
 else
-  note "the row does not show Key after the edit"
+  fail "the row does not show Key after the edit"
 fi
 shot 06-list-key
 tap_xy "$(row "$peer")"
 wait_for "Terminal output" 30 && ! ui has "Authentication" > /dev/null 2>&1 \
-  && note "next tap went straight in" || fail "the next tap did not go straight in"
+  && note "key auth: next tap went straight in" || fail "key auth was not used on the next tap"
 
 # ---- 4. a second device keeps its own -----------------------------------
 to_list || true
@@ -305,17 +322,17 @@ if wait_row "$peer_b"; then
   pick_auth "Password" || true
   fill_edit 2 "anything" || true
   tap_label "Connect" || true
-  wait_for "Terminal output" 30 && note "$peer_b: password login up" || note "$peer_b: password login not reached"
+  wait_for "Terminal output" 30 && note "$peer_b: password login up" || fail "$peer_b: password login"
   relaunch || true
   shot 07-two-devices
   note "rows: $(ui text "SSH · " || true) | $(ui text "· Password" || true)"
   ui has "· Key" > /dev/null 2>&1 && ui has "· Password" > /dev/null 2>&1 \
-    || note "the two devices do not show their own methods"
+    || fail "the two devices do not show their own methods"
   tap_xy "$(row "$peer_b")"
   sleep 2
   shot 08-password-sheet
   ui has "Authentication" > /dev/null 2>&1 \
-    && note "$peer_b: saved password login opens the sheet" || note "$peer_b: no sheet for the password"
+    && note "$peer_b: saved password login opens the sheet" || fail "$peer_b: no sheet for the password"
 else
   fail "no $peer_b row"
 fi
