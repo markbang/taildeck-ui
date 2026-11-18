@@ -405,9 +405,10 @@ jobs:
       - name: Install the recording tools
         run: |
           if ! command -v ffmpeg > /dev/null || ! command -v montage > /dev/null \
-            || ! command -v vim > /dev/null || ! command -v htop > /dev/null; then
+            || ! command -v vim > /dev/null || ! command -v htop > /dev/null \
+            || ! command -v tmux > /dev/null; then
             sudo apt-get update -qq
-            sudo apt-get install -y -qq ffmpeg imagemagick fonts-dejavu-core vim htop
+            sudo apt-get install -y -qq ffmpeg imagemagick fonts-dejavu-core vim htop tmux
           fi
 
       # The AVD and its quickboot snapshot are cached: a restored AVD boots in

@@ -108,7 +108,6 @@ class TaildeckBackend extends ChangeNotifier {
   bool _terminalKeyHaptics = true;
   List<List<String>>? _terminalKeyPages;
   double _terminalFontSize = terminalFontDefault;
-  bool _terminalSwipeArrows = true;
   bool _terminalKeyRowWithKeyboard = false;
   bool _terminalSendEnter = true;
   TerminalThemeId _terminalTheme = TerminalThemeId.follow;
@@ -222,9 +221,6 @@ class TaildeckBackend extends ChangeNotifier {
 
   /// Grid font size in points, set by the pinch or Settings.
   double get terminalFontSize => _terminalFontSize;
-
-  /// Whether a one-finger swipe on the grid sends arrow keys.
-  bool get terminalSwipeArrows => _terminalSwipeArrows;
 
   /// Whether the extra key row stays while a hardware keyboard is attached.
   bool get terminalKeyRowWithKeyboard => _terminalKeyRowWithKeyboard;
@@ -380,7 +376,6 @@ class TaildeckBackend extends ChangeNotifier {
       _terminalKeyHaptics = config.terminalKeyHaptics;
       _terminalKeyPages = config.terminalKeyPages;
       _terminalFontSize = config.terminalFontSize;
-      _terminalSwipeArrows = config.terminalSwipeArrows;
       _terminalKeyRowWithKeyboard = config.terminalKeyRowWithKeyboard;
       _terminalSendEnter = config.terminalSendEnter;
       _terminalTheme = config.terminalTheme;
@@ -830,13 +825,6 @@ class TaildeckBackend extends ChangeNotifier {
     await _persist();
   }
 
-  Future<void> setTerminalSwipeArrows(bool value) async {
-    if (value == _terminalSwipeArrows) return;
-    _terminalSwipeArrows = value;
-    notifyListeners();
-    await _persist();
-  }
-
   Future<void> setTerminalKeyRowWithKeyboard(bool value) async {
     if (value == _terminalKeyRowWithKeyboard) return;
     _terminalKeyRowWithKeyboard = value;
@@ -1276,7 +1264,6 @@ class TaildeckBackend extends ChangeNotifier {
           terminalKeyHaptics: _terminalKeyHaptics,
           terminalKeyPages: _terminalKeyPages,
           terminalFontSize: _terminalFontSize,
-          terminalSwipeArrows: _terminalSwipeArrows,
           terminalKeyRowWithKeyboard: _terminalKeyRowWithKeyboard,
           terminalSendEnter: _terminalSendEnter,
           terminalTheme: _terminalTheme,

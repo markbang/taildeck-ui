@@ -18,7 +18,6 @@ class StoredConfig {
     this.terminalKeyHaptics = true,
     this.terminalKeyPages,
     this.terminalFontSize = terminalFontDefault,
-    this.terminalSwipeArrows = true,
     this.terminalKeyRowWithKeyboard = false,
     this.terminalSendEnter = true,
     this.terminalTheme = TerminalThemeId.follow,
@@ -92,7 +91,6 @@ class StoredConfig {
     terminalFontSize: clampTerminalFont(
       (json['terminalFontSize'] as num?)?.toDouble() ?? terminalFontDefault,
     ),
-    terminalSwipeArrows: json['terminalSwipeArrows'] as bool? ?? true,
     terminalKeyRowWithKeyboard:
         json['terminalKeyRowWithKeyboard'] as bool? ?? false,
     terminalSendEnter: json['terminalSendEnter'] as bool? ?? true,
@@ -135,9 +133,6 @@ class StoredConfig {
 
   /// Grid font size in points, kept across launches.
   final double terminalFontSize;
-
-  /// Whether a one-finger swipe on the grid sends arrow keys.
-  final bool terminalSwipeArrows;
 
   /// Whether the extra key row stays while a hardware keyboard is attached.
   final bool terminalKeyRowWithKeyboard;
@@ -185,7 +180,6 @@ class StoredConfig {
     'terminalKeyHaptics': terminalKeyHaptics,
     if (terminalKeyPages != null) 'terminalKeyPages': terminalKeyPages,
     'terminalFontSize': terminalFontSize,
-    'terminalSwipeArrows': terminalSwipeArrows,
     'terminalKeyRowWithKeyboard': terminalKeyRowWithKeyboard,
     'terminalSendEnter': terminalSendEnter,
     'terminalTheme': terminalTheme.name,

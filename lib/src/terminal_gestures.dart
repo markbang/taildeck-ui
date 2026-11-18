@@ -1,67 +1,8 @@
-/// Grid gestures for the terminal: one-finger swipe to arrow keys, the word
-/// under a finger, the cell range a selection covers and the URL it may hold.
+/// Grid gestures for the terminal: the word under a finger, the cell range a
+/// selection covers and the URL it may hold.
 library;
 
 import 'dart:math' as math;
-import 'dart:ui';
-
-/// Arrow a swipe sends.
-enum TerminalArrow { up, down, left, right }
-
-/// The axis a swipe locked onto.
-enum SwipeAxis { horizontal, vertical }
-
-/// One-finger drag to arrow keys. The axis is chosen once the finger passed
-/// [slop], then every [step] px along it sends one key; movement across the
-/// chosen axis is ignored, so a shaky swipe never zig-zags.
-class SwipeStepper {
-  SwipeStepper({this.step = 26, this.slop = 8, this.maxPerUpdate = 3});
-
-  final double step;
-  final double slop;
-
-  /// A fast flick would otherwise flood the remote with dozens of keys.
-  final int maxPerUpdate;
-
-  SwipeAxis? _axis;
-  double _carry = 0;
-  Offset _total = Offset.zero;
-
-  /// The axis this gesture locked onto; null until it moved far enough.
-  SwipeAxis? get axis => _axis;
-
-  void reset() {
-    _axis = null;
-    _carry = 0;
-    _total = Offset.zero;
-  }
-
-  /// Arrows [delta] just earned, in drag order.
-  List<TerminalArrow> update(Offset delta) {
-    final axis = _axis;
-    if (axis == null) {
-      _total += delta;
-      if (_total.distance < slop) return const [];
-      _axis = _total.dx.abs() >= _total.dy.abs()
-          ? SwipeAxis.horizontal
-          : SwipeAxis.vertical;
-      _carry = _axis == SwipeAxis.horizontal ? _total.dx : _total.dy;
-    } else {
-      _carry += axis == SwipeAxis.horizontal ? delta.dx : delta.dy;
-    }
-    final out = <TerminalArrow>[];
-    while (_carry.abs() >= step && out.length < maxPerUpdate) {
-      final forward = _carry > 0;
-      _carry -= forward ? step : -step;
-      out.add(
-        _axis == SwipeAxis.horizontal
-            ? (forward ? TerminalArrow.right : TerminalArrow.left)
-            : (forward ? TerminalArrow.down : TerminalArrow.up),
-      );
-    }
-    return out;
-  }
-}
 
 /// A terminal selection: the cell it started on and the cell it reaches.
 class GridSelection {

@@ -800,19 +800,6 @@ class _TerminalSection extends StatelessWidget {
                 unawaited(backend.setTerminalCursorBlink(value)),
           ),
           _IconSwitchRow(
-            label: l10n.terminalSwipeArrows,
-            caption: backend.terminalSwipeArrows
-                ? l10n.terminalSwipeArrowsOn
-                : l10n.terminalSwipeArrowsOff,
-            value: backend.terminalSwipeArrows,
-            semanticLabel: l10n.a11ySwitch(
-              l10n.terminalSwipeArrows,
-              backend.terminalSwipeArrows,
-            ),
-            onChanged: (value) =>
-                unawaited(backend.setTerminalSwipeArrows(value)),
-          ),
-          _IconSwitchRow(
             label: l10n.terminalKeyRowWithKeyboard,
             caption: backend.terminalKeyRowWithKeyboard
                 ? l10n.terminalKeyRowWithKeyboardOn
