@@ -8,7 +8,11 @@ apk=${1:?usage: tool/smoke_android.sh <apk> [application-id] [out-dir]}
 app=${2:-top.bangwu.taildeck}
 out=${3:-smoke}
 wait_s=${WAIT_SECONDS:-15}
+here=$(cd "$(dirname "$0")" && pwd)
+# shellcheck source=tool/android_gate.sh
+. "$here/android_gate.sh"
 mkdir -p "$out"
+: > "$out/summary.txt"
 
 fail() {
   echo "FAIL: $*" | tee -a "$out/summary.txt"
@@ -27,9 +31,17 @@ adb install -g "$apk" > "$out/install.txt" 2>&1 || fail "adb install failed, see
 activity=$(adb shell cmd package resolve-activity --brief "$app" 2>/dev/null | tail -n 1 | tr -d '\r')
 [ -n "$activity" ] || fail "no launcher activity for $app"
 
-adb logcat -b all -c
-adb shell am start -W -n "$activity" > "$out/launch.txt" 2>&1 || fail "am start failed, see launch.txt"
-sleep "$wait_s"
+# The gate's checks below read the launch that got past its focus window.
+for attempt in 1 2; do
+  adb shell am force-stop "$app" > /dev/null 2>&1 || true
+  adb logcat -b all -c
+  adb shell am start -W -n "$activity" > "$out/launch.txt" 2>&1 || fail "am start failed, see launch.txt"
+  shown=$SECONDS
+  gate_survived_focus "$app" "$shown" "$out/summary.txt" && break
+  [ "$attempt" -eq 1 ] || fail "$app stopped answering input on two cold starts in a row"
+  echo "launch attempt $attempt: the app was killed after an ANR at cold start" | tee -a "$out/summary.txt"
+done
+while [ $((SECONDS - shown)) -lt "$wait_s" ]; do sleep 1; done
 
 adb logcat -d > "$out/logcat.txt" 2>&1 || true
 adb logcat -b crash -d > "$out/logcat-crash.txt" 2>&1 || true
@@ -48,7 +60,7 @@ focus=$(adb shell dumpsys window 2>/dev/null | grep -m1 mCurrentFocus | tr -d '\
   grep -m1 -E '^TotalTime' "$out/launch.txt" | tr -d '\r' || true
   grep -m1 -E '^WaitTime' "$out/launch.txt" | tr -d '\r' || true
   grep -m1 "Displayed $app/" "$out/logcat.txt" | tr -d '\r' || true
-} | tee "$out/summary.txt"
+} | tee -a "$out/summary.txt"
 
 [ -n "$pid" ] || fail "process $app is gone; the app died within ${wait_s}s of launch"
 

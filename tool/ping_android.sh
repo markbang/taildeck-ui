@@ -10,7 +10,11 @@ set -euo pipefail
 apk=${1:?usage: tool/ping_android.sh <apk> [application-id] [out-dir]}
 app=${2:-top.bangwu.taildeck}
 out=${3:-smoke-ping}
+here=$(cd "$(dirname "$0")" && pwd)
+# shellcheck source=tool/android_gate.sh
+. "$here/android_gate.sh"
 mkdir -p "$out"
+: > "$out/summary.txt"
 
 fail() {
   echo "FAIL: $*" | tee -a "$out/summary.txt"
@@ -27,11 +31,18 @@ if ! adb shell pm path "$app" > /dev/null 2>&1; then
   adb install -g "$apk" > "$out/install.txt" 2>&1 || fail "adb install failed, see install.txt"
 fi
 
-adb shell am force-stop "$app" > /dev/null 2>&1 || true
-sleep 3
-adb logcat -c > /dev/null 2>&1 || true
-adb shell "am start -W -a android.intent.action.VIEW -d 'taildeck://preview/?preview=1&node=devbox&ping=1' -n $activity" \
-  > "$out/launch.txt" 2>&1 || fail "am start failed, see launch.txt"
+# A ping that blocks the UI thread ANRs every launch, so a second ANR in a row
+# still fails here; one alone is the emulator's cold-start focus stall.
+for attempt in 1 2; do
+  adb shell am force-stop "$app" > /dev/null 2>&1 || true
+  sleep 3
+  adb logcat -c > /dev/null 2>&1 || true
+  adb shell "am start -W -a android.intent.action.VIEW -d 'taildeck://preview/?preview=1&node=devbox&ping=1' -n $activity" \
+    > "$out/launch.txt" 2>&1 || fail "am start failed, see launch.txt"
+  gate_survived_focus "$app" "$SECONDS" "$out/summary.txt" && break
+  [ "$attempt" -eq 1 ] || fail "ANR in $app on two cold starts in a row"
+  echo "launch attempt $attempt: the app was killed after an ANR at cold start" | tee -a "$out/summary.txt"
+done
 
 # The ping logs its start and its answer; the answer is what proves the FFI call
 # returned instead of blocking the UI thread until Android kills us.
@@ -48,7 +59,7 @@ adb exec-out screencap -p > "$out/node-ping.png" || true
   echo "apk: $apk"
   echo "application id: $app"
   echo "ping: ${result:-<no answer>}"
-} | tee "$out/summary.txt"
+} | tee -a "$out/summary.txt"
 
 [ -n "$result" ] || fail "the ping never answered within 40s"
 echo "$result" | grep -q 'taildeck ping: done' || fail "unexpected ping line: $result"
