@@ -4,6 +4,7 @@ import 'package:prism_ui/icons/icons.dart';
 import 'package:prism_ui/prism_ui.dart';
 
 import '../backend.dart';
+import '../connection_memory.dart';
 import '../data.dart';
 import '../demo/demo.dart';
 import '../l10n.dart';
@@ -19,9 +20,18 @@ class NodesPage extends StatelessWidget {
     super.key,
     required this.onOpenNode,
     required this.onToggleTheme,
+    this.onNodeActions,
+    this.connecting = const {},
   });
 
+  /// A tap: the device's saved connection, or its actions.
   final ValueChanged<NodeItem> onOpenNode;
+
+  /// A long press (or secondary click): the actions, always.
+  final ValueChanged<NodeItem>? onNodeActions;
+
+  /// `deviceKey`s dialing their saved connection.
+  final Set<String> connecting;
   final VoidCallback onToggleTheme;
 
   @override
@@ -77,6 +87,7 @@ class NodesPage extends StatelessWidget {
                   (backend.state == BackendState.starting ||
                       backend.state == BackendState.needsLogin),
               onOpenNode: onOpenNode,
+              onNodeActions: onNodeActions,
             ),
           ),
           const SizedBox(height: 14),
@@ -94,7 +105,15 @@ class NodesPage extends StatelessWidget {
                         _PeerRow(
                           key: ValueKey(node.name),
                           node: node,
+                          saved: switch (backend.connectionFor(node)) {
+                            final saved? when saved.ready => saved,
+                            _ => null,
+                          },
+                          connecting: connecting.contains(deviceKey(node)),
                           onTap: () => onOpenNode(node),
+                          onLongPress: onNodeActions == null
+                              ? null
+                              : () => onNodeActions!(node),
                         ),
                     ],
                   ),
@@ -133,6 +152,7 @@ class _SelfCard extends StatelessWidget {
     required this.peers,
     required this.starting,
     required this.onOpenNode,
+    this.onNodeActions,
   });
 
   final NodeItem node;
@@ -141,6 +161,7 @@ class _SelfCard extends StatelessWidget {
   /// The node is still coming up: the card runs the wavy progress line.
   final bool starting;
   final ValueChanged<NodeItem> onOpenNode;
+  final ValueChanged<NodeItem>? onNodeActions;
 
   @override
   Widget build(BuildContext context) {
@@ -212,35 +233,43 @@ class _SelfCard extends StatelessWidget {
                       relay: peers[i].relay,
                     ),
                     onTap: () => onOpenNode(peers[i]),
-                    child: TapFeedback(
-                      onTap: () => onOpenNode(peers[i]),
-                      child: SizedBox(
-                        height: 44,
-                        child: Row(
-                          children: [
-                            Connector(isFirst: i == 0),
-                            const SizedBox(width: 12),
-                            Text(
-                              peers[i].name,
-                              style: AppTextStyle.subheadline.of(
-                                context,
-                                emphasized: true,
+                    onLongPress: onNodeActions == null
+                        ? null
+                        : () => onNodeActions!(peers[i]),
+                    child: _LongPress(
+                      onLongPress: onNodeActions == null
+                          ? null
+                          : () => onNodeActions!(peers[i]),
+                      child: TapFeedback(
+                        onTap: () => onOpenNode(peers[i]),
+                        child: SizedBox(
+                          height: 44,
+                          child: Row(
+                            children: [
+                              Connector(isFirst: i == 0),
+                              const SizedBox(width: 12),
+                              Text(
+                                peers[i].name,
+                                style: AppTextStyle.subheadline.of(
+                                  context,
+                                  emphasized: true,
+                                ),
                               ),
-                            ),
-                            const Spacer(),
-                            GlyphIcon(
-                              Glyphs2.arrowDown,
-                              size: 11,
-                              color: scheme.onSurfaceVariant,
-                            ),
-                            const SizedBox(width: 2),
-                            Text(
-                              peers[i].rx,
-                              style: AppTextStyle.caption1
-                                  .of(context)
-                                  .copyWith(color: scheme.onSurfaceVariant),
-                            ),
-                          ],
+                              const Spacer(),
+                              GlyphIcon(
+                                Glyphs2.arrowDown,
+                                size: 11,
+                                color: scheme.onSurfaceVariant,
+                              ),
+                              const SizedBox(width: 2),
+                              Text(
+                                peers[i].rx,
+                                style: AppTextStyle.caption1
+                                    .of(context)
+                                    .copyWith(color: scheme.onSurfaceVariant),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
@@ -254,11 +283,43 @@ class _SelfCard extends StatelessWidget {
   }
 }
 
+/// Long press and secondary click open a device's actions; the tap stays
+/// with the row's own press feedback.
+class _LongPress extends StatelessWidget {
+  const _LongPress({required this.onLongPress, required this.child});
+
+  final VoidCallback? onLongPress;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    if (onLongPress == null) return child;
+    return GestureDetector(
+      onLongPress: onLongPress,
+      onSecondaryTap: onLongPress,
+      excludeFromSemantics: true,
+      child: child,
+    );
+  }
+}
+
 class _PeerRow extends StatelessWidget {
-  const _PeerRow({super.key, required this.node, required this.onTap});
+  const _PeerRow({
+    super.key,
+    required this.node,
+    required this.onTap,
+    this.onLongPress,
+    this.saved,
+    this.connecting = false,
+  });
 
   final NodeItem node;
   final VoidCallback onTap;
+  final VoidCallback? onLongPress;
+
+  /// The saved connection a tap uses; null when the tap opens the actions.
+  final SavedConnection? saved;
+  final bool connecting;
 
   @override
   Widget build(BuildContext context) {
@@ -267,7 +328,13 @@ class _PeerRow extends StatelessWidget {
     final now = DateTime.now();
     final seenAt = node.online ? null : node.lastSeenAt;
     final seen = seenAt == null ? null : l10n.lastSeen(seenAt, now);
-    final label = l10n.nodeSemantics(
+    final saved = this.saved;
+    final method = connecting
+        ? l10n.connecting
+        : saved == null
+        ? null
+        : connectionLabel(l10n, saved);
+    final nodeLabel = l10n.nodeSemantics(
       node.name,
       online: node.online,
       ip: node.ip,
@@ -280,44 +347,72 @@ class _PeerRow extends StatelessWidget {
       style: context.listCaptionStyle,
     );
     return RowSemantics(
-      label: label,
+      label: method == null ? nodeLabel : '$nodeLabel, $method',
+      hint: onLongPress == null ? null : l10n.nodeActionsHint,
       onTap: onTap,
-      child: TapFeedback(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-          child: Row(
-            children: [
-              NodeBadge(node),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      node.name,
-                      style: AppTextStyle.body.of(context, emphasized: true),
-                    ),
-                    const SizedBox(height: 1),
-                    caption,
-                  ],
-                ),
-              ),
-              if (node.online)
-                PathBadge(node: node)
-              else
-                Container(
-                  width: 10,
-                  height: 10,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: scheme.onSurfaceVariant.opacity50,
-                      width: 1.4,
-                    ),
+      onLongPress: onLongPress,
+      child: _LongPress(
+        onLongPress: onLongPress,
+        child: TapFeedback(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+            child: Row(
+              children: [
+                NodeBadge(node),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        node.name,
+                        style: AppTextStyle.body.of(context, emphasized: true),
+                      ),
+                      const SizedBox(height: 1),
+                      caption,
+                    ],
                   ),
                 ),
-            ],
+                const SizedBox(width: 8),
+                Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    if (node.online)
+                      PathBadge(node: node)
+                    else
+                      Container(
+                        width: 10,
+                        height: 10,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: scheme.onSurfaceVariant.opacity50,
+                            width: 1.4,
+                          ),
+                        ),
+                      ),
+                    if (method != null) ...[
+                      const SizedBox(height: 4),
+                      ConstrainedBox(
+                        constraints: BoxConstraints(
+                          maxWidth: MediaQuery.sizeOf(context).width * 0.5,
+                        ),
+                        child: Text(
+                          method,
+                          key: const ValueKey('saved-connection'),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.end,
+                          style: context.listCaptionStyle,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
       ),

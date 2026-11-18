@@ -47,7 +47,7 @@ on:
   workflow_dispatch:
     inputs:
       gates:
-        description: Space-separated gate labels to run (cold-start splash agents stills tabs back ping node termtap routing netready)
+        description: Space-separated gate labels to run (cold-start splash agents stills tabs back ping node termtap remember routing netready)
         type: string
         default: all
       full-gate:
@@ -134,7 +134,7 @@ jobs:
             return 1
           }
           profile=false demo=false netready=false control=false
-          for gate in cold-start splash agents stills termtap routing; do
+          for gate in cold-start splash agents stills termtap remember routing; do
             wants "$gate" && profile=true
           done
           for gate in tabs back ping node; do
@@ -142,7 +142,7 @@ jobs:
           done
           wants netready && netready=true
           if [ "$full" = true ]; then
-            for gate in termtap routing netready; do
+            for gate in termtap remember routing netready; do
               wants "$gate" && control=true
             done
           fi
@@ -478,6 +478,7 @@ jobs:
               "ping:smoke-ping" \
               "node page:smoke-node" \
               "terminal tap and IME:termtap" \
+              "remembered connection:remember" \
               "startup routing (20 cold starts):routing" \
               "tailnet-ready (20 cold starts per page):netready"; do
               title=${entry%:*}
@@ -506,6 +507,7 @@ jobs:
             smoke-agents/
             smoke-shots/
             termtap/
+            remember/
             routing/
             netready/
           if-no-files-found: warn

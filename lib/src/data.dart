@@ -8,6 +8,7 @@ bool isValidSshUser(String user) => sshUserPattern.hasMatch(user.trim());
 class NodeItem {
   const NodeItem({
     required this.name,
+    this.id = '',
     required this.ip,
     required this.os,
     required this.online,
@@ -26,6 +27,9 @@ class NodeItem {
   });
 
   final String name;
+
+  /// The tailnet's stable node id; empty for demo nodes.
+  final String id;
   final String ip;
   final String os;
   final bool online;
@@ -83,6 +87,7 @@ NodeItem nodeFromJson(Map<String, dynamic> json, {bool isSelf = false}) {
   final relay = json['relay'] as String? ?? '';
   return NodeItem(
     name: json['name'] as String? ?? '',
+    id: json['id'] as String? ?? '',
     ip: ips.isEmpty ? '' : ips.first,
     ips: ips,
     os: _nodeOs(json['os'] as String? ?? ''),

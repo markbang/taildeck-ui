@@ -148,6 +148,10 @@ class AppLocalizations implements UiLocalizations {
   String get authTailscale => _zh ? 'Tailscale SSH' : 'Tailscale SSH';
   String get authPassword => _zh ? '密码' : 'Password';
   String get authKey => _zh ? '密钥' : 'Key';
+  String get editConnection => _zh ? '编辑连接' : 'Edit connection';
+  String get nodeActionsHint => _zh ? '长按打开操作菜单' : 'Long press for actions';
+  String sshFailed(String reason) =>
+      _zh ? '连接失败：$reason' : 'Could not connect: $reason';
   String get web => _zh ? '网页' : 'Web';
   String get ping => _zh ? '延迟' : 'Ping';
   String get agentsTitle => _zh ? '代理' : 'Agents';

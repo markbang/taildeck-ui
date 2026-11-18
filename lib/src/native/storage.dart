@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import '../connection_memory.dart';
 import '../terminal_appearance.dart';
 import '../terminal_gestures.dart';
 import '../terminal_keys.dart';
@@ -33,9 +34,51 @@ class StoredConfig {
     this.herdrIdentity = '',
     this.sshUsers = const {},
     this.sshPorts = const {},
+    this.connections = const {},
   });
 
-  factory StoredConfig.fromJson(Map<String, dynamic> json) => StoredConfig(
+  factory StoredConfig.fromJson(Map<String, dynamic> json) {
+    final users = _sshUsers(json['sshUsers']);
+    final ports = _sshPorts(json['sshPorts']);
+    return StoredConfig._fromJson(
+      json,
+      users,
+      ports,
+      switch (json['connections']) {
+        final Map<String, dynamic> map => {
+          for (final entry in map.entries)
+            if (entry.value case final Map<String, dynamic> value)
+              entry.key: SavedConnection.fromJson(value),
+        },
+        _ => migrateSshLogins(users, ports),
+      },
+    );
+  }
+
+  static Map<String, String> _sshUsers(Object? raw) => switch (raw) {
+    final Map<String, dynamic> map => {
+      for (final entry in map.entries)
+        if (entry.value case final String user when user.isNotEmpty)
+          entry.key: user,
+    },
+    _ => const {},
+  };
+
+  static Map<String, int> _sshPorts(Object? raw) => switch (raw) {
+    final Map<String, dynamic> map => {
+      for (final entry in map.entries)
+        if (entry.value case final num port when port >= 1 && port <= 65535)
+          entry.key: port.toInt(),
+    },
+    _ => const {},
+  };
+
+  factory StoredConfig._fromJson(
+    Map<String, dynamic> json,
+    Map<String, String> users,
+    Map<String, int> ports,
+    Map<String, SavedConnection> connections,
+  ) => StoredConfig(
     hostname: json['hostname'] as String? ?? 'taildeck',
     controlURL: json['controlURL'] as String? ?? '',
     signedIn: json['signedIn'] as bool? ?? false,
@@ -64,22 +107,9 @@ class StoredConfig {
     herdrPort: (json['herdrPort'] as num?)?.toInt() ?? 22,
     herdrAuth: json['herdrAuth'] as String? ?? 'tailscale',
     herdrIdentity: json['herdrIdentity'] as String? ?? '',
-    sshUsers: switch (json['sshUsers']) {
-      final Map<String, dynamic> map => {
-        for (final entry in map.entries)
-          if (entry.value case final String user when user.isNotEmpty)
-            entry.key: user,
-      },
-      _ => const {},
-    },
-    sshPorts: switch (json['sshPorts']) {
-      final Map<String, dynamic> map => {
-        for (final entry in map.entries)
-          if (entry.value case final num port when port >= 1 && port <= 65535)
-            entry.key: port.toInt(),
-      },
-      _ => const {},
-    },
+    sshUsers: users,
+    sshPorts: ports,
+    connections: connections,
   );
 
   final String hostname;
@@ -114,6 +144,7 @@ class StoredConfig {
 
   /// Whether Send presses Enter after the line. Off inserts the text only.
   final bool terminalSendEnter;
+
   /// Appearance: theme, family, cursor shape and blink.
   final TerminalThemeId terminalTheme;
   final TerminalFontId terminalFont;
@@ -139,6 +170,10 @@ class StoredConfig {
   /// written.
   final Map<String, String> sshUsers;
   final Map<String, int> sshPorts;
+
+  /// What a tap on a device does, keyed by `deviceKey`. A config written
+  /// before this existed gets its per-host logins carried over.
+  final Map<String, SavedConnection> connections;
 
   Map<String, dynamic> toJson() => {
     'hostname': hostname,
@@ -168,6 +203,9 @@ class StoredConfig {
     'herdrIdentity': herdrIdentity,
     'sshUsers': sshUsers,
     'sshPorts': sshPorts,
+    'connections': {
+      for (final entry in connections.entries) entry.key: entry.value.toJson(),
+    },
   };
 }
 

@@ -8,6 +8,7 @@ import 'package:prism_ui/prism_ui.dart';
 import 'a11y.dart';
 import 'back.dart';
 import 'backend.dart';
+import 'connection_memory.dart';
 import 'data.dart';
 import 'demo/demo.dart';
 import 'herdr.dart';
@@ -15,6 +16,7 @@ import 'preview_env.dart';
 import 'glyphs.dart';
 import 'l10n.dart';
 import 'motion.dart';
+import 'native/bridge.dart';
 import 'notifications.dart';
 import 'pages/agent_chat.dart';
 import 'pages/agents.dart';
@@ -50,6 +52,12 @@ class _TaildeckShellState extends State<TaildeckShell>
 
   int _tab = (int.tryParse(previewParam('tab') ?? '') ?? 0).clamp(0, _tabs - 1);
   NodeItem? _node;
+
+  /// The node page opened from a saved ping: it pings on open.
+  bool _pingOnOpen = false;
+
+  /// Devices dialing their saved connection; their rows say so.
+  final Set<String> _connecting = {};
   bool _floating = previewParam('nav') != 'docked';
   TabAnimation _animation = previewParam('anim') == 'fade'
       ? TabAnimation.fade
@@ -310,13 +318,104 @@ class _TaildeckShellState extends State<TaildeckShell>
     _toPage(2);
   }
 
-  Future<void> _openSsh(NodeItem node) async {
+  /// A tap on a device: its saved connection when there is one, else the
+  /// node page with its actions.
+  void _tapNode(NodeItem node) {
+    final saved = BackendScope.of(context).connectionFor(node);
+    switch (planTap(saved)) {
+      case TapPlan.menu:
+        _openMenu(node);
+      case TapPlan.ping:
+        setState(() {
+          _node = node;
+          _pingOnOpen = true;
+        });
+      case TapPlan.dial:
+      case TapPlan.sheet:
+        unawaited(_openSsh(node));
+    }
+  }
+
+  void _openMenu(NodeItem node) => setState(() {
+    _node = node;
+    _pingOnOpen = false;
+  });
+
+  /// A ping that answered becomes the device's tap action, unless it already
+  /// has one.
+  void _onPinged(NodeItem node) {
+    final backend = BackendScope.of(context);
+    if (backend.connectionFor(node)?.ready ?? false) return;
+    unawaited(
+      backend.rememberConnection(
+        node,
+        const SavedConnection(action: ConnectionAction.ping),
+      ),
+    );
+  }
+
+  /// Reattaches a running shell, else dials the saved connection; the sheet
+  /// opens first time, for a password, on [edit], and when the saved
+  /// connection fails.
+  Future<void> _openSsh(NodeItem node, {bool edit = false}) async {
     final existing = _terminals.forNode(node.name);
-    if (existing != null && !existing.closed) {
+    if (!edit && existing != null && !existing.closed) {
       _attach(existing);
       return;
     }
-    final choice = await showSshSheet(context, node);
+    final backend = BackendScope.of(context);
+    final saved = backend.connectionFor(node);
+    if (edit || saved == null || planTap(saved) != TapPlan.dial) {
+      _openTerminal(node, await showSshSheet(context, node));
+      return;
+    }
+    final key = deviceKey(node);
+    if (!_connecting.add(key)) return;
+    setState(() {});
+    final choice = await connectRemembered<SshChoice>(
+      saved: saved,
+      dial: (saved) => _dialSaved(node, saved),
+      openSheet: (error) {
+        if (!mounted) return Future<SshChoice?>.value();
+        setState(() => _connecting.remove(key));
+        final message = error is BridgeException ? error.message : '$error';
+        return showSshSheet(
+          context,
+          node,
+          error: sshFailureText(
+            AppLocalizations.of(context),
+            node.name,
+            message,
+          ),
+        );
+      },
+    );
+    if (!mounted) return;
+    setState(() => _connecting.remove(key));
+    _openTerminal(node, choice);
+  }
+
+  Future<SshChoice> _dialSaved(NodeItem node, SavedConnection saved) async {
+    final backend = BackendScope.of(context);
+    final session = backend.available
+        ? await backend.openSshSession(
+            host: node.name,
+            user: saved.user,
+            port: saved.port,
+            identityId: saved.dialIdentity,
+          )
+        : null;
+    return (
+      user: saved.user,
+      port: saved.port,
+      auth: saved.auth ?? SshAuth.tailscale,
+      password: '',
+      identityId: saved.dialIdentity,
+      session: session,
+    );
+  }
+
+  void _openTerminal(NodeItem node, SshChoice? choice) {
     if (choice == null || !mounted) return;
     _attach(
       _terminals.open(
@@ -663,7 +762,9 @@ class _TaildeckShellState extends State<TaildeckShell>
         final node = _node;
         if (node == null) {
           return NodesPage(
-            onOpenNode: (value) => setState(() => _node = value),
+            onOpenNode: _tapNode,
+            onNodeActions: _openMenu,
+            connecting: _connecting,
             onToggleTheme: widget.theme.toggle,
           );
         }
@@ -671,10 +772,16 @@ class _TaildeckShellState extends State<TaildeckShell>
         return NodeDetailPage(
           node: node,
           previewPing: previewParam('ping') == '1',
+          pingOnOpen: _pingOnOpen,
+          onPinged: () => _onPinged(node),
           session: session == null || session.closed ? null : session,
           onBack: () => setState(() => _node = null),
           onOpenAgents: () => _toPage(2),
           onOpenSsh: () => unawaited(_openSsh(node)),
+          onEditConnection:
+              BackendScope.of(context).connectionFor(node)?.auth != null
+              ? () => unawaited(_openSsh(node, edit: true))
+              : null,
           onDisconnectSsh: session == null
               ? null
               : () => _disconnectTerminal(session),

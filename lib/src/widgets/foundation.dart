@@ -350,12 +350,14 @@ class RowSemantics extends StatelessWidget {
     required this.label,
     this.hint,
     this.onTap,
+    this.onLongPress,
     required this.child,
   });
 
   final String label;
   final String? hint;
   final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
   final Widget child;
 
   @override
@@ -366,6 +368,7 @@ class RowSemantics extends StatelessWidget {
       label: label,
       hint: hint,
       onTap: onTap,
+      onLongPress: onLongPress,
       excludeSemantics: true,
       child: child,
     );

@@ -30,6 +30,9 @@ class NodeDetailPage extends StatefulWidget {
     required this.onOpenSsh,
     this.session,
     this.onDisconnectSsh,
+    this.onEditConnection,
+    this.onPinged,
+    this.pingOnOpen = false,
     this.previewPing = false,
   });
 
@@ -41,6 +44,15 @@ class NodeDetailPage extends StatefulWidget {
   /// A shell still running on this node, left open by the terminal page.
   final SshTerminal? session;
   final VoidCallback? onDisconnectSsh;
+
+  /// Opens the SSH sheet on the saved connection; null when none is saved.
+  final VoidCallback? onEditConnection;
+
+  /// A ping answered.
+  final VoidCallback? onPinged;
+
+  /// The device's saved action is Ping: run it on open.
+  final bool pingOnOpen;
 
   /// `?ping=1` runs the Ping button on open, so the Android smoke test can
   /// exercise the FFI path without tapping through uiautomator.
@@ -62,7 +74,11 @@ class _NodeDetailPageState extends State<NodeDetailPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         _focus.requestFocus();
-        if (widget.previewPing) unawaited(_runPing(fromPreview: true));
+        if (widget.previewPing) {
+          unawaited(_runPing(fromPreview: true));
+        } else if (widget.pingOnOpen) {
+          unawaited(_runPing());
+        }
       }
     });
   }
@@ -128,6 +144,7 @@ class _NodeDetailPageState extends State<NodeDetailPage> {
       _pinging = false;
       _ping = result;
     });
+    if (result.ok) widget.onPinged?.call();
   }
 
   Future<void> _scan() async {
@@ -227,6 +244,12 @@ class _NodeDetailPageState extends State<NodeDetailPage> {
               onPressed: _scan,
               loading: _scanning,
             ),
+            if (widget.onEditConnection case final onEdit?)
+              ActionPill(
+                label: l10n.editConnection,
+                glyph: Glyphs2.sliders,
+                onPressed: onEdit,
+              ),
           ],
         ),
         if (widget.session case final session?) ...[
