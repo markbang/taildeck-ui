@@ -166,41 +166,49 @@ markdown_flow() {
   shot agent-markdown-light-code
 }
 
+# The chat opens at its end: the running turn is on screen, the finished one
+# above it.
 steps_flow() {
+  local i
   check "running chat launched" launch "$base&transcript=running&theme=dark&status=working"
   sleep 2
   check "running turn folded and open" ui has '3 steps · Bash'
   check "running fold shows its calls" ui has 'go test ./native/bridge/...'
-  check "finished turn closed" bash -c "! grep -q 'rg -n' '$out/ui.xml'"
   shot agent-steps-running
   rec_start agent-steps
-  check "open a finished fold" tap '4 steps · Bash'
+  check "finished turn folded above" find_up '4 steps · Bash'
+  check "finished turn closed" bash -c "! grep -q 'rg -n' '$out/ui.xml'"
+  shot agent-steps-finished-closed
+  check "open the finished fold" tap '4 steps · Bash'
   sleep 1.5
   check "its calls show" ui has 'rg -n'
   shot agent-steps-opened
-  local i
-  for i in 1 2 3 4; do swipe_up; done
-  for i in 1 2 3 4 5 6; do swipe_down; done
+  for i in 1 2 3 4 5 6; do swipe_up; done
+  check "back to the finished fold" find_up '4 steps · Bash'
   check "still open after scrolling away" ui has 'rg -n'
   shot agent-steps-kept
   check "close it again" tap '4 steps · Bash'
   sleep 1.5
   ui has '4 steps · Bash' > /dev/null || true
   check "closed" bash -c "! grep -q 'rg -n' '$out/ui.xml'"
+  for i in 1 2 3 4 5 6; do swipe_up; done
   check "close the running fold" tap '3 steps · Bash'
   sleep 1.5
+  ui has '3 steps · Bash' > /dev/null || true
+  check "running fold closed" bash -c "! grep -q 'go test ./native/bridge/' '$out/ui.xml'"
   shot agent-steps-running-closed
   rec_stop
 
   check "finished chat launched" launch "$base&transcript=demo&theme=dark&status=idle"
   sleep 2
-  check "done: first turn folded" ui has '4 steps · Bash'
-  check "done: second turn folded" ui has '3 steps · Bash'
-  check "done: both closed" bash -c "! grep -q 'go test ./native' '$out/ui.xml'"
+  check "done: last turn folded" ui has '3 steps · Bash'
+  check "done: last fold closed" bash -c "! grep -q 'go test ./native' '$out/ui.xml'"
   shot agent-steps-done-dark
+  check "done: first turn folded" find_up '4 steps · Bash'
+  check "done: first fold closed" bash -c "! grep -q 'rg -n' '$out/ui.xml'"
   check "light chat launched" launch "$base&transcript=demo&theme=light&status=idle"
   sleep 2
-  tap '4 steps · Bash' > /dev/null || true
+  tap '3 steps · Bash' > /dev/null || true
   sleep 1.5
   shot agent-steps-light
 }
