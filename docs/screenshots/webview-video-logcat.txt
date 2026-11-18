@@ -1,0 +1,73 @@
+# before (main): page at the gateway origin, no WebView proxy
+[INFO:CONSOLE(29)] "video-report case=h264-abs&ok=0&t=0.00&err=code4%3AMEDIA_ELEMENT_ERROR%3A+Format+error&can=probably&origin=http%3A%2F%2Fmotionpeer-3000.localhost%3A18680", source: http://motionpeer-3000.localhost:18680/video (29)
+[INFO:CONSOLE(29)] "video-report case=hevc&ok=1&t=1.52&err=&can=no&origin=http%3A%2F%2Fmotionpeer-3000.localhost%3A18680", source: http://motionpeer-3000.localhost:18680/video (29)
+[INFO:CONSOLE(29)] "video-report case=hls&ok=1&t=1.85&err=&can=maybe&origin=http%3A%2F%2Fmotionpeer-3000.localhost%3A18680", source: http://motionpeer-3000.localhost:18680/video (29)
+[INFO:CONSOLE(29)] "video-report case=h264-rel&ok=1&t=1.73&err=&can=probably&origin=http%3A%2F%2Fmotionpeer-3000.localhost%3A18680", source: http://motionpeer-3000.localhost:18680/video (29)
+
+$ curl -r 0-1023 -i -H 'Host: motionpeer-3000.localhost:18680' http://127.0.0.1:18680/media/h264.mp4
+HTTP/1.1 206 Partial Content
+Accept-Ranges: bytes
+Content-Length: 1024
+Content-Range: bytes 0-1023/47575
+Content-Type: video/mp4
+
+$ curl -x http://127.0.0.1:18680 -r 0-1023 -i http://motionpeer:3000/media/h264.mp4
+HTTP/1.1 206 Partial Content
+Accept-Ranges: bytes
+Content-Length: 1024
+Content-Range: bytes 0-1023/47575
+Content-Type: video/mp4
+
+
+# after: page at its tailnet URL through the gateway proxy
+[INFO:CONSOLE(29)] "video-report case=hls&ok=1&t=1.71&err=&can=maybe&origin=http%3A%2F%2Fmotionpeer%3A3000", source: http://motionpeer:3000/video (29)
+[INFO:CONSOLE(29)] "video-report case=h264-rel&ok=1&t=1.62&err=&can=probably&origin=http%3A%2F%2Fmotionpeer%3A3000", source: http://motionpeer:3000/video (29)
+[INFO:CONSOLE(29)] "video-report case=hevc&ok=1&t=1.69&err=&can=no&origin=http%3A%2F%2Fmotionpeer%3A3000", source: http://motionpeer:3000/video (29)
+[INFO:CONSOLE(29)] "video-report case=h264-abs&ok=1&t=1.58&err=&can=probably&origin=http%3A%2F%2Fmotionpeer%3A3000", source: http://motionpeer:3000/video (29)
+
+$ curl -r 0-1023 -i -H 'Host: motionpeer-3000.localhost:18680' http://127.0.0.1:18680/media/h264.mp4
+HTTP/1.1 206 Partial Content
+Accept-Ranges: bytes
+Content-Length: 1024
+Content-Range: bytes 0-1023/47575
+Content-Type: video/mp4
+
+$ curl -x http://127.0.0.1:18680 -r 0-1023 -i http://motionpeer:3000/media/h264.mp4
+HTTP/1.1 206 Partial Content
+Accept-Ranges: bytes
+Content-Length: 1024
+Content-Range: bytes 0-1023/47575
+Content-Type: video/mp4
+
+
+# after, without the MediaPlayer proxy (intermediate commit): HLS goes through the platform MediaPlayer
+11-18 17:35:52.858 22002 22016 E MediaPlayerNative: error (1, -1004)
+11-18 17:35:53.012 22002 22002 E MediaPlayer: Error (1,-1004)
+[INFO:CONSOLE(29)] "video-report case=hls&ok=0&t=0.00&err=code4%3APIPELINE_ERROR_EXTERNAL_RENDERER_FAILED&can=maybe&origin=http%3A%2F%2Fmotionpeer%3A3000", source: http://motionpeer:3000/video (29)
+
+WebView: 113.0.5672.136 on Android 14 (API 34 google_apis x86_64)
+
+# peer log, media requests (before: the absolute h264 source never reached the peer)
+2026/11/18 17:21:25 media h264.mp4 range="bytes=0-"
+2026/11/18 17:21:26 media hls.m3u8 range="bytes=0-"
+2026/11/18 17:21:26 media hevc.mp4 range="bytes=0-"
+2026/11/18 17:21:27 media hls.m3u8 range=""
+2026/11/18 17:21:27 media hls.m3u8 range=""
+2026/11/18 17:21:27 media hls0.ts range=""
+2026/11/18 17:21:27 media hls1.ts range=""
+2026/11/18 17:21:27 media hls2.ts range=""
+2026/11/18 17:21:27 media hls3.ts range=""
+2026/11/18 17:21:43 media hls0.ts range=""
+2026/11/18 17:21:43 media hls1.ts range=""
+2026/11/18 17:21:43 media hls2.ts range=""
+2026/11/18 17:21:43 media hls3.ts range=""
+# after
+2026/11/18 18:23:11 media h264.mp4 range="bytes=0-"
+2026/11/18 18:23:12 media hls.m3u8 range="bytes=0-"
+2026/11/18 18:23:12 media hevc.mp4 range="bytes=0-"
+2026/11/18 18:23:13 media hls.m3u8 range=""
+2026/11/18 18:23:13 media hls.m3u8 range=""
+2026/11/18 18:23:13 media hls0.ts range=""
+2026/11/18 18:23:13 media hls1.ts range=""
+2026/11/18 18:23:13 media hls2.ts range=""
+2026/11/18 18:23:13 media hls3.ts range=""

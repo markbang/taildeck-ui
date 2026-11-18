@@ -10,3 +10,5 @@ WebPageController? create({
   required WebPageEvents events,
   required Color background,
 }) => null;
+
+Future<bool> useGatewayProxy(int port) async => false;

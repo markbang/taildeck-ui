@@ -20,17 +20,27 @@ class ServiceWebViewPage extends StatefulWidget {
     super.key,
     required this.service,
     required this.url,
+    required this.browserUrl,
   });
 
   final Service service;
 
-  /// `http://<node>-<port>[s].localhost:<gateway>/<path>`
+  /// The tailnet URL when the WebView goes through the gateway's proxy,
+  /// otherwise the gateway URL.
   final String url;
 
-  static Route<void> route({required Service service, required String url}) =>
-      HomeRoute<void>(
-        builder: (_) => ServiceWebViewPage(service: service, url: url),
-      );
+  /// `http://<node>-<port>[s].localhost:<gateway>/<path>`, which any browser
+  /// on the device can open.
+  final String browserUrl;
+
+  static Route<void> route({
+    required Service service,
+    required String url,
+    required String browserUrl,
+  }) => HomeRoute<void>(
+    builder: (_) =>
+        ServiceWebViewPage(service: service, url: url, browserUrl: browserUrl),
+  );
 
   @override
   State<ServiceWebViewPage> createState() => _ServiceWebViewPageState();
@@ -86,7 +96,7 @@ class _ServiceWebViewPageState extends State<ServiceWebViewPage> {
   Future<void> _openExternal() async {
     final l10n = AppLocalizations.of(context);
     final opened = await launchUrl(
-      Uri.parse(widget.url),
+      Uri.parse(widget.browserUrl),
       mode: LaunchMode.externalApplication,
     );
     if (!opened && mounted) {

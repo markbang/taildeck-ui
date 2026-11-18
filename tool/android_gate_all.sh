@@ -108,6 +108,13 @@ else
 fi
 
 if [ -n "$control_url" ]; then
+  if [ -n "$seed_state" ]; then
+    gate webvideo 600 env CONTROL_URL="$control_url" SEED_STATE="$seed_state" \
+      DERP_PORT="${DERP_PORT:-}" PEER_LOG="${PEER_LOG:-/tmp/peer2.log}" \
+      bash tool/webvideo_android.sh "$profile" "$app" webvideo
+  else
+    skip webvideo "no seeded node key"
+  fi
   gate termtap 1500 bash tool/termtap_record.sh "$profile" "$app" termtap
   gate remember 1200 env CONTROL_URL="$control_url" AUTH_KEY="$auth_key" \
     bash tool/remember_record.sh "$profile" "$app" remember
@@ -120,6 +127,7 @@ if [ -n "$control_url" ]; then
     skip netready "no demo APK or seeded node key"
   fi
 else
+  skip webvideo "no test control plane"
   skip termtap "no test control plane"
   skip remember "no test control plane"
   skip routing "no test control plane"

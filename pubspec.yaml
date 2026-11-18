@@ -18,6 +18,7 @@ dependencies:
     path: third_party/prism_ui
   url_launcher: ^6.3.3
   webview_flutter: ^4.14.1
+  webview_flutter_android: ^4.14.1
 
 dev_dependencies:
   flutter_lints: ^6.0.0
