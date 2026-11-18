@@ -8,6 +8,7 @@ import 'package:prism_ui/prism_ui.dart';
 import '../glyphs.dart';
 import '../herdr.dart';
 import '../l10n.dart';
+import '../markdown/markdown_view.dart';
 import '../motion.dart';
 import '../widgets/controls.dart';
 import '../widgets/foundation.dart';
@@ -1251,7 +1252,7 @@ class _MessageBlock extends StatelessWidget {
       default:
         return Padding(
           padding: const EdgeInsets.symmetric(vertical: 5),
-          child: SelectableText(
+          child: MarkdownView(
             message.text,
             style: AppTextStyle.body
                 .of(context)
@@ -1259,6 +1260,8 @@ class _MessageBlock extends StatelessWidget {
                   color: message.error ? scheme.error : null,
                   height: 1.45,
                 ),
+            loadImage: herdr.image,
+            onOpenImage: onOpenImage,
           ),
         );
     }
@@ -1698,9 +1701,11 @@ class _SubagentViewState extends State<_SubagentView> {
               radius: AppCorner.lg,
               child: Padding(
                 padding: const EdgeInsets.all(12),
-                child: SelectableText(
+                child: MarkdownView(
                   widget.task.output,
                   style: AppTextStyle.footnote.of(context),
+                  loadImage: widget.herdr.image,
+                  onOpenImage: _openImage,
                 ),
               ),
             ),

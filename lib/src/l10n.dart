@@ -374,6 +374,9 @@ class AppLocalizations implements UiLocalizations {
   String get agentImageOpen => _zh ? '查看图片' : 'Open image';
   String get agentImageClose => _zh ? '关闭图片' : 'Close image';
   String get agentImageLoading => _zh ? '正在读取图片' : 'Loading image';
+  String get agentPathCopied => _zh ? '路径已复制' : 'Path copied';
+  String get agentCodeCopied => _zh ? '代码已复制' : 'Code copied';
+  String get agentCopyCode => _zh ? '复制代码' : 'Copy code';
 
   /// What a harness's built-in `/<name>` does on [kind]; empty when unknown.
   String agentBuiltinHelp(String kind, String name) =>
