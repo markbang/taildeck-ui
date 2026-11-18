@@ -86,6 +86,14 @@ adb push "$out/files/config.json" "$data/files/config.json" >> "$out/push.txt" 2
   || fail "could not push the config; see push.txt"
 appuid=$(adb shell stat -c %u "$data" 2> /dev/null | tr -d '\r')
 adb shell "chown -R $appuid:$appuid $data/files" > /dev/null 2>&1 || fail "could not chown $data/files"
+# adbd labels a pushed file from packages.list, which can still name the old
+# uid right after a reinstall; the app then cannot open its own config (an MLS
+# category denial) and starts on the login page. The data dir's label is right.
+ctx=$(adb shell stat -c %C "$data" 2> /dev/null | tr -d '\r')
+[ -n "$ctx" ] || fail "could not read the SELinux label of $data"
+adb shell "chcon -R $ctx $data/files" > /dev/null 2>&1 || fail "could not relabel $data/files as $ctx"
+got_ctx=$(adb shell stat -c %C "$data/files/config.json" 2> /dev/null | tr -d '\r')
+[ "$got_ctx" = "$ctx" ] || fail "config.json is labelled ${got_ctx:-nothing}, want $ctx"
 size=$(adb shell stat -c %s "$data/files/tsnet/tailscaled.state" 2> /dev/null | tr -d '\r')
 [ "$size" = "$(stat -c%s "$seed")" ] \
   || fail "the node key landed at ${size:-nothing} bytes, want $(stat -c%s "$seed")"
