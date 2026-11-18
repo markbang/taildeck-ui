@@ -25,7 +25,8 @@ class ModelCapsule extends StatelessWidget {
     required this.settings,
     required this.onTap,
     required this.onLongPress,
-    this.busyLabel,
+    this.switchingTo,
+    this.restarting = false,
     this.failed = false,
   });
 
@@ -33,26 +34,34 @@ class ModelCapsule extends StatelessWidget {
   final VoidCallback onTap;
   final VoidCallback onLongPress;
 
-  /// Shown with a spinner while a switch or a restart runs.
-  final String? busyLabel;
+  /// The model or level a switch is on its way to; shown with a spinner.
+  final String? switchingTo;
+  final bool restarting;
   final bool failed;
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final scheme = context.colorScheme;
-    final busy = busyLabel;
+    final target = switchingTo;
+    final busy = restarting || target != null;
     final name = settings.model.isEmpty
         ? l10n.agentModel
         : modelShortName(settings.model);
     final tint = failed ? scheme.error : scheme.onSurface;
-    final label = busy ?? name;
+    final label = restarting
+        ? l10n.agentRestarting
+        : target != null
+        ? '$target…'
+        : name;
     return Semantics(
       container: true,
       button: true,
-      label:
-          busy ??
-          l10n.agentModelCapsule(name, effortLabel(l10n, settings.effort)),
+      label: restarting
+          ? l10n.agentRestarting
+          : target != null
+          ? l10n.agentModelSwitching(target)
+          : l10n.agentModelCapsule(name, effortLabel(l10n, settings.effort)),
       value: failed ? l10n.agentModelSwitchFailedShort : null,
       onLongPressHint: l10n.agentModelDetails,
       excludeSemantics: true,
@@ -63,7 +72,7 @@ class ModelCapsule extends StatelessWidget {
           shape: AppShape.full,
           child: Container(
             key: const ValueKey('model-capsule'),
-            constraints: const BoxConstraints(maxWidth: 150, minHeight: 36),
+            constraints: const BoxConstraints(maxWidth: 160, minHeight: 36),
             padding: const EdgeInsets.fromLTRB(12, 6, 8, 6),
             decoration: ShapeDecoration(
               color: failed
@@ -74,7 +83,7 @@ class ModelCapsule extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                if (busy != null) ...[
+                if (busy) ...[
                   const LoadingIndicator(size: 14),
                   const SizedBox(width: 6),
                 ] else if (failed) ...[

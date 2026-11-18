@@ -199,7 +199,7 @@ pick_sonnet() {
 switch_story() {
   open_panel || return 0
   pick_sonnet || return 0
-  sleep 0.3
+  sleep 0.6
   shot agent-model-switching
   sleep 3
 }

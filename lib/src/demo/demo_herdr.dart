@@ -52,8 +52,9 @@ class DemoHerdrBridge implements NativeBridge {
       case 'agent.prompt':
         final params = jsonDecode(paramsJSON) as Map<String, dynamic>;
         final text = params['text'] as String? ?? '';
-        await Future<void>.delayed(const Duration(milliseconds: 900));
         if (text.startsWith('/model ') || text.startsWith('/effort ')) {
+          // Long enough for the capsule's spinner to be seen and recorded.
+          await Future<void>.delayed(const Duration(milliseconds: 1500));
           if (failModel) {
             throw const BridgeException('agent.prompt: pane w1:p1 is busy');
           }

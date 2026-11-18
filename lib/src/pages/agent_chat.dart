@@ -566,11 +566,8 @@ class _AgentChatPageState extends State<AgentChatPage> {
                         const SizedBox(width: 6),
                         ModelCapsule(
                           settings: _shownSettings,
-                          busyLabel: _restarting
-                              ? l10n.agentRestarting
-                              : _switchingModel
-                              ? l10n.agentModelSwitching(_switchTarget)
-                              : null,
+                          restarting: _restarting,
+                          switchingTo: _switchingModel ? _switchTarget : null,
                           failed: _switchFailed,
                           onTap: () => unawaited(_openModelPanel()),
                           onLongPress: _openModelDetails,

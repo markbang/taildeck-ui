@@ -56,7 +56,11 @@ void main() {
   ) async {
     await _open(tester);
     await _pickSonnet(tester);
-    expect(_inCapsule(find.text('To Sonnet…')), findsOneWidget);
+    expect(_inCapsule(find.text('Sonnet…')), findsOneWidget);
+    expect(
+      tester.getSemantics(_capsule).getSemanticsData().label,
+      'Switching to Sonnet…',
+    );
     expect(_inCapsule(find.byType(LoadingIndicator)), findsOneWidget);
 
     await tester.pump(const Duration(seconds: 1));
@@ -95,7 +99,7 @@ void main() {
     await tester.tap(find.text('max'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
-    expect(_inCapsule(find.text('To max…')), findsOneWidget);
+    expect(_inCapsule(find.text('max…')), findsOneWidget);
     await tester.pump(const Duration(seconds: 1));
     await tester.pump(const Duration(milliseconds: 600));
     expect(find.text('Next turn uses max'), findsOneWidget);

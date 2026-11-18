@@ -343,7 +343,7 @@ class AppLocalizations implements UiLocalizations {
   String agentModelDefault(String effort) =>
       _zh ? '默认 $effort' : 'default $effort';
   String agentModelSwitching(String target) =>
-      _zh ? '切换到 $target…' : 'To $target…';
+      _zh ? '正在切换到 $target…' : 'Switching to $target…';
   String agentModelSwitched(String target) =>
       _zh ? '下一轮起使用 $target' : 'Next turn uses $target';
   String agentModelSwitchFailed(String error) =>
