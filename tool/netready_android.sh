@@ -205,9 +205,20 @@ check_netstate() { # <tag> <phase>
   [ "$netmap_ms" -ge 1000 ] || { note "$tag: netmap at ${netmap_ms}ms, retrying"; return 1; }
   grep -q 'taildeck netstate: waiting at' "$out/$tag-logcat.txt" \
     || { note "$tag: no netmap-less status, retrying"; return 1; }
-  # After ready the page has to be content, not the loading state.
+  # After ready the page has to be content, not the loading state. The verdict
+  # is the first dump that carries the page at all: while the emulator's
+  # renderer stalls (an 8 s SwapBuffers once), uiautomator gets a FlutterView
+  # with no semantics nodes, which is no page rather than a page without bangwu.
   sleep 0.5
-  dump_page || true
+  local t0 waited
+  t0=$(date +%s%3N)
+  until dump_page && page_has "Services"; do
+    [ $(( $(date +%s%3N) - t0 )) -gt 20000 ] \
+      && fail "$tag: no page tree in 20 s after the netmap (renderer stalled?); see ui.xml"
+    sleep 0.5
+  done
+  waited=$(( $(date +%s%3N) - t0 ))
+  [ "$waited" -lt 3000 ] || note "$tag: page tree back after ${waited}ms"
   local needle
   for needle in "${forbidden_common[@]}"; do
     page_has "$needle" && fail "$tag: the $phase page shows \"$needle\" after the netmap is in"
