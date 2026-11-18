@@ -143,5 +143,18 @@ for c in hevc; do
   line=$(reports | grep -a "case=$c " | tail -1)
   note "info $c: ${line#*video-report }"
 done
+
+# The proxy override is process-wide: closing the page must drop it.
+adb shell input keyevent KEYCODE_BACK > /dev/null 2>&1 || true
+cleared=
+for _ in $(seq 1 15); do
+  adb logcat -d 2>/dev/null | grep -aq 'taildeck: web view proxy cleared' && { cleared=1; break; }
+  sleep 1
+done
+if [ -n "$cleared" ]; then
+  note "ok proxy cleared after the page closed"
+else
+  note "FAIL the proxy override outlived the page"; status=1
+fi
 adb uninstall "$app" > /dev/null 2>&1 || true
 exit "$status"

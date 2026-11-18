@@ -12,6 +12,9 @@ bool get inAppWebViewSupported => impl.supported;
 /// a page can load from its tailnet URL. False when the WebView can't do it.
 Future<bool> useGatewayProxy(int port) => impl.useGatewayProxy(port);
 
+/// Drops the override [useGatewayProxy] set, once the service page closes.
+Future<void> clearGatewayProxy() => impl.clearGatewayProxy();
+
 /// Builds the platform WebView, or null where [inAppWebViewSupported] is false.
 WebPageController? createWebPageController({
   required String url,

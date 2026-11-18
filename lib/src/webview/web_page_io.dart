@@ -25,6 +25,18 @@ Future<bool> useGatewayProxy(int port) async {
   }
 }
 
+Future<void> clearGatewayProxy() async {
+  if (!Platform.isAndroid) return;
+  try {
+    await _channel.invokeMethod<bool>('clear');
+    debugPrint('taildeck: web view proxy cleared');
+  } on PlatformException catch (error) {
+    debugPrint('taildeck: web view proxy: ${error.message}');
+  } on MissingPluginException {
+    return;
+  }
+}
+
 WebPageController? create({
   required String url,
   required WebPageEvents events,

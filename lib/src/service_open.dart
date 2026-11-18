@@ -19,14 +19,18 @@ Future<ServiceOpen> openService(BuildContext context, Service service) async {
     // self-signed certificates, the WebView would refuse them.
     final direct =
         !service.secure && await useGatewayProxy(backend.gatewayPort);
-    if (!context.mounted) return ServiceOpen.inApp;
-    await Navigator.of(context).push(
-      ServiceWebViewPage.route(
-        service: service,
-        url: direct ? service.url : url,
-        browserUrl: url,
-      ),
-    );
+    try {
+      if (!context.mounted) return ServiceOpen.inApp;
+      await Navigator.of(context).push(
+        ServiceWebViewPage.route(
+          service: service,
+          url: direct ? service.url : url,
+          browserUrl: url,
+        ),
+      );
+    } finally {
+      if (direct) await clearGatewayProxy();
+    }
     return ServiceOpen.inApp;
   }
   if (url == null) return ServiceOpen.needsGateway;
