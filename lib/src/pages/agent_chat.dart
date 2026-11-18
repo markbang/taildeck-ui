@@ -16,6 +16,7 @@ import '../widgets/header.dart';
 import '../widgets/snackbar.dart';
 import '../widgets/loading.dart';
 import 'agent_chat_layers.dart';
+import 'agent_command_output.dart';
 import 'agent_model.dart';
 import 'agent_steps.dart';
 
@@ -1225,7 +1226,7 @@ class _MessageBlock extends StatelessWidget {
           style: caption.copyWith(fontStyle: FontStyle.italic),
         );
       case 'output':
-        return _CommandOutput(text: message.text, style: mono);
+        return CommandOutput(text: message.text, style: mono);
       case 'system' || 'command' || 'recap':
         return Padding(
           padding: const EdgeInsets.symmetric(vertical: 2),
@@ -1250,54 +1251,6 @@ class _MessageBlock extends StatelessWidget {
           ),
         );
     }
-  }
-}
-
-/// A tool's output, laid out as Kotlin's `CommandOutput`: six lines until it
-/// is tapped, then all of it, resizing with `animateContentSize(Motion.slow())`.
-class _CommandOutput extends StatefulWidget {
-  const _CommandOutput({required this.text, required this.style});
-
-  final String text;
-  final TextStyle style;
-
-  @override
-  State<_CommandOutput> createState() => _CommandOutputState();
-}
-
-class _CommandOutputState extends State<_CommandOutput> {
-  bool _open = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = context.colorScheme;
-    final lines = widget.text.split('\n');
-    final collapsed = lines.length > 6;
-    final shown = _open || !collapsed
-        ? widget.text
-        : '${lines.take(6).join('\n')}\n…';
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 3),
-      child: AnimatedContentSize(
-        child: TapFeedback(
-          onTap: collapsed ? () => setState(() => _open = !_open) : null,
-          shape: AppShape.all(AppCorner.sm),
-          child: DecoratedBox(
-            decoration: ShapeDecoration(
-              color: scheme.surfaceContainer,
-              shape: AppShape.all(AppCorner.sm),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(10),
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: SelectableText(shown, style: widget.style),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
   }
 }
 
