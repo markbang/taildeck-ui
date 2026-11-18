@@ -50,6 +50,7 @@ shot() { adb exec-out screencap -p > "$out/$1.png" || true; }
 wait_first_frame() {
   for _ in $(seq 1 60); do
     if adb logcat -d 2>/dev/null | grep -q "Displayed $app/"; then
+      shown_at=$SECONDS
       sleep 4
       return 0
     fi
@@ -73,12 +74,20 @@ start() { # $1: preview query
   # route is its own.
   wait_home "$app" "$out" "$here" '' 30 'shell|terminal' \
     || fail "the shell did not settle for $1; see launch.txt"
+  if ! gate_survived_focus "$app" "$shown_at" "$out/summary.txt"; then
+    launch_anr=1
+    return 1
+  fi
 }
 
 launch() { # $1: preview query; one retry, an emulator can stall a cold start
+  launch_anr=0
   if ! start "$1"; then
     echo "retrying $1" | tee -a "$out/summary.txt"
-    start "$1" || fail "am start or first frame failed for $1, see launch.txt"
+    launch_anr=0
+    start "$1" && return 0
+    [ "$launch_anr" = 0 ] || fail "$1: the app stopped answering input on two cold starts in a row"
+    fail "am start or first frame failed for $1, see launch.txt"
   fi
 }
 

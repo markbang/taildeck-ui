@@ -221,7 +221,7 @@ settle() { # <index> <tag> <target> <base-count>
   fi
   [ -z "$line" ] || note "switch $1 arrival: $line"
   for attempt in 1 2 3 4 5 6 7 8; do
-    ui toptexts "$ymax" > "$out/headers-$tag.txt" 2>> "$out/uiautomator.txt" || true
+    ui heads "$ymax" > "$out/headers-$tag.txt" 2>> "$out/uiautomator.txt" || true
     settled=$(headers "$out/headers-$tag.txt")
     count=$(header_count "$settled")
     [ "$count" -lt 2 ] || break
@@ -246,8 +246,13 @@ launch() {
     adb shell "am start -W -a android.intent.action.VIEW -d 'taildeck://preview/?preview=1&tab=0&tabprobe=1&splash=0&slow=$slow' -n $activity" \
       > "$out/launch.txt" 2>&1 || true
     if grep -q "Activity: $app/" "$out/launch.txt"; then
+      shown=$SECONDS
       # The shell must be in front with its launch screen gone before a tap.
-      wait_home "$app" "$out" "$here" Services 45 && return 0
+      if wait_home "$app" "$out" "$here" Services 45; then
+        gate_survived_focus "$app" "$shown" "$summary" && return 0
+        note "launch attempt $attempt: the app was killed after an ANR at cold start"
+        continue
+      fi
     fi
     note "launch attempt $attempt: no tab bar yet"
     sleep 5

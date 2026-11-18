@@ -23,6 +23,24 @@ gate_in_front() { # <app>
   return 1
 }
 
+# The emulator's software compositor can stall a cold start's first frames for
+# 6 s, past the 5 s input timeout on the window's focus. That ANR is raised 5-6
+# s after the first frame, and with error dialogs hidden the system kills the
+# app some seconds later, in the middle of whatever the gate does next. A
+# launch is only used once that window has passed without an ANR; after one,
+# this waits for the kill and fails so the caller starts the app again.
+gate_survived_focus() { # <app> <SECONDS when the first frame was shown> <summary>
+  local app=$1 shown=$2 summary=$3
+  while [ $((SECONDS - shown)) -lt 9 ]; do sleep 1; done
+  adb logcat -d 2>/dev/null | grep -q "ANR in .*$app" || return 0
+  adb logcat -d 2>/dev/null | grep -m1 "ANR in .*$app" | cut -c1-200 >> "$summary"
+  for _ in $(seq 1 20); do
+    adb shell pidof "$app" > /dev/null 2>&1 || break
+    sleep 1
+  done
+  return 1
+}
+
 # One dump, parsed with tool/ui.py: `gate_ui <out> <tools> has Services`.
 # A dump taken while Flutter is still publishing its tree can come back
 # without labels, so a miss is retried before it is believed.
