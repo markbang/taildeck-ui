@@ -64,6 +64,23 @@ if [ -z "${ANDROID_NDK_HOME:-}" ]; then
   [ -n "$ndk" ] && export ANDROID_NDK_HOME="$ndk"
 fi
 
+# zig build fetches the lazy dependencies (some on codeberg.org) on first use:
+# a network error is retried, any other failure stops at once.
+zig_build() {
+  local target=$1 try log
+  log="$(mktemp)"
+  for try in 1 2 3; do
+    if (cd "$SRC" && zig build -Demit-lib-vt=true -Dtarget="$target" -Doptimize=ReleaseFast --prefix "$SRC/zig-out-$target") 2>&1 | tee "$log"; then
+      rm -f "$log"; return 0
+    fi
+    if [ "$try" -eq 3 ] || ! grep -qE 'NoAddressReturned|TemporaryNameServerFailure|NameServerFailure|UnknownHostName|ConnectionRefused|ConnectionTimedOut|ConnectionResetByPeer|NetworkUnreachable|unable to discover remote git server|unable to connect|TlsInitializationFailed|HttpConnectionClosing' "$log"; then
+      rm -f "$log"; return 1
+    fi
+    echo "ghostty: $target dependency fetch hit a network error (try $try/3), retrying in 20s"
+    sleep 20
+  done
+}
+
 for abi in "${TARGET_ABIS[@]}"; do
   target="$(abi_target "$abi")" || exit 1
   case "$target" in
@@ -75,7 +92,7 @@ for abi in "${TARGET_ABIS[@]}"; do
       ;;
   esac
   echo "ghostty: $abi ($target)"
-  (cd "$SRC" && zig build -Demit-lib-vt=true -Dtarget="$target" -Doptimize=ReleaseFast --prefix "$SRC/zig-out-$target")
+  zig_build "$target"
   mkdir -p "$OUT/lib/$abi"
   # Zig names the archive `.lib` for windows targets and `.a` everywhere else.
   if [ -f "$SRC/zig-out-$target/lib/libghostty-vt.a" ]; then

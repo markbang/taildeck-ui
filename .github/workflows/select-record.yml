@@ -8,16 +8,6 @@ name: select-record
 
 on:
   workflow_dispatch:
-  pull_request:
-    paths:
-      - lib/src/widgets/select_row.dart
-      - lib/src/widgets/select_value_button.dart
-      - third_party/prism_ui/lib/popup.dart
-      - tool/select_record.sh
-      - tool/select_frames.py
-      - tool/select_web.py
-      - tool/select_web_check.sh
-      - .github/workflows/select-record.yml
 
 permissions:
   contents: read

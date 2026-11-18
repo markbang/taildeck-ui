@@ -14,13 +14,6 @@ on:
         description: Kotlin reference APK
         type: string
         default: https://github.com/markbang/taildeck/releases/download/v0.1.0/taildeck-0.1.0-x86_64.apk
-  pull_request:
-    paths:
-      - 'android/app/src/main/res/**'
-      - 'tool/gen_icons.py'
-      - 'tool/icon_shots.sh'
-      - 'tool/compare_apk_icons.py'
-      - '.github/workflows/icon-compare.yml'
 
 permissions:
   contents: read

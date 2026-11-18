@@ -24,6 +24,12 @@ seed_state=${SEED_STATE:-}
 # GATES: "all" (the default) or a space-separated list of gate labels, so one
 # gate can be re-run on its own while a breakage is being chased.
 gates=${GATES:-all}
+# RECORD=true (android-smoke's dispatch-only `record` input): every gate still
+# runs and reports, but failures are warnings and the exit code is 0, for
+# "before" and evidence runs that are expected to show a bug.
+record=${RECORD:-false}
+level=error
+[ "$record" = true ] && level=warning
 mkdir -p "$out"
 results="$out/gate-results.txt"
 : > "$results"
@@ -74,10 +80,10 @@ gate() { # <label> <timeout-seconds> <command...>
   failed=$((failed + 1))
   if [ "$status" -eq 124 ] || [ "$status" -eq 137 ]; then
     note "FAIL $label: timed out after ${secs}s (limit ${limit}s)"
-    echo "::error title=android gate $label::timed out after ${secs}s; see the $label summary in the artifact"
+    echo "::$level title=android gate $label::timed out after ${secs}s; see the $label summary in the artifact"
   else
     note "FAIL $label: exit $status after ${secs}s"
-    echo "::error title=android gate $label::exit $status after ${secs}s; see the $label summary in the artifact"
+    echo "::$level title=android gate $label::exit $status after ${secs}s; see the $label summary in the artifact"
   fi
   return "$status"
 }
@@ -121,5 +127,11 @@ else
 fi
 
 note "ran $total gates: $((total - failed)) passed, $failed failed, $skipped skipped"
+if [ "$record" = true ]; then
+  note "record mode: $failed gate(s) failed, see summary"
+  echo "::notice title=android-smoke record mode::$failed gate(s) failed, see summary"
+  cat "$results"
+  exit 0
+fi
 cat "$results"
 [ "$failed" -eq 0 ]

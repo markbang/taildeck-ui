@@ -7,6 +7,11 @@
 # The release workflow calls this with the shipped APK (ship mode: the cold
 # start, splash, Agents and stills gates on that APK). A pull request runs the
 # full set on a profile and a demo debug build made from the pull request.
+#
+# A dispatch with record=true ("before" and evidence runs) runs every selected
+# gate and writes the same results, summary and artifacts, but a failing gate
+# is a warning and the job stays green. Pull requests and the release call
+# cannot set it, so their gates always fail for real.
 name: android-smoke
 
 on:
@@ -46,6 +51,10 @@ on:
         default: false
   workflow_dispatch:
     inputs:
+      record:
+        description: Record mode for "before" and evidence runs (failed gates are reported, the job stays green)
+        type: boolean
+        default: false
       gates:
         description: Space-separated gate labels to run (cold-start splash agents stills tabs back ping node termtap remember routing netready)
         type: string
@@ -91,6 +100,7 @@ env:
   KOTLIN_APK_URL: https://github.com/markbang/taildeck/releases/download/v0.1.0/taildeck-0.1.0-x86_64.apk
   AVD_NAME: taildeck-api34
   GATES: ${{ inputs.gates || 'all' }}
+  RECORD: ${{ github.event_name == 'workflow_dispatch' && github.workflow == 'android-smoke' && inputs.record == true }}
   # The emulator runner creates the AVD under ANDROID_AVD_HOME when it is set;
   # pinning it is what lets the cache find the AVD and its boot snapshot again.
   ANDROID_AVD_HOME: /home/runner/.android/avd

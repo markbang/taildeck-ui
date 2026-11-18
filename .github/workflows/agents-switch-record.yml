@@ -7,14 +7,6 @@
 name: agents-switch-record
 
 on:
-  pull_request:
-    paths:
-      - lib/src/pages/agents.dart
-      - lib/src/agents_phase.dart
-      - lib/src/backend.dart
-      - lib/src/herdr.dart
-      - tool/agents_switch_record.sh
-      - .github/workflows/agents-switch-record.yml
   workflow_dispatch:
 
 permissions:

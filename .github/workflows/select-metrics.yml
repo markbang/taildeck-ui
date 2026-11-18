@@ -6,16 +6,6 @@ name: select-metrics
 
 on:
   workflow_dispatch:
-  pull_request:
-    types: [opened, synchronize, reopened]
-    paths:
-      - lib/src/widgets/select_row.dart
-      - lib/src/widgets/select_value_button.dart
-      - third_party/prism_ui/lib/popup.dart
-      - test/golden/select_metrics_test.dart
-      - tool/menu_metrics.py
-      - tool/select_metrics_record.sh
-      - .github/workflows/select-metrics.yml
 
 permissions:
   contents: read
