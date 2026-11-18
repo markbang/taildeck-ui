@@ -460,8 +460,37 @@ class _AgentChatPageState extends State<AgentChatPage> {
         if (mounted) _logLayers();
       });
     }
+    // The system bars take the page's colour: Flutter's default status bar
+    // lays a 25% black band over the header, and its black navigation bar
+    // sits under the composer.
+    final page = SurfaceLevel.page.colorOf(scheme);
+    final dark = scheme.brightness == Brightness.dark;
+    final icons = dark ? Brightness.light : Brightness.dark;
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle(
+        statusBarColor: const Color(0x00000000),
+        statusBarIconBrightness: icons,
+        statusBarBrightness: dark ? Brightness.dark : Brightness.light,
+        systemNavigationBarColor: page,
+        systemNavigationBarIconBrightness: icons,
+        systemStatusBarContrastEnforced: false,
+        systemNavigationBarContrastEnforced: false,
+      ),
+      child: _page(context, l10n, agent, status, tint, page, keyboard),
+    );
+  }
+
+  Widget _page(
+    BuildContext context,
+    AppLocalizations l10n,
+    HerdrAgent agent,
+    String status,
+    Color tint,
+    Color page,
+    double keyboard,
+  ) {
     return Surface(
-      color: SurfaceLevel.page.colorOf(scheme),
+      color: page,
       child: SafeArea(
         top: false,
         bottom: false,

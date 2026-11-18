@@ -1,8 +1,10 @@
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:taildeck_ui/src/demo/demo_herdr.dart';
 import 'package:taildeck_ui/src/herdr.dart';
 import 'package:taildeck_ui/src/pages/agent_chat.dart';
+import 'package:prism_ui/prism_ui.dart';
 import 'package:taildeck_ui/src/widgets/header.dart';
 
 import 'golden/golden_harness.dart';
@@ -196,6 +198,22 @@ void main() {
         .jumpTo(0);
     await tester.pump();
     await pull(const Offset(0, 400));
+    await _close(tester);
+  });
+
+  testWidgets('the system bars take the page colour', (tester) async {
+    await _open(tester);
+    final style = tester
+        .widget<AnnotatedRegion<SystemUiOverlayStyle>>(
+          find.byType(AnnotatedRegion<SystemUiOverlayStyle>).last,
+        )
+        .value;
+    final page = SurfaceLevel.page.colorOf(
+      tester.element(find.byType(AgentChatPage)).colorScheme,
+    );
+    expect(style.statusBarColor, const Color(0x00000000));
+    expect(style.systemNavigationBarColor, page);
+    expect(style.statusBarIconBrightness, Brightness.light);
     await _close(tester);
   });
 }
