@@ -216,9 +216,7 @@ void main() {
       expect(storage.config.connections['nBangwu']?.auth, SshAuth.tailscale);
 
       // A fresh launch on the same config: the tap goes straight in.
-      final relaunched = await tester.runAsync(
-        () => _backend(bridge, storage),
-      );
+      final relaunched = await tester.runAsync(() => _backend(bridge, storage));
       await tester.pumpWidget(const SizedBox());
       await _pumpShell(tester, relaunched!);
       expect(find.text('SSH · bangwu · Tailscale SSH'), findsOneWidget);
@@ -254,9 +252,7 @@ void main() {
       expect(storage.config.connections['nBangwu']?.auth, SshAuth.key);
       expect(bridge.dials, hasLength(1));
 
-      final relaunched = await tester.runAsync(
-        () => _backend(bridge, storage),
-      );
+      final relaunched = await tester.runAsync(() => _backend(bridge, storage));
       await tester.pumpWidget(const SizedBox());
       await _pumpShell(tester, relaunched!);
       expect(find.text('SSH · bangwu · Key'), findsOneWidget);
@@ -292,7 +288,9 @@ void main() {
       expect(bridge.dials, hasLength(1));
       expect(find.text('Connect'), findsOneWidget);
       expect(
-        find.text('The SSH login was refused; check the user, key or password.'),
+        find.text(
+          'The SSH login was refused; check the user, key or password.',
+        ),
         findsOneWidget,
       );
       expect(find.text('deploy'), findsWidgets);

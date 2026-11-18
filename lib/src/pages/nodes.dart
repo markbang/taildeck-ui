@@ -362,7 +362,6 @@ class _PeerRow extends StatelessWidget {
                 NodeBadge(node),
                 const SizedBox(width: 12),
                 Expanded(
-                  flex: 3,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -375,35 +374,43 @@ class _PeerRow extends StatelessWidget {
                     ],
                   ),
                 ),
-                if (method != null) ...[
-                  const SizedBox(width: 8),
-                  Flexible(
-                    flex: 2,
-                    child: Text(
-                      method,
-                      key: const ValueKey('saved-connection'),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      textAlign: TextAlign.end,
-                      style: context.listCaptionStyle,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                ],
-                if (node.online)
-                  PathBadge(node: node)
-                else
-                  Container(
-                    width: 10,
-                    height: 10,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: scheme.onSurfaceVariant.opacity50,
-                        width: 1.4,
+                const SizedBox(width: 8),
+                Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    if (node.online)
+                      PathBadge(node: node)
+                    else
+                      Container(
+                        width: 10,
+                        height: 10,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: scheme.onSurfaceVariant.opacity50,
+                            width: 1.4,
+                          ),
+                        ),
                       ),
-                    ),
-                  ),
+                    if (method != null) ...[
+                      const SizedBox(height: 4),
+                      ConstrainedBox(
+                        constraints: BoxConstraints(
+                          maxWidth: MediaQuery.sizeOf(context).width * 0.5,
+                        ),
+                        child: Text(
+                          method,
+                          key: const ValueKey('saved-connection'),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.end,
+                          style: context.listCaptionStyle,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
               ],
             ),
           ),
