@@ -91,11 +91,20 @@ run_build() { # <tag> <apk>
   for theme in light dark; do
     if launch "$theme" service Scheme; then
       shot "$tag-$theme-service"
-      tap Name
+      # A grouped text row's label is the field's own semantics label, not a
+      # text node, so the Name field is found as the first EditText.
+      if point=$(ui edit 0); then
+        # shellcheck disable=SC2086
+        adb shell input tap $point > /dev/null 2>&1 || true
+        sleep 1.5
+      else
+        note "$tag: no text field to focus"
+      fi
       adb shell input text 'A%svery%slong%sservice%sname%sthat%sdoes%snot%sfit' > /dev/null 2>&1 || true
       sleep 1
-      shot "$tag-$theme-service-focused"
+      shot "$tag-$theme-service-focused-keyboard"
       hide_keyboard
+      shot "$tag-$theme-service-focused"
       if point=$(center Scheme); then
         read -r x y <<< "$point"
         adb shell input motionevent DOWN "$x" "$y" > /dev/null 2>&1 || true
@@ -114,7 +123,7 @@ run_build() { # <tag> <apk>
       tap Password
       shot "$tag-$theme-ssh-password"
     fi
-    if launch "$theme" key Passphrase; then
+    if launch "$theme" key 'Import key'; then
       shot "$tag-$theme-key"
     fi
   done
@@ -124,7 +133,7 @@ run_build after "$after_apk"
 run_build before "$before_apk"
 
 for theme in light dark; do
-  for still in service service-focused service-held service-switched ssh-password key; do
+  for still in service service-focused-keyboard service-focused service-held service-switched ssh-password key; do
     if [ -s "$out/before-$theme-$still.png" ] && [ -s "$out/after-$theme-$still.png" ]; then
       montage "$out/before-$theme-$still.png" "$out/after-$theme-$still.png" \
         -tile 2x -geometry 420x+4+4 -background '#222' \
