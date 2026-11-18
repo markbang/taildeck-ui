@@ -273,15 +273,17 @@ jobs:
         if: always()
         run: rm -f android/app/release.jks android/key.properties
 
+      # A build=true run smokes the release APK it just built: the dispatch
+      # default apk-url must not overwrite build/smoke.apk with an old release.
       - name: Download the APK
-        if: ${{ steps.mode.outputs.full != 'true' && (inputs.apk-artifact || '') == '' && (inputs.apk-url || '') != '' }}
+        if: ${{ steps.mode.outputs.full != 'true' && !inputs.build && (inputs.apk-artifact || '') == '' && (inputs.apk-url || '') != '' }}
         run: |
           mkdir -p build
           curl -fsSL -o build/smoke.apk "${{ inputs.apk-url }}"
           "$(ls -d "${ANDROID_SDK_ROOT:-$ANDROID_HOME}"/build-tools/*/ | sort -V | tail -1)/aapt2" \
             dump badging build/smoke.apk | head -1
       - name: Download the APK artifact
-        if: ${{ steps.mode.outputs.full != 'true' && inputs.apk-artifact }}
+        if: ${{ steps.mode.outputs.full != 'true' && !inputs.build && inputs.apk-artifact }}
         uses: actions/download-artifact@v4
         with:
           name: ${{ inputs.apk-artifact }}
@@ -331,7 +333,11 @@ jobs:
           # release build this check is about.
           case "$APK" in
             */demo.apk) echo "demo build under test; not a release APK" ;;
-            *) tool/check_demo_free.sh "$APK" ;;
+            *)
+              "$(ls -d "${ANDROID_SDK_ROOT:-$ANDROID_HOME}"/build-tools/*/ | sort -V | tail -1)/aapt2" \
+                dump badging "$APK" | head -1
+              tool/check_demo_free.sh "$APK"
+              ;;
           esac
 
       - name: Start the test control plane and the peers
