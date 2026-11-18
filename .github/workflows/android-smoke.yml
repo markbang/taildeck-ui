@@ -199,7 +199,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: native/term/build/ghostty
-          key: ghostty-vt-${{ steps.ghostty.outputs.rev }}-zig0.17.1-${{ runner.os }}-${{ runner.arch }}
+          key: ghostty-vt-${{ steps.ghostty.outputs.rev }}-zig0.17.1-${{ runner.os }}-${{ runner.arch }}-android-x86_64
+          restore-keys: ghostty-vt-${{ steps.ghostty.outputs.rev }}-zig0.17.1-${{ runner.os }}-${{ runner.arch }}
       - name: Build the native libs (x86_64)
         if: steps.mode.outputs.source == 'true'
         run: |
