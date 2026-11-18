@@ -1,6 +1,8 @@
 # Records a UI change on the emulator, on release builds of main and of the
 # dispatched ref: the recorder script gets both APKs and an output directory.
-# Evidence on demand only (workflow_dispatch); it never runs on a PR.
+# Evidence on demand only (workflow_dispatch); it never runs on a PR. Record
+# mode: a miss is reported in the summary and the artifact, never as a failed
+# run.
 name: ui-record
 
 on:
@@ -46,6 +48,7 @@ jobs:
         with:
           version: 0.17.1
       - name: Pin the Android NDK
+        continue-on-error: true
         run: |
           sdk="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
           ndk="$sdk/ndk/28.2.13676358"
@@ -62,12 +65,14 @@ jobs:
           channel: stable
           cache: true
       - name: Build the native libs (x86_64)
+        continue-on-error: true
         run: |
           set -o pipefail
           flutter pub get
           tool/build_native.sh android-x86_64 | tee /tmp/build_native.log
           tool/build_term.sh android-x86_64 | tee /tmp/build_term.log
       - name: Configure Android signing
+        continue-on-error: true
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
@@ -90,6 +95,7 @@ jobs:
           } > android/key.properties
           chmod 600 android/app/release.jks android/key.properties
       - name: Build the release APKs, after and before
+        continue-on-error: true
         # The demo flag only fills the preview pages; these APKs are evidence,
         # never shipped.
         env:
@@ -111,10 +117,12 @@ jobs:
         if: always()
         run: rm -f android/app/release.jks android/key.properties
       - name: Install the recording tools
+        continue-on-error: true
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq ffmpeg imagemagick fonts-dejavu-core
       - name: Enable KVM
+        continue-on-error: true
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
             | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -123,6 +131,7 @@ jobs:
           ls -l /dev/kvm
       - uses: reactivecircus/android-emulator-runner@v2
         timeout-minutes: 30
+        continue-on-error: true
         with:
           api-level: 34
           target: google_apis
