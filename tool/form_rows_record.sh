@@ -28,6 +28,7 @@ adb shell svc power stayon true > /dev/null 2>&1 || true
 adb shell wm dismiss-keyguard > /dev/null 2>&1 || true
 sleep 5
 
+tag=
 ui() {
   local attempt
   for attempt in 1 2 3; do
@@ -44,10 +45,22 @@ ui() {
 
 shot() { adb exec-out screencap -p > "$out/$1.png" 2> /dev/null || rm -f "$out/$1.png"; }
 
+# Keeps the launch's logcat and crash buffer, and notes any crash, ANR or
+# Flutter error in the summary, so a missing screen says why.
+keep_log() { # <name>
+  adb logcat -d > "$out/logcat-$1.txt" 2>&1 || true
+  adb logcat -b crash -d > "$out/crash-$1.txt" 2>&1 || true
+  grep -E "FATAL EXCEPTION|ANR in $app|user request after error|E/flutter|E flutter|Tombstone written|Fatal signal" \
+    "$out/logcat-$1.txt" "$out/crash-$1.txt" 2> /dev/null | cut -c1-240 | head -20 \
+    | sed "s/^/$1: /" | tee -a "$summary" || true
+}
+
 launch() { # <theme> <sheet> <marker>
   local attempt
   adb shell am force-stop "$app" > /dev/null 2>&1 || true
   sleep 2
+  adb logcat -c > /dev/null 2>&1 || true
+  adb logcat -b crash -c > /dev/null 2>&1 || true
   adb shell "am start -W -a android.intent.action.VIEW -d 'taildeck://preview/?preview=1&tab=3&lang=en&splash=0&theme=$1&sheet=$2' -n $component" \
     > /dev/null 2>&1 || true
   sleep 6
@@ -59,8 +72,9 @@ launch() { # <theme> <sheet> <marker>
     fi
     sleep 2
   done
-  shot "launch-fail-$1-$2"
-  note "no '$3' after 90 s ($1 $2)"
+  shot "launch-fail-$tag-$1-$2"
+  note "no '$3' after 90 s ($tag $1 $2)"
+  keep_log "$tag-$1-$2"
   return 1
 }
 
@@ -85,7 +99,8 @@ hide_keyboard() {
 }
 
 run_build() { # <tag> <apk>
-  local tag=$1 apk=$2 theme point x y
+  tag=$1
+  local apk=$2 theme point x y
   adb uninstall "$app" > /dev/null 2>&1 || true
   adb install -r "$apk" > /dev/null || { note "$tag: install failed"; return 0; }
   for theme in light dark; do
@@ -125,6 +140,10 @@ run_build() { # <tag> <apk>
     fi
     if launch "$theme" key 'Import key'; then
       shot "$tag-$theme-key"
+      # The sheet stays up a while, past the window a cold-start ANR kills in.
+      sleep 15
+      shot "$tag-$theme-key-later"
+      keep_log "$tag-$theme-key"
     fi
   done
 }
