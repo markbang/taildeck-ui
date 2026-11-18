@@ -15,6 +15,7 @@ import '../widgets/header.dart';
 import '../widgets/snackbar.dart';
 import '../widgets/loading.dart';
 import '../widgets/bottom_sheet.dart';
+import 'agent_chat_layers.dart';
 
 /// One agent pane: its transcript, a prompt box, restart and model switching.
 class AgentChatPage extends StatefulWidget {
@@ -38,7 +39,7 @@ class AgentChatPage extends StatefulWidget {
 class _AgentChatPageState extends State<AgentChatPage> {
   static const _maxSuggestions = 6;
 
-  final _scroll = ScrollController();
+  final _scroll = ChatScrollController();
   final _input = TextEditingController();
   final _inputFocus = FocusNode();
   HerdrTranscript? _transcript;
@@ -55,6 +56,8 @@ class _AgentChatPageState extends State<AgentChatPage> {
   bool _commandsLoaded = false;
   bool _popup = false;
   bool _nearBottom = true;
+  double _dock = 0;
+  double _keyboard = 0;
 
   String get _pane => widget.agent.paneId;
 
@@ -139,6 +142,7 @@ class _AgentChatPageState extends State<AgentChatPage> {
       if (more) await widget.herdr.transcriptMore(_pane);
       final transcript = await widget.herdr.transcript(_pane);
       if (!mounted) return;
+      if (!more && _nearBottom) _scroll.follow();
       setState(() {
         _transcript = transcript;
         _error = '';
@@ -151,9 +155,8 @@ class _AgentChatPageState extends State<AgentChatPage> {
       setState(() {
         _error = failure == HerdrFailure.other
             ? message
-            : AppLocalizations.of(
-                context,
-              ).herdrFailure(widget.herdr.node, failure);
+            : AppLocalizations.of(context)
+                  .herdrFailure(widget.herdr.node, failure);
         _loading = false;
       });
     }
@@ -446,56 +449,93 @@ class _AgentChatPageState extends State<AgentChatPage> {
       HerdrStatus.idle => (l10n.idle, scheme.onSurfaceVariant),
       HerdrStatus.unknown => ('—', scheme.onSurfaceVariant),
     };
+    // Three layers float over the transcript on one frost: the header, and
+    // at the foot the task strip with the composer. The list runs the page's
+    // full height under them, padded by their measured heights; the keyboard
+    // lifts the foot as one piece.
+    final keyboard = MediaQuery.viewInsetsOf(context).bottom;
+    if (keyboard != _keyboard) {
+      _keyboard = keyboard;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _logLayers();
+      });
+    }
+    // The system bars take the page's colour: Flutter's default status bar
+    // lays a 25% black band over the header, and its black navigation bar
+    // sits under the composer.
+    final page = SurfaceLevel.page.colorOf(scheme);
+    final dark = scheme.brightness == Brightness.dark;
+    final icons = dark ? Brightness.light : Brightness.dark;
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle(
+        statusBarColor: const Color(0x00000000),
+        statusBarIconBrightness: icons,
+        statusBarBrightness: dark ? Brightness.dark : Brightness.light,
+        systemNavigationBarColor: page,
+        systemNavigationBarIconBrightness: icons,
+        systemStatusBarContrastEnforced: false,
+        systemNavigationBarContrastEnforced: false,
+      ),
+      child: _page(context, l10n, agent, status, tint, page, keyboard),
+    );
+  }
+
+  Widget _page(
+    BuildContext context,
+    AppLocalizations l10n,
+    HerdrAgent agent,
+    String status,
+    Color tint,
+    Color page,
+    double keyboard,
+  ) {
     return Surface(
-      color: SurfaceLevel.page.colorOf(scheme),
+      color: page,
       child: SafeArea(
         top: false,
+        bottom: false,
         child: Padding(
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.viewInsetsOf(context).bottom,
-          ),
+          padding: EdgeInsets.only(bottom: keyboard),
           child: Stack(
             children: [
-              Column(
-                children: [
-                  Expanded(
-                    child: Stack(
-                      children: [
-                        Positioned.fill(
-                          child: Align(
-                            alignment: Alignment.topCenter,
-                            child: ConstrainedBox(
-                              constraints: const BoxConstraints(maxWidth: 760),
-                              child: _body(context, l10n),
-                            ),
-                          ),
-                        ),
-                        Positioned(
-                          left: 0,
-                          right: 0,
-                          bottom: 12,
-                          child: Center(
-                            child: MotionVisibility(
-                              visible: !_nearBottom,
-                              scaleFrom: 0.8,
-                              child: _ScrollToBottom(onPressed: _toBottom),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
+              Positioned.fill(
+                child: Align(
+                  alignment: Alignment.topCenter,
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 760),
+                    child: _body(context, l10n),
                   ),
-                  _composer(context, l10n),
-                ],
+                ),
+              ),
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: _dock + 12,
+                child: Center(
+                  child: MotionVisibility(
+                    visible: !_nearBottom,
+                    scaleFrom: 0.8,
+                    child: _ScrollToBottom(onPressed: _toBottom),
+                  ),
+                ),
+              ),
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: SizeReport(
+                  onSize: _onDock,
+                  child: PageFooter(child: _composer(context, l10n)),
+                ),
               ),
               PositionedDirectional(
                 start: 0,
                 end: 0,
                 top: 0,
                 child: PageHeader(
+                  frosted: true,
                   child: PageBar(
                     title: agent.label,
-                    subtitle: _subtitle(agent),
                     onBack: () => Navigator.of(context).maybePop(),
                     maxWidth: 760,
                     trailing: Row(
@@ -551,22 +591,26 @@ class _AgentChatPageState extends State<AgentChatPage> {
     );
   }
 
-  /// The model and the context it has used, under the agent's name.
-  String _subtitle(HerdrAgent agent) {
-    final model = _transcript?.model ?? '';
-    return [
-      agent.kind,
-      if (model.isNotEmpty) model,
-      if (_transcript?.contextWindow != null && _transcript!.contextWindow > 0)
-        '${_contextLabel(_transcript!.contextUsed)} / '
-            '${_contextLabel(_transcript!.contextWindow)}',
-    ].join(' · ');
+  /// The foot layer's height pads the list; a reader at the end stays there
+  /// as the strip or the queue grows.
+  void _onDock(Size size) {
+    if (!mounted || size.height == _dock) return;
+    if (_nearBottom) _scroll.follow();
+    setState(() => _dock = size.height);
+    _logLayers();
   }
 
-  static String _contextLabel(int tokens) {
-    if (tokens >= 1000000) return '${(tokens / 1000000).toStringAsFixed(1)}M';
-    if (tokens >= 1000) return '${(tokens / 1000).round()}k';
-    return '$tokens';
+  void _logLayers() {
+    final view = MediaQuery.sizeOf(context);
+    final top = context.contentTopPadding;
+    final keyboard = MediaQuery.viewInsetsOf(context).bottom;
+    final footTop = view.height - keyboard - _dock;
+    debugPrint(
+      'taildeck chat layers: header=0-${(top - 12).round()} '
+      'foot=${footTop.round()}-${(footTop + _dock).round()} '
+      'keyboard=${keyboard.round()} list-pad=${top.round()}/${(_dock + 12).round()} '
+      'screen=${view.height.round()}',
+    );
   }
 
   Widget _body(BuildContext context, AppLocalizations l10n) {
@@ -580,7 +624,7 @@ class _AgentChatPageState extends State<AgentChatPage> {
           20,
           context.contentTopPadding,
           20,
-          20,
+          _dock + 12,
         ),
         children: [InlineNotice(text: _error)],
       );
@@ -593,7 +637,7 @@ class _AgentChatPageState extends State<AgentChatPage> {
           20,
           context.contentTopPadding,
           20,
-          20,
+          _dock + 12,
         ),
         children: [
           Text(
@@ -628,7 +672,7 @@ class _AgentChatPageState extends State<AgentChatPage> {
         20,
         context.contentTopPadding,
         20,
-        20,
+        _dock + 12,
       ),
       children: [
         if (transcript.truncated) ...[
@@ -1598,12 +1642,7 @@ class _SubagentViewState extends State<_SubagentView> {
     final scheme = context.colorScheme;
     if (_error.isNotEmpty && subagent == null) {
       return ListView(
-        padding: EdgeInsets.fromLTRB(
-          20,
-          context.contentTopPadding,
-          20,
-          20,
-        ),
+        padding: EdgeInsets.fromLTRB(20, context.contentTopPadding, 20, 20),
         children: [
           InlineNotice(text: l10n.agentSubagentFailed(_error)),
           if (widget.task.output.isNotEmpty)
@@ -1636,12 +1675,7 @@ class _SubagentViewState extends State<_SubagentView> {
     }
     final messages = subagent.transcript.messages;
     return ListView(
-      padding: EdgeInsets.fromLTRB(
-        20,
-        context.contentTopPadding,
-        20,
-        24,
-      ),
+      padding: EdgeInsets.fromLTRB(20, context.contentTopPadding, 20, 24),
       children: [
         if (messages.isEmpty)
           Text(

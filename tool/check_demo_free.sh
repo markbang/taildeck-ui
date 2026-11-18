@@ -27,6 +27,7 @@ needles=(
   "code-server:latest"
   "Synology DSM"
   "Jellyfin"
+  "keep the body readable under the bars"
 )
 
 work=$(mktemp -d)

@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/widgets.dart';
 import 'package:prism_ui/icons/icons.dart';
@@ -154,13 +155,23 @@ class PageBar extends StatelessWidget {
 /// material that starts at the page's colour and eases out below the bar, so
 /// rows read through it as they scroll past.
 class PageHeader extends StatelessWidget {
-  const PageHeader({super.key, required this.child, this.collapse = 1});
+  const PageHeader({
+    super.key,
+    required this.child,
+    this.collapse = 1,
+    this.frosted = false,
+  });
 
   final Widget child;
 
   /// 0 draws the bar with no material over a first-level page's content, 1
   /// draws it at rest as a subpage has it; the page drives it from its scroll.
   final double collapse;
+
+  /// A [Frost] that ends at the bar's edge instead of a material easing out
+  /// below it: the content reads through, blurred, and no band lies past the
+  /// bar.
+  final bool frosted;
 
   static const _overhang = 16.0;
   static const _steps = 8;
@@ -171,18 +182,21 @@ class PageHeader extends StatelessWidget {
     return Stack(
       clipBehavior: Clip.none,
       children: [
-        Positioned(
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: -_overhang,
-          child: IgnorePointer(
-            child: _Scrim(
-              color: SurfaceLevel.page.colorOf(context.colorScheme),
-              opacity: _materialOpacity(collapse),
+        if (frosted)
+          const Positioned.fill(child: IgnorePointer(child: Frost()))
+        else
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: -_overhang,
+            child: IgnorePointer(
+              child: _Scrim(
+                color: SurfaceLevel.page.colorOf(context.colorScheme),
+                opacity: _materialOpacity(collapse),
+              ),
             ),
           ),
-        ),
         Padding(
           padding: EdgeInsets.only(top: top),
           child: child,
@@ -197,6 +211,56 @@ class PageHeader extends StatelessWidget {
       _material * Curves.easeInOut.transform(collapse.clamp(0, 1));
 
   static const _material = 0.97;
+}
+
+/// The layer a page keeps at its foot (a chat's task strip and composer), on
+/// the same [Frost] as a frosted [PageHeader]: the content scrolls under it
+/// and is never cut at its edge. [child] takes the system gesture area as its
+/// own bottom padding, so the frost runs to the screen's edge.
+class PageFooter extends StatelessWidget {
+  const PageFooter({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        const Positioned.fill(child: IgnorePointer(child: Frost())),
+        Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.paddingOf(context).bottom,
+          ),
+          child: child,
+        ),
+      ],
+    );
+  }
+}
+
+/// The page's colour over a blur of what lies behind, clipped to its own box.
+class Frost extends StatelessWidget {
+  const Frost({super.key});
+
+  static const sigma = 16.0;
+
+  /// High enough that a line of text under it reads as a shade, not a glyph,
+  /// and the bar keeps the page's colour in both themes.
+  static const tint = 0.75;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRect(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
+        child: ColoredBox(
+          color: SurfaceLevel.page
+              .colorOf(context.colorScheme)
+              .withValues(alpha: tint),
+        ),
+      ),
+    );
+  }
 }
 
 class _Scrim extends StatelessWidget {
