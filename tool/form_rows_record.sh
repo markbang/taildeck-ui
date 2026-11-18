@@ -89,7 +89,7 @@ run_build() { # <tag> <apk>
     if launch "$theme" service Scheme; then
       shot "$tag-$theme-service"
       tap Name
-      adb shell input text 'A%every%slong%sservice%sname%sthat%sdoes%snot%sfit' > /dev/null 2>&1 || true
+      adb shell input text 'A%svery%slong%sservice%sname%sthat%sdoes%snot%sfit' > /dev/null 2>&1 || true
       sleep 1
       shot "$tag-$theme-service-focused"
       hide_keyboard
