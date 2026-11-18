@@ -302,65 +302,57 @@ class _SshSheetState extends State<_SshSheet> {
               ],
             ),
             const SizedBox(height: 14),
-            Card(
-              radius: AppCorner.xl,
-              padding: EdgeInsets.zero,
-              child: Column(
-                children: [
-                  EntryRow(
-                    label: l10n.sshUser,
-                    controller: _user,
-                    hintText: 'root',
-                    errorText: _userError.isEmpty ? null : _userError,
-                    enabled: !_busy,
-                    autofillHints: const [AutofillHints.username],
-                    suggestions: _userSuggestions,
-                  ),
-                  const _RowDivider(),
-                  EntryRow(
-                    label: l10n.sshPort,
-                    controller: _port,
-                    hintText: '22',
-                    numeric: true,
-                    errorText: _portError.isEmpty ? null : _portError,
-                    enabled: !_busy,
-                  ),
-                  const _RowDivider(),
-                  SelectRow<SshAuth>(
-                    label: l10n.sshAuth,
-                    value: _auth,
-                    options: [
-                      for (final auth in SshAuth.values)
-                        (auth, authLabel(l10n, auth)),
-                    ],
-                    enabled: !_busy,
-                    onChanged: (value) => setState(() => _auth = value),
-                  ),
-                  if (_auth == SshAuth.password) ...[
-                    const _RowDivider(),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
-                      child: TextField(
-                        controller: _password,
-                        // A saved password login opens here: the password is
-                        // the one thing it needs.
-                        autofocus: widget.saved?.auth == SshAuth.password,
-                        obscureText: true,
-                        style: context.listTitleStyle,
-                        decoration: InputDecoration(
-                          hintText: l10n.sshPasswordHint,
-                          filled: true,
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 12,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ],
+            generateGroup([
+              EntryRow(
+                label: l10n.sshUser,
+                controller: _user,
+                hintText: 'root',
+                errorText: _userError.isEmpty ? null : _userError,
+                enabled: !_busy,
+                autofillHints: const [AutofillHints.username],
+                suggestions: _userSuggestions,
               ),
-            ),
+              EntryRow(
+                label: l10n.sshPort,
+                controller: _port,
+                hintText: '22',
+                numeric: true,
+                errorText: _portError.isEmpty ? null : _portError,
+                enabled: !_busy,
+              ),
+              SelectRow<SshAuth>(
+                label: l10n.sshAuth,
+                value: _auth,
+                options: [
+                  for (final auth in SshAuth.values)
+                    (auth, authLabel(l10n, auth)),
+                ],
+                enabled: !_busy,
+                onChanged: (value) => setState(() => _auth = value),
+              ),
+              if (_auth == SshAuth.password)
+                EntryRow(
+                  label: l10n.authPassword,
+                  controller: _password,
+                  // A saved password login opens here: the password is the
+                  // one thing it needs.
+                  autofocus: widget.saved?.auth == SshAuth.password,
+                  hintText: l10n.sshPasswordHint,
+                  obscure: true,
+                  enabled: !_busy,
+                ),
+              if (_auth == SshAuth.key && _identities.length > 1)
+                SelectRow<String>(
+                  label: l10n.sshIdentity,
+                  value: _identityId,
+                  options: [
+                    for (final key in _identities)
+                      (key.id, key.builtin ? l10n.builtinKey : key.name),
+                  ],
+                  enabled: !_busy,
+                  onChanged: (value) => setState(() => _identityId = value),
+                ),
+            ]),
             if (_auth == SshAuth.key) ...[
               const SizedBox(height: 12),
               Card(
@@ -370,23 +362,6 @@ class _SshSheetState extends State<_SshSheet> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      if (_identities.length > 1) ...[
-                        SelectRow<String>(
-                          label: l10n.sshIdentity,
-                          value: _identityId,
-                          options: [
-                            for (final key in _identities)
-                              (
-                                key.id,
-                                key.builtin ? l10n.builtinKey : key.name,
-                              ),
-                          ],
-                          enabled: !_busy,
-                          onChanged: (value) =>
-                              setState(() => _identityId = value),
-                        ),
-                        const Divider(height: 16, thickness: 0.5),
-                      ],
                       Text(
                         l10n.sshKeyTitle,
                         style: AppTextStyle.body.of(context, emphasized: true),
@@ -447,18 +422,6 @@ class _SshSheetState extends State<_SshSheet> {
           ],
         ),
       ),
-    );
-  }
-}
-
-class _RowDivider extends StatelessWidget {
-  const _RowDivider();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Padding(
-      padding: EdgeInsets.only(left: 16),
-      child: Divider(height: 0.5, thickness: 0.5),
     );
   }
 }

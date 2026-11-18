@@ -195,62 +195,52 @@ class _NewAgentSheetState extends State<_NewAgentSheet> {
               ],
             ),
             const SizedBox(height: 14),
-            Card(
-              radius: AppCorner.xl,
-              padding: EdgeInsets.zero,
-              child: Column(
-                children: [
-                  SelectRow<String>(
-                    label: l10n.harness,
-                    value: _harness,
-                    options: [
-                      for (final kind in _live ? _liveHarnesses : _harnesses)
-                        (kind, kind),
-                    ],
-                    onChanged: (value) => setState(() => _harness = value),
-                  ),
-                  const _RowDivider(),
-                  if (_live) ...[
-                    EntryRow(
-                      label: l10n.agentName,
-                      controller: _nameInput,
-                      hintText: _name,
-                      onChanged: (_) => setState(() {}),
-                      errorText: nameError,
-                    ),
-                    const _RowDivider(),
-                    SelectRow<String>(
-                      label: l10n.agentWorkspace,
-                      value: _workspace,
-                      options: [
-                        for (final workspace in widget.workspaces)
-                          (workspace.id, workspace.label),
-                        ('', l10n.agentNewWorkspace),
-                      ],
-                      onChanged: (value) => setState(() => _workspace = value),
-                    ),
-                    const _RowDivider(),
-                    EntryRow(
-                      label: l10n.agentDir,
-                      controller: _cwd,
-                      hintText: l10n.agentDirHint,
-                    ),
-                  ] else
-                    SelectRow<String>(
-                      label: l10n.project,
-                      value: _project,
-                      options: [for (final p in _projects) (p, p)],
-                      onChanged: (value) => setState(() => _project = value),
-                    ),
-                  const _RowDivider(),
-                  EntryRow(
-                    label: l10n.task,
-                    controller: _task,
-                    hintText: l10n.taskHint,
-                  ),
+            generateGroup([
+              SelectRow<String>(
+                label: l10n.harness,
+                value: _harness,
+                options: [
+                  for (final kind in _live ? _liveHarnesses : _harnesses)
+                    (kind, kind),
                 ],
+                onChanged: (value) => setState(() => _harness = value),
               ),
-            ),
+              if (_live) ...[
+                EntryRow(
+                  label: l10n.agentName,
+                  controller: _nameInput,
+                  hintText: _name,
+                  onChanged: (_) => setState(() {}),
+                  errorText: nameError,
+                ),
+                SelectRow<String>(
+                  label: l10n.agentWorkspace,
+                  value: _workspace,
+                  options: [
+                    for (final workspace in widget.workspaces)
+                      (workspace.id, workspace.label),
+                    ('', l10n.agentNewWorkspace),
+                  ],
+                  onChanged: (value) => setState(() => _workspace = value),
+                ),
+                EntryRow(
+                  label: l10n.agentDir,
+                  controller: _cwd,
+                  hintText: l10n.agentDirHint,
+                ),
+              ] else
+                SelectRow<String>(
+                  label: l10n.project,
+                  value: _project,
+                  options: [for (final p in _projects) (p, p)],
+                  onChanged: (value) => setState(() => _project = value),
+                ),
+              EntryRow(
+                label: l10n.task,
+                controller: _task,
+                hintText: l10n.taskHint,
+              ),
+            ]),
             if (_error.isNotEmpty) ...[
               const SizedBox(height: 12),
               Text(
@@ -269,18 +259,6 @@ class _NewAgentSheetState extends State<_NewAgentSheet> {
           ],
         ),
       ),
-    );
-  }
-}
-
-class _RowDivider extends StatelessWidget {
-  const _RowDivider();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Padding(
-      padding: EdgeInsets.only(left: 16),
-      child: Divider(height: 0.5, thickness: 0.5),
     );
   }
 }

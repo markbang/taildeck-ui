@@ -1032,55 +1032,35 @@ class _HerdrConnectCardState extends State<_HerdrConnectCard> {
     final l10n = AppLocalizations.of(context);
     final scheme = context.colorScheme;
     final names = [for (final node in _nodes) (node.name, node.name)];
-    return Card(
-      radius: AppCorner.xl,
-      padding: EdgeInsets.zero,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  l10n.herdrConnectTitle,
-                  style: AppTextStyle.body.of(context, emphasized: true),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  l10n.herdrConnectBody,
-                  style: AppTextStyle.footnote
-                      .of(context)
-                      .copyWith(color: scheme.onSurfaceVariant),
-                ),
-              ],
-            ),
-          ),
-          if (names.isEmpty)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(l10n.serviceNode, style: context.listTitleStyle),
-                  const SizedBox(height: 6),
-                  TextField(
-                    controller: _nodeInput,
-                    style: context.listSubtitleStyle,
-                    decoration: InputDecoration(
-                      hintText: 'devbox',
-                      hintStyle: context.listCaptionStyle,
-                      filled: true,
-                      fillColor: SurfaceLevel.block.colorOf(scheme),
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 11,
-                      ),
-                    ),
-                  ),
-                ],
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(4, 4, 4, 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                l10n.herdrConnectTitle,
+                style: AppTextStyle.body.of(context, emphasized: true),
               ),
+              const SizedBox(height: 4),
+              Text(
+                l10n.herdrConnectBody,
+                style: AppTextStyle.footnote
+                    .of(context)
+                    .copyWith(color: scheme.onSurfaceVariant),
+              ),
+            ],
+          ),
+        ),
+        generateGroup([
+          if (names.isEmpty)
+            EntryRow(
+              label: l10n.serviceNode,
+              controller: _nodeInput,
+              hintText: 'devbox',
+              enabled: !_busy,
             )
           else
             SelectRow<String>(
@@ -1089,7 +1069,6 @@ class _HerdrConnectCardState extends State<_HerdrConnectCard> {
               options: names,
               onChanged: (value) => setState(() => _node = value),
             ),
-          const _RowDivider(),
           EntryRow(
             label: l10n.sshUser,
             controller: _user,
@@ -1099,7 +1078,6 @@ class _HerdrConnectCardState extends State<_HerdrConnectCard> {
             autofillHints: const [AutofillHints.username],
             suggestions: _userSuggestions,
           ),
-          const _RowDivider(),
           EntryRow(
             label: l10n.sshPort,
             controller: _port,
@@ -1108,7 +1086,6 @@ class _HerdrConnectCardState extends State<_HerdrConnectCard> {
             errorText: _portError.isEmpty ? null : _portError,
             enabled: !_busy,
           ),
-          const _RowDivider(),
           SelectRow<String>(
             label: l10n.sshAuth,
             value: _auth,
@@ -1119,27 +1096,15 @@ class _HerdrConnectCardState extends State<_HerdrConnectCard> {
             ],
             onChanged: (value) => setState(() => _auth = value),
           ),
-          if (_auth == 'password') ...[
-            const _RowDivider(),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
-              child: TextField(
-                controller: _password,
-                obscureText: true,
-                style: context.listTitleStyle,
-                decoration: InputDecoration(
-                  hintText: l10n.sshPasswordHint,
-                  filled: true,
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 12,
-                  ),
-                ),
-              ),
+          if (_auth == 'password')
+            EntryRow(
+              label: l10n.authPassword,
+              controller: _password,
+              hintText: l10n.sshPasswordHint,
+              obscure: true,
+              enabled: !_busy,
             ),
-          ],
-          if (_auth == 'key' && _identities.isNotEmpty) ...[
-            const _RowDivider(),
+          if (_auth == 'key' && _identities.isNotEmpty)
             SelectRow<String>(
               label: l10n.sshIdentity,
               value: _identity,
@@ -1149,44 +1114,31 @@ class _HerdrConnectCardState extends State<_HerdrConnectCard> {
               ],
               onChanged: (value) => setState(() => _identity = value),
             ),
-          ],
-          if (_error.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-              child: Text(
-                _error,
-                style: AppTextStyle.footnote
-                    .of(context)
-                    .copyWith(color: scheme.error),
-              ),
-            ),
+        ]),
+        if (_error.isNotEmpty)
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-            child: LoadingButton(
-              label: l10n.connect,
-              loading: _busy,
-              onPressed:
-                  (widget.backend.signedIn || widget.preview) &&
-                      _userError.isEmpty &&
-                      _portError.isEmpty
-                  ? _connect
-                  : null,
+            padding: const EdgeInsets.fromLTRB(4, 12, 4, 0),
+            child: Text(
+              _error,
+              style: AppTextStyle.footnote
+                  .of(context)
+                  .copyWith(color: scheme.error),
             ),
           ),
-        ],
-      ),
-    );
-  }
-}
-
-class _RowDivider extends StatelessWidget {
-  const _RowDivider();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Padding(
-      padding: EdgeInsets.only(left: 16),
-      child: Divider(height: 0.5, thickness: 0.5),
+        Padding(
+          padding: const EdgeInsets.only(top: 16),
+          child: LoadingButton(
+            label: l10n.connect,
+            loading: _busy,
+            onPressed:
+                (widget.backend.signedIn || widget.preview) &&
+                    _userError.isEmpty &&
+                    _portError.isEmpty
+                ? _connect
+                : null,
+          ),
+        ),
+      ],
     );
   }
 }

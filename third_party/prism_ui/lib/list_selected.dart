@@ -23,6 +23,7 @@ class DecorationListItem extends StatefulWidget {
   final VoidCallback? onPressed;
   final double? minVerticalPadding;
   final bool invalid;
+  final bool focused;
 
   const DecorationListItem({
     super.key,
@@ -36,6 +37,7 @@ class DecorationListItem extends StatefulWidget {
     this.horizontalTitleGap,
     this.minVerticalPadding,
     this.invalid = false,
+    this.focused = false,
   });
 
   @override
@@ -68,6 +70,7 @@ class _DecorationListItemState extends State<DecorationListItem> {
         shape: AppShape.of(listItemRadiusOf(position)),
         isError: widget.invalid,
         isSelected: widget.isSelected,
+        focused: widget.focused,
         padding: EdgeInsets.zero,
         statesController: _states,
         inert: sorting,

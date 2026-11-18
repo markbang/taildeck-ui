@@ -120,8 +120,12 @@ class Card extends StatelessWidget {
     this.statesController,
     this.inert = false,
     this.fillsSelection = false,
+    this.focused = false,
     required this.child,
   }) : isSelected = isSelected ?? false;
+
+  /// Tints the fill faintly, as a grouped form row being edited shows.
+  final bool focused;
 
   /// Ignores presses in the enabled colors, so toggling it animates nothing.
   final bool inert;
@@ -204,6 +208,10 @@ class Card extends StatelessWidget {
       fill: switch ((isError, _filled)) {
         (true, _) => colorScheme.errorContainer,
         (_, true) => colorScheme.primary,
+        _ when focused => Color.alphaBlend(
+          colorScheme.primary.withValues(alpha: 0.08),
+          level.colorOf(colorScheme),
+        ),
         _ => level.colorOf(colorScheme),
       },
       shape: shape ?? AppShape.all(radius ?? AppCorner.md),

@@ -25,8 +25,7 @@ Future<void> showTerminalSnippetsSheet(
 }) {
   return showMotionSheet<void>(
     context: context,
-    builder: (context) =>
-        _SnippetsSheet(backend: backend, onSend: onSend),
+    builder: (context) => _SnippetsSheet(backend: backend, onSend: onSend),
   );
 }
 
@@ -60,8 +59,7 @@ class _SnippetsSheetState extends State<_SnippetsSheet> {
 
   void _begin([TerminalSnippet? snippet]) {
     final draft =
-        snippet ??
-        TerminalSnippet(id: newSnippetId(), name: '', command: '');
+        snippet ?? TerminalSnippet(id: newSnippetId(), name: '', command: '');
     setState(() {
       _isNew = snippet == null;
       _draft = draft;
@@ -190,43 +188,46 @@ class _SnippetsSheetState extends State<_SnippetsSheet> {
             padding: const EdgeInsets.symmetric(vertical: 10),
             child: Text(
               l10n.terminalSnippetsEmpty,
-              style: AppTextStyle.footnote.of(context).copyWith(
-                color: context.colorScheme.onSurfaceVariant,
-              ),
+              style: AppTextStyle.footnote
+                  .of(context)
+                  .copyWith(color: context.colorScheme.onSurfaceVariant),
             ),
           ),
         Card(
           radius: AppCorner.xl,
           padding: EdgeInsets.zero,
-          child: Column(
-            children: [
-              for (final snippet in _snippets)
-                _SnippetRow(
-                  snippet: snippet,
-                  onTap: widget.onSend == null
-                      ? () => _begin(snippet)
-                      : () {
-                          widget.onSend!(snippet);
-                          unawaited(HapticFeedback.lightImpact());
-                        },
-                  onEdit: () => _begin(snippet),
+          child: ClipRSuperellipse(
+            borderRadius: AppRadius.all(AppCorner.xl),
+            child: Column(
+              children: [
+                for (final snippet in _snippets)
+                  _SnippetRow(
+                    snippet: snippet,
+                    onTap: widget.onSend == null
+                        ? () => _begin(snippet)
+                        : () {
+                            widget.onSend!(snippet);
+                            unawaited(HapticFeedback.lightImpact());
+                          },
+                    onEdit: () => _begin(snippet),
+                  ),
+                TapFeedback(
+                  onTap: _snippets.length >= maxTerminalSnippets
+                      ? null
+                      : () => _begin(),
+                  child: ListRow(
+                    leading: const IconBadge(Glyphs2.plus),
+                    title: Text(l10n.snippetNew, style: context.listTitleStyle),
+                    subtitle: _snippets.length >= maxTerminalSnippets
+                        ? Text(
+                            l10n.snippetLimit(maxTerminalSnippets),
+                            style: context.listCaptionStyle,
+                          )
+                        : null,
+                  ),
                 ),
-              TapFeedback(
-                onTap: _snippets.length >= maxTerminalSnippets
-                    ? null
-                    : () => _begin(),
-                child: ListRow(
-                  leading: const IconBadge(Glyphs2.plus),
-                  title: Text(l10n.snippetNew, style: context.listTitleStyle),
-                  subtitle: _snippets.length >= maxTerminalSnippets
-                      ? Text(
-                          l10n.snippetLimit(maxTerminalSnippets),
-                          style: context.listCaptionStyle,
-                        )
-                      : null,
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ],
@@ -240,38 +241,30 @@ class _SnippetsSheetState extends State<_SnippetsSheet> {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Card(
-          radius: AppCorner.xl,
-          padding: EdgeInsets.zero,
-          child: Column(
-            children: [
-              EntryRow(
-                label: l10n.snippetName,
-                controller: _name,
-                hintText: l10n.snippetNameHint,
-              ),
-              const _RowDivider(),
-              EntryRow(
-                label: l10n.snippetCommand,
-                controller: _command,
-                hintText: l10n.snippetCommandHint,
-                maxLines: 2,
-                // Save stays disabled until there is something to send.
-                onChanged: (_) => setState(() {}),
-              ),
-              const _RowDivider(),
-              SelectRow<bool>(
-                label: l10n.snippetAppendEnter,
-                subtitle: _enter
-                    ? l10n.snippetAppendEnterOn
-                    : l10n.snippetAppendEnterOff,
-                value: _enter,
-                options: [(true, l10n.onLabel), (false, l10n.offLabel)],
-                onChanged: (value) => setState(() => _enter = value),
-              ),
-            ],
+        generateGroup([
+          EntryRow(
+            label: l10n.snippetName,
+            controller: _name,
+            hintText: l10n.snippetNameHint,
           ),
-        ),
+          EntryRow(
+            label: l10n.snippetCommand,
+            controller: _command,
+            hintText: l10n.snippetCommandHint,
+            maxLines: 2,
+            // Save stays disabled until there is something to send.
+            onChanged: (_) => setState(() {}),
+          ),
+          SelectRow<bool>(
+            label: l10n.snippetAppendEnter,
+            subtitle: _enter
+                ? l10n.snippetAppendEnterOn
+                : l10n.snippetAppendEnterOff,
+            value: _enter,
+            options: [(true, l10n.onLabel), (false, l10n.offLabel)],
+            onChanged: (value) => setState(() => _enter = value),
+          ),
+        ]),
         if (_error.isNotEmpty) ...[
           const SizedBox(height: 10),
           InlineNotice(text: _error),
@@ -350,11 +343,13 @@ class _SnippetRow extends StatelessWidget {
             snippet.command,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: AppTextStyle.footnote.of(context).copyWith(
-              fontFamily: 'DejaVuSansMono',
-              fontSize: 11,
-              color: context.colorScheme.onSurfaceVariant,
-            ),
+            style: AppTextStyle.footnote
+                .of(context)
+                .copyWith(
+                  fontFamily: 'DejaVuSansMono',
+                  fontSize: 11,
+                  color: context.colorScheme.onSurfaceVariant,
+                ),
           ),
           trailing: IconButton(
             onPressed: onEdit,
@@ -388,18 +383,6 @@ class _OrderButton extends StatelessWidget {
         icon: GlyphIcon(glyph, size: 18),
         tooltip: label,
       ),
-    );
-  }
-}
-
-class _RowDivider extends StatelessWidget {
-  const _RowDivider();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Padding(
-      padding: EdgeInsets.only(left: 16),
-      child: Divider(height: 0.5, thickness: 0.5),
     );
   }
 }
