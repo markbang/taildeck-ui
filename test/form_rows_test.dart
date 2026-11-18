@@ -119,6 +119,7 @@ List<Rect> _rows(WidgetTester tester) => [
 ];
 
 void main() {
+  _heldSelectWhileEditing();
   setUpAll(loadGoldenFonts);
 
   for (final mode in [ThemeMode.light, ThemeMode.dark]) {
@@ -235,5 +236,28 @@ void main() {
     await tester.pumpAndSettle();
     final after = await _shot(tester);
     expect(after.at(probe.dx, probe.dy), rest.at(probe.dx, probe.dy));
+  });
+}
+
+void _heldSelectWhileEditing() {
+  testWidgets('a select held while a text row is focused opens on release', (
+    tester,
+  ) async {
+    await _pump(tester, ThemeMode.dark);
+    final rest = await _shot(tester);
+    await tester.tap(find.text('Name'));
+    await tester.pumpAndSettle();
+    final row = _rows(tester)[2];
+    final probe = Offset(row.left + 200, row.center.dy);
+    final gesture = await tester.startGesture(probe);
+    await tester.pump(const Duration(milliseconds: 400));
+    await gesture.up();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.text('https'), findsOneWidget, reason: 'the menu did not open');
+    await tester.pumpAndSettle();
+    expect(
+      (await _shot(tester)).at(probe.dx, probe.dy),
+      rest.at(probe.dx, probe.dy),
+    );
   });
 }
