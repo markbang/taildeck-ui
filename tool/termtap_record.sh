@@ -3,7 +3,9 @@
 # a real SSH shell: a tap on the grid leaves the IME down and only reaches a
 # program that tracks the mouse as a left press and release (SGR 1006); the
 # toolbar's keyboard button shows and hides the IME; typing and Compose reach
-# the shell. The gate fails the run; vim and htop are recorded, not failed.
+# the shell; a vertical drag scrolls and never types, and reaches a program
+# that tracks the mouse (probe, vim, tmux) only as wheel reports. The gate
+# fails the run; htop is recorded, not failed.
 #
 # The shell comes from the runner's test tailnet: a control plane plus a peer
 # node whose sshd serves bash on a pty (tool/motion/peer).
@@ -419,6 +421,174 @@ check_cell() { # <log>
   fi
 }
 
+# ---- vertical drag -------------------------------------------------------
+# A one-finger drag scrolls the buffer and never types: the probe reads every
+# byte the shell gets while the grid is dragged. With mouse reporting on, the
+# only bytes are SGR wheel reports (64 up, 65 down); vim and tmux scroll on them.
+drag_grid() { # <fy-from> <fy-to>
+  local box gx1 gy1 gx2 gy2 x y1 y2
+  box=$(grid_box) || { note "no grid bounds"; return 1; }
+  read -r gx1 gy1 gx2 gy2 <<< "$box"
+  x=$(( (gx1 + gx2) / 2 ))
+  y1=$(awk -v f="$1" -v a="$gy1" -v b="$gy2" 'BEGIN { printf "%d", a + f * (b - a) }')
+  y2=$(awk -v f="$2" -v a="$gy1" -v b="$gy2" 'BEGIN { printf "%d", a + f * (b - a) }')
+  adb shell input swipe "$x" "$y1" "$x" "$y2" 600 > /dev/null 2>&1 || true
+  sleep 1
+}
+
+cat > /tmp/dragprobe.py <<'PROBE'
+import os, select, sys, termios, time, tty
+
+mode, log = sys.argv[1], sys.argv[2]
+fd, out = sys.stdin.fileno(), sys.stdout.fileno()
+for i in range(1, 121):
+    print('drag line %03d' % i)
+sys.stdout.flush()
+old = termios.tcgetattr(fd)
+data = b''
+try:
+    tty.setraw(fd)
+    if mode == 'mouse':
+        os.write(out, b'\x1b[?1000h\x1b[?1006h')
+    open('/tmp/drag-ready', 'w').close()
+    deadline = time.time() + 60
+    while time.time() < deadline and not os.path.exists('/tmp/drag-done'):
+        if select.select([fd], [], [], 0.2)[0]:
+            data += os.read(fd, 1024)
+finally:
+    if mode == 'mouse':
+        os.write(out, b'\x1b[?1006l\x1b[?1000l')
+    termios.tcsetattr(fd, termios.TCSADRAIN, old)
+open(log, 'wb').write(data)
+print('drag probe (%s): %d bytes' % (mode, len(data)))
+PROBE
+cat > /tmp/drag.sh <<'SH'
+help | head -40
+exec python3 /tmp/dragprobe.py "$@"
+SH
+
+# Prints "<bytes> <arrows> <wheel-up> <wheel-down> <other>" for a byte log.
+drag_bytes() {
+  python3 - "$1" <<'COUNT'
+import os, re, sys
+path = sys.argv[1]
+data = open(path, 'rb').read() if os.path.exists(path) else b''
+arrows = len(re.findall(rb'\x1b[\[O][ABCD]', data))
+up = len(re.findall(rb'\x1b\[<64;\d+;\d+M', data))
+down = len(re.findall(rb'\x1b\[<65;\d+;\d+M', data))
+rest = re.sub(rb'\x1b\[<6[45];\d+;\d+M', b'', data)
+print(len(data), arrows, up, down, len(rest))
+COUNT
+}
+
+drag_probe() { # <plain|mouse> <log>
+  local mode=$1 log=$2 waited=0
+  rm -f /tmp/drag-ready /tmp/drag-done "$log"
+  send_command "bash /tmp/drag.sh $mode $log" 1
+  while [ ! -f /tmp/drag-ready ] && [ "$waited" -lt 15 ]; do sleep 1; waited=$((waited + 1)); done
+  [ -f /tmp/drag-ready ] || { fail "the drag probe ($mode) did not start"; return 0; }
+  collapse_panel
+  shot "drag-$mode-0-bottom"
+  drag_grid 0.15 0.6
+  drag_grid 0.15 0.6
+  shot "drag-$mode-1-up"
+  drag_grid 0.6 0.15
+  shot "drag-$mode-2-down"
+  drag_grid 0.6 0.15
+  sleep 1
+  touch /tmp/drag-done
+  waited=0
+  while [ ! -f "$log" ] && [ "$waited" -lt 10 ]; do sleep 1; waited=$((waited + 1)); done
+  shot "drag-$mode-3-done"
+}
+
+drag_plain() { drag_probe plain /tmp/drag-plain.log; }
+drag_mouse() { drag_probe mouse /tmp/drag-mouse.log; }
+
+check_drag_plain() {
+  local total arrows up down rest
+  [ -f /tmp/drag-plain.log ] || { fail "drag: the probe wrote no log"; return 0; }
+  read -r total arrows up down rest <<< "$(drag_bytes /tmp/drag-plain.log)"
+  note "drag (normal screen): $total bytes, $arrows arrow keys"
+  [ "$arrows" -eq 0 ] || fail "drag: a vertical drag sent $arrows arrow key(s)"
+  [ "$total" -eq 0 ] || fail "drag: a vertical drag sent $total byte(s) on the normal screen"
+}
+
+check_drag_mouse() {
+  local total arrows up down rest
+  [ -f /tmp/drag-mouse.log ] || { fail "drag: the mouse probe wrote no log"; return 0; }
+  read -r total arrows up down rest <<< "$(drag_bytes /tmp/drag-mouse.log)"
+  note "drag (mouse reporting): $total bytes, $up wheel-up, $down wheel-down, $arrows arrows, $rest other"
+  [ "$arrows" -eq 0 ] || fail "drag: mouse reporting got $arrows arrow key(s)"
+  [ "$up" -gt 0 ] || fail "drag: finger down sent no wheel-up report"
+  [ "$down" -gt 0 ] || fail "drag: finger up sent no wheel-down report"
+  [ "$rest" -eq 0 ] || fail "drag: $rest byte(s) besides wheel reports"
+}
+
+drag_vim() {
+  cat > /tmp/dragvim.sh <<'VIM'
+#!/bin/sh
+seq 1 400 | sed 's/^/vim line /' > /tmp/dragvim.txt
+rm -f /tmp/dragvim-top /tmp/dragvim-arrow
+exec vim -u NONE -c 'set mouse=a' -c 'set laststatus=2' \
+  -c 'nnoremap <Up> :call writefile(["up"], "/tmp/dragvim-arrow", "a")<CR>' \
+  -c 'nnoremap <Down> :call writefile(["down"], "/tmp/dragvim-arrow", "a")<CR>' \
+  -c 'call timer_start(500, {-> writefile([line("w0")], "/tmp/dragvim-top")}, {"repeat": -1})' \
+  -c 'call timer_start(25000, {-> execute("qa!")})' \
+  +200 /tmp/dragvim.txt
+VIM
+  send_command "sh /tmp/dragvim.sh" 4
+  collapse_panel
+  local before mid after waited=0
+  before=$(cat /tmp/dragvim-top 2> /dev/null || echo '')
+  shot drag-vim-0
+  drag_grid 0.15 0.6
+  sleep 1.5
+  mid=$(cat /tmp/dragvim-top 2> /dev/null || echo '')
+  shot drag-vim-1-up
+  drag_grid 0.6 0.15
+  drag_grid 0.6 0.15
+  sleep 1.5
+  after=$(cat /tmp/dragvim-top 2> /dev/null || echo '')
+  shot drag-vim-2-down
+  note "vim: top line $before -> $mid (finger down) -> $after (finger up)"
+  if [ -s /tmp/dragvim-arrow ]; then
+    fail "vim: a drag sent arrow keys ($(tr '\n' ' ' < /tmp/dragvim-arrow))"
+  fi
+  if [ -n "$before" ] && [ -n "$mid" ] && [ "$mid" -lt "$before" ] \
+    && [ -n "$after" ] && [ "$after" -gt "$mid" ]; then
+    note "vim: the drag scrolled the window by wheel reports"
+  else
+    fail "vim: the drag did not scroll the window (top ${before:-none} -> ${mid:-none} -> ${after:-none})"
+  fi
+  while pgrep -f dragvim.txt > /dev/null && [ "$waited" -lt 30 ]; do sleep 1; waited=$((waited + 1)); done
+  pkill -f dragvim.txt > /dev/null 2>&1 || true
+  sleep 1
+}
+
+drag_tmux() {
+  local sock=/tmp/dragtmux.sock state
+  cat > /tmp/dragtmux.sh <<TMUX
+#!/bin/sh
+tmux -S $sock kill-server 2> /dev/null
+exec tmux -S $sock -f /dev/null new-session -s drag 'seq 1 300 | sed "s/^/tmux line /"; exec bash --norc' \\; set -g mouse on
+TMUX
+  send_command "sh /tmp/dragtmux.sh" 4
+  collapse_panel
+  shot drag-tmux-0
+  drag_grid 0.15 0.6
+  sleep 1
+  state=$(tmux -S "$sock" display -p -t drag '#{pane_in_mode} #{scroll_position}' 2> /dev/null || echo 'none')
+  shot drag-tmux-1-up
+  note "tmux: after a drag down, in-mode and scroll position: $state"
+  case "$state" in
+    "1 "[1-9]*) note "tmux: the drag entered copy mode and scrolled by wheel reports" ;;
+    *) fail "tmux: the drag did not scroll the pane ($state)" ;;
+  esac
+  tmux -S "$sock" kill-server > /dev/null 2>&1 || true
+  sleep 2
+}
+
 # ---- vim and htop --------------------------------------------------------
 collapse_panel() {
   if ui has 'Left arrow' > /dev/null 2>&1; then
@@ -539,6 +709,13 @@ mouse_probe_ctrl() { mouse_probe 0.6 0.5 ctrl; }
 record tap-mouse-ctrl 13 mouse_probe_ctrl
 check_mouse /tmp/tap-mouse.log ctrl
 check_cell /tmp/tap-mouse.log
+
+record term-drag-plain 22 drag_plain
+check_drag_plain
+record term-drag-mouse 22 drag_mouse
+check_drag_mouse
+record term-drag-vim 20 drag_vim
+record term-drag-tmux 14 drag_tmux
 
 record tap-vim 18 vim_step
 fresh_session || fail "could not open a fresh session for htop"
