@@ -26,6 +26,24 @@ only honest answer.
    launch path. `android-smoke` covers cold start, back, Ping and a crash scan
    before a release.
 
+## What runs in CI
+
+A pull request runs only `ci` (analyze, widget tests, web, Linux, Android debug
+APK) and `android-smoke` (one emulator, the PR set of gates). Every
+`*-record`, `select-metrics` and `icon-compare` workflow runs only when
+dispatched.
+
+"Before" runs that are meant to show a bug, and evidence runs, dispatch
+`android-smoke` with `record=true`:
+
+```sh
+gh workflow run android-smoke --ref <branch> -f record=true -f gates="termtap"
+```
+
+Every selected gate still runs and writes the same results, summary and
+artifacts, but a failed gate is a warning and the job stays green, so it does
+not page anyone. Pull requests and the release call cannot set it.
+
 The goldens are tagged `golden` and excluded from CI: a runner's rasterizer is
 not pixel-stable enough to gate a PR, and `tool/golden.sh` is the same check on
 the machine that made them.
