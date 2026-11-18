@@ -1,20 +1,17 @@
-# Records a row press on the emulator: Settings rows, the Language select and
-# a drag that starts on a row, held and released, light and dark, on release
-# builds of main and of this ref. Evidence on demand: a dispatch, or the
-# `record` label on a PR that touches the press code.
-name: row-press-record
+# Records a UI change on the emulator, on release builds of main and of the
+# dispatched ref: the recorder script gets both APKs and an output directory.
+# Evidence on demand only (workflow_dispatch); it never runs on a PR.
+name: ui-record
 
 on:
   workflow_dispatch:
-  pull_request:
-    types: [opened, synchronize, reopened, labeled]
-    paths:
-      - third_party/prism_ui/lib/press_surface.dart
-      - third_party/prism_ui/lib/press_region.dart
-      - third_party/prism_ui/lib/card_surface.dart
-      - third_party/prism_ui/lib/card.dart
-      - tool/row_press_record.sh
-      - .github/workflows/row-press-record.yml
+    inputs:
+      recorder:
+        description: Recorder script, run as <script> <after.apk> <before.apk> <out>
+        default: tool/row_press_record.sh
+      out:
+        description: Output directory and artifact name
+        default: row-press
 
 permissions:
   contents: read
@@ -29,8 +26,7 @@ env:
 
 jobs:
   record:
-    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'record') }}
-    name: row press on the emulator, before and after
+    name: ${{ inputs.out }} on the emulator, before and after
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -100,12 +96,12 @@ jobs:
               --split-per-abi --dart-define=TAILDECK_DEMO=true
             cp build/app/outputs/flutter-apk/app-x86_64-release.apk "build/$1.apk"
           }
-          build row-press-after
+          build ui-after
           git fetch --no-tags --depth=1 origin main:refs/remotes/origin/main
           git checkout origin/main -- lib third_party
-          build row-press-before
+          build ui-before
           git checkout HEAD -- lib third_party
-          ls -l build/row-press-after.apk build/row-press-before.apk
+          ls -l build/ui-after.apk build/ui-before.apk
       - name: Drop the signing material
         if: always()
         run: rm -f android/app/release.jks android/key.properties
@@ -128,20 +124,22 @@ jobs:
           profile: pixel_6
           disable-animations: false
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          script: bash tool/row_press_record.sh build/row-press-after.apk build/row-press-before.apk row-press
+          script: bash "${{ inputs.recorder }}" build/ui-after.apk build/ui-before.apk "${{ inputs.out }}"
       - name: Job summary
         if: always()
+        env:
+          OUT: ${{ inputs.out }}
         run: |
           {
-            echo '### Row press on the emulator'
+            echo "### $OUT on the emulator"
             echo
             echo '```'
-            cat row-press/summary.txt 2>/dev/null || echo 'no summary'
+            cat "$OUT/summary.txt" 2>/dev/null || echo 'no summary'
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: row-press
-          path: row-press/
+          name: ${{ inputs.out }}
+          path: ${{ inputs.out }}/
           if-no-files-found: warn
