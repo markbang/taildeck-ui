@@ -1,0 +1,146 @@
+# Agent chat evidence on the KVM emulator: a release build with the in-memory
+# herdr (TAILDECK_DEMO) records the body under the header, task strip and
+# composer, the keyboard, overscroll and a light still
+# (tool/agent_chat_record.sh). Clips, stills and the layer log go in the
+# artifact.
+name: agent-chat-record
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - lib/src/pages/agent_chat.dart
+      - lib/src/demo/demo_herdr.dart
+      - tool/agent_chat_record.sh
+      - .github/workflows/agent-chat-record.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agent-chat-record-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GOPROXY: https://proxy.golang.org,direct
+  GOTOOLCHAIN: auto
+
+jobs:
+  record:
+    name: agent chat layers on the emulator
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+      - uses: actions/setup-go@v6
+        with:
+          go-version: 1.27.x
+          cache-dependency-path: native/bridge/go.sum
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.1
+      - name: Pin the Android NDK
+        run: |
+          sdk="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+          ndk="$sdk/ndk/28.2.13676358"
+          if [ ! -d "$ndk" ]; then
+            sdkmanager_bin="$(ls "$sdk"/cmdline-tools/*/bin/sdkmanager | sort -V | tail -1)"
+            yes | "$sdkmanager_bin" --licenses > /dev/null 2>&1 || true
+            "$sdkmanager_bin" --install "ndk;28.2.13676358"
+          fi
+          test -d "$ndk"
+          echo "ANDROID_NDK_HOME=$ndk" >> "$GITHUB_ENV"
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.9
+          channel: stable
+          cache: true
+      - name: Resolve the pinned ghostty rev
+        id: ghostty
+        run: echo "rev=$(sed -n 's/^GHOSTTY_REV=//p' native/term/build-ghostty.sh)" >> "$GITHUB_OUTPUT"
+      - name: Cache libghostty-vt
+        uses: actions/cache@v4
+        with:
+          path: native/term/build/ghostty
+          key: ghostty-vt-${{ steps.ghostty.outputs.rev }}-zig0.17.1-${{ runner.os }}-${{ runner.arch }}-android-x86_64
+          restore-keys: ghostty-vt-${{ steps.ghostty.outputs.rev }}-zig0.17.1-${{ runner.os }}-${{ runner.arch }}
+      - run: flutter pub get
+      - name: Build the native libs (x86_64)
+        run: |
+          set -o pipefail
+          tool/build_native.sh android-x86_64 | tee /tmp/build_native.log
+          tool/build_term.sh android-x86_64 | tee /tmp/build_term.log
+      - name: Configure Android signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          for name in KEYSTORE_BASE64 KEYSTORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
+            if [ -z "${!name}" ]; then
+              echo "::error::$name is empty; the release build needs the keystore (see docs/SIGNING.md)"
+              exit 1
+            fi
+          done
+          umask 077
+          echo "$KEYSTORE_BASE64" | base64 -d > android/app/release.jks
+          {
+            echo "storeFile=release.jks"
+            printf 'storePassword=%s\n' "$KEYSTORE_PASSWORD"
+            printf 'keyAlias=%s\n' "$KEY_ALIAS"
+            printf 'keyPassword=%s\n' "$KEY_PASSWORD"
+          } > android/key.properties
+          chmod 600 android/app/release.jks android/key.properties
+      - name: Build the release APK with the demo herdr (x86_64)
+        # Release mode, as shipped; TAILDECK_DEMO keeps the in-memory herdr the
+        # page is recorded against. This APK is evidence only, never released.
+        run: |
+          flutter build apk --release --target-platform android-x64 \
+            --dart-define=TAILDECK_DEMO=true
+          cp build/app/outputs/flutter-apk/app-release.apk build/agent-chat.apk
+          ls -l build/agent-chat.apk
+      - name: Drop the signing material
+        if: always()
+        run: rm -f android/app/release.jks android/key.properties
+      - name: Install the recording tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          ls -l /dev/kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: false
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: bash tool/agent_chat_record.sh build/agent-chat.apk top.bangwu.taildeck agent-chat
+      - name: Job summary
+        if: always()
+        run: |
+          {
+            echo '### Agent chat on the emulator'
+            echo
+            echo '```'
+            cat agent-chat/summary.txt 2>/dev/null || echo 'no summary'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: agent-chat
+          path: agent-chat/
+          if-no-files-found: warn

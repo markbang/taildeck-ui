@@ -11,6 +11,7 @@ import 'backend.dart';
 import 'connection_memory.dart';
 import 'data.dart';
 import 'demo/demo.dart';
+import 'demo/demo_herdr.dart';
 import 'herdr.dart';
 import 'preview_env.dart';
 import 'glyphs.dart';
@@ -76,6 +77,14 @@ class _TaildeckShellState extends State<TaildeckShell>
   // The terminal page currently open; its session lives on in [_terminals].
   SshTerminal? _attached;
   final bool _sshDemo = previewParam('ssh') == 'demo';
+  // `?chat=<pane>&herdr=demo`: the chat page against a herdr held in memory.
+  final HerdrController? _demoHerdr =
+      demoData && previewParam('herdr') == 'demo'
+      ? demoHerdr(
+          status: previewParam('status') ?? 'working',
+          failModel: previewParam('modelfail') == '1',
+        )
+      : null;
 
   /// Depth of the scene on screen, so the next swap knows its direction.
   int _sceneDepth = 0;
@@ -544,7 +553,7 @@ class _TaildeckShellState extends State<TaildeckShell>
     // herdr connection the page shows its real error state; `?status=` fakes
     // the agent's state so the queue chip can be reviewed on a desk.
     final previewChat = previewParam('chat');
-    final herdr = backend.herdr;
+    final herdr = _demoHerdr ?? backend.herdr;
     if (previewChat != null && herdr != null) {
       return (
         key: 'chat',
