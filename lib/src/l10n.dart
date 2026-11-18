@@ -538,12 +538,6 @@ class AppLocalizations implements UiLocalizations {
       : '${size.toStringAsFixed(1)} pt; pinch the grid to zoom';
   String get terminalFontSmaller => _zh ? '缩小字号' : 'Smaller font';
   String get terminalFontLarger => _zh ? '放大字号' : 'Larger font';
-  String get terminalSwipeArrows => _zh ? '滑动发送方向键' : 'Swipe sends arrows';
-  String get terminalSwipeArrowsOn => _zh
-      ? '单指滑动发方向键，横竖方向自动判断。'
-      : 'One finger sends arrow keys along the axis you swipe.';
-  String get terminalSwipeArrowsOff =>
-      _zh ? '已关闭，上下滑动改为翻看回滚。' : 'Off. A vertical drag scrolls the buffer.';
   String a11ySwitch(String label, bool on) =>
       _zh ? '$label，${on ? '已开启' : '已关闭'}' : '$label, ${on ? 'on' : 'off'}';
   String get terminalKeyRowWithKeyboard =>

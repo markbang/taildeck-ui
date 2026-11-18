@@ -41,7 +41,8 @@ class _Metrics {
 
 /// Paints terminal snapshots on a fixed grid, resizes the emulator to the
 /// available cells, and turns finger gestures on that grid into terminal
-/// input: swipe arrows, word selection with draggable handles, and pinch zoom.
+/// input: drag scrolling, word selection with draggable handles, and pinch
+/// zoom.
 class TerminalCanvas extends StatefulWidget {
   const TerminalCanvas({
     super.key,
@@ -53,9 +54,7 @@ class TerminalCanvas extends StatefulWidget {
     this.cursor = TerminalCursorId.follow,
     this.cursorBlink = true,
     this.padding = const EdgeInsets.fromLTRB(18, 10, 18, 10),
-    this.swipeArrows = true,
     this.liveResize = true,
-    this.onArrow,
     this.onFontSize,
     this.onBytes,
     this.onMouseSent,
@@ -80,17 +79,10 @@ class TerminalCanvas extends StatefulWidget {
 
   final EdgeInsets padding;
 
-  /// One-finger swipe sends arrow keys; off, a vertical drag walks the
-  /// scrollback instead.
-  final bool swipeArrows;
-
   /// False while the keyboard inset animates: the grid is laid out at each
   /// frame of the tween, but the emulator (and the PTY) resize once, at the
   /// end, so a keyboard animation is one resize and not a dozen.
   final bool liveResize;
-
-  /// A swipe crossed one step along its axis.
-  final ValueChanged<TerminalArrow>? onArrow;
 
   /// The font size a pinch asks for, already inside the zoom limits.
   final ValueChanged<double>? onFontSize;
@@ -123,7 +115,6 @@ class _TerminalCanvasState extends State<TerminalCanvas>
     duration: const Duration(milliseconds: 530),
   );
   final _gridKey = GlobalKey();
-  final _swipe = SwipeStepper();
   GridSelection? _selection;
   Offset? _doubleTapAt;
   double _pinchStart = terminalFontDefault;
@@ -207,12 +198,14 @@ class _TerminalCanvasState extends State<TerminalCanvas>
                       onDoubleTap: _onDoubleTap,
                       onLongPressStart: (details) =>
                           _selectWord(details.localPosition),
+                      onLongPressMoveUpdate: (details) =>
+                          _extendSelection(details.localPosition),
                       onScaleStart: (_) {
-                        _swipe.reset();
                         _scrollCarry = 0;
                         _pinching = false;
                       },
                       onScaleUpdate: _onScaleUpdate,
+                      onScaleEnd: (_) => _scrollCarry = 0,
                       child: CustomPaint(
                         painter: _GridPainter(
                           snapshot: snapshot,
@@ -271,29 +264,43 @@ class _TerminalCanvasState extends State<TerminalCanvas>
   /// protocols the emulator knows), as a left press and release at the cell
   /// under the finger. A terminal without mouse reporting gets no bytes.
   void _clickGrid(Offset local) {
-    final snapshot = widget.session.snapshot;
-    if (!snapshot.mouseTracking) return;
-    final width = (snapshot.cols * _metrics.cellWidth).ceil();
-    final height = (snapshot.rows * _metrics.cellHeight).ceil();
-    if (width <= 0 || height <= 0) return;
-    final x = local.dx.clamp(0.0, width - 1.0);
-    final y = local.dy.clamp(0.0, height - 1.0);
+    if (!widget.session.snapshot.mouseTracking) return;
     for (final pressed in const [true, false]) {
-      final bytes = widget.session.term.encodeMouse(
+      _reportMouse(
+        local,
         action: pressed ? 0 : 1,
         button: TerminalMouseButton.left,
         pressed: pressed,
-        x: x,
-        y: y,
-        width: width,
-        height: height,
-        cellWidth: _metrics.cellWidth.ceil(),
-        cellHeight: _metrics.cellHeight.ceil(),
         mods: widget.mouseMods,
       );
-      if (bytes != null && bytes.isNotEmpty) widget.onBytes?.call(bytes);
     }
     widget.onMouseSent?.call();
+  }
+
+  void _reportMouse(
+    Offset local, {
+    required int action,
+    required int button,
+    required bool pressed,
+    int mods = 0,
+  }) {
+    final snapshot = widget.session.snapshot;
+    final width = (snapshot.cols * _metrics.cellWidth).ceil();
+    final height = (snapshot.rows * _metrics.cellHeight).ceil();
+    if (width <= 0 || height <= 0) return;
+    final bytes = widget.session.term.encodeMouse(
+      action: action,
+      button: button,
+      pressed: pressed,
+      x: (local.dx - widget.padding.left).clamp(0.0, width - 1.0),
+      y: (local.dy - widget.padding.top).clamp(0.0, height - 1.0),
+      width: width,
+      height: height,
+      cellWidth: _metrics.cellWidth.ceil(),
+      cellHeight: _metrics.cellHeight.ceil(),
+      mods: mods,
+    );
+    if (bytes != null && bytes.isNotEmpty) widget.onBytes?.call(bytes);
   }
 
   void _onDoubleTap() {
@@ -318,17 +325,30 @@ class _TerminalCanvasState extends State<TerminalCanvas>
       _extendSelection(details.localFocalPoint);
       return;
     }
-    if (widget.swipeArrows) {
-      for (final arrow in _swipe.update(details.focalPointDelta)) {
-        widget.onArrow?.call(arrow);
-      }
-      return;
-    }
+    // A vertical drag never types: the content follows the finger through the
+    // scrollback, or a mouse-aware program gets one wheel report per line.
     _scrollCarry += details.focalPointDelta.dy;
     final lines = (_scrollCarry / _metrics.cellHeight).truncate();
     if (lines == 0) return;
     _scrollCarry -= lines * _metrics.cellHeight;
-    widget.session.scroll(lines);
+    final snapshot = widget.session.snapshot;
+    if (snapshot.mouseTracking) {
+      final button = lines > 0
+          ? TerminalMouseButton.wheelUp
+          : TerminalMouseButton.wheelDown;
+      for (var i = 0; i < lines.abs(); i++) {
+        _reportMouse(
+          details.localFocalPoint,
+          action: 0,
+          button: button,
+          pressed: true,
+        );
+      }
+      return;
+    }
+    // The alternate screen has no scrollback of its own.
+    if (snapshot.alternateScreen) return;
+    widget.session.scroll(-lines);
   }
 
   (int, int) _cellAt(Offset local, TermSnapshot snapshot) {

@@ -484,24 +484,6 @@ class _TerminalPageState extends State<TerminalPage>
     _haptic();
   }
 
-  /// An arrow from a swipe carries the sticky modifiers like a row key.
-  void _onArrow(TerminalArrow arrow) {
-    _sendKey(switch (arrow) {
-      TerminalArrow.up => GhosttyKeys.arrowUp,
-      TerminalArrow.down => GhosttyKeys.arrowDown,
-      TerminalArrow.left => GhosttyKeys.arrowLeft,
-      TerminalArrow.right => GhosttyKeys.arrowRight,
-    });
-  }
-
-  void _sendKey(int code) {
-    final session = _session;
-    if (session == null) return;
-    _deliver(session.term.encodeKey(code, _mods.mask));
-    _consumeMods();
-    _haptic();
-  }
-
   void _consumeMods() {
     if (_mods.consume()) setState(() {});
   }
@@ -737,7 +719,6 @@ class _TerminalPageState extends State<TerminalPage>
                                     : _emulator(
                                         session,
                                         fontSize,
-                                        backend.terminalSwipeArrows,
                                         palette,
                                         family,
                                       ),
@@ -838,7 +819,6 @@ class _TerminalPageState extends State<TerminalPage>
   Widget _emulator(
     TerminalSession session,
     double fontSize,
-    bool swipeArrows,
     TerminalPalette palette,
     String family,
   ) {
@@ -857,9 +837,7 @@ class _TerminalPageState extends State<TerminalPage>
         palette: palette,
         cursor: backend.terminalCursor,
         cursorBlink: backend.terminalCursorBlink,
-        swipeArrows: swipeArrows,
         liveResize: !_inset.isAnimating,
-        onArrow: _onArrow,
         onFontSize: _zoomTo,
         onBytes: _deliver,
         onMouseSent: _consumeMods,
