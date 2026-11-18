@@ -105,7 +105,7 @@ if [ -n "$control_url" ]; then
   gate termtap 1500 bash tool/termtap_record.sh "$profile" "$app" termtap
   gate routing 1800 env CONTROL_URL="$control_url" AUTH_KEY="$auth_key" \
     DERP_PORT="${DERP_PORT:-}" bash tool/routing_android.sh "$profile" "$app" routing
-  if [ -n "$demo" ] && [ -n "$seed_state" ]; then
+  if [ -n "$netready_apk" ] && [ -n "$seed_state" ]; then
     gate netready 2700 env CONTROL_URL="$control_url" SEED_STATE="$seed_state" \
       DERP_PORT="${DERP_PORT:-}" bash tool/netready_android.sh "$netready_apk" "$app" netready
   else
