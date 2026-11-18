@@ -15,6 +15,7 @@ here=$(cd "$(dirname "$0")" && pwd)
 . "$here/android_gate.sh"
 mkdir -p "$out"
 : > "$out/logcat.txt"
+: > "$out/launch-logcat.txt"
 summary="$out/summary.txt"
 : > "$summary"
 failures=0
@@ -96,8 +97,14 @@ launch() { # <query>
     adb shell "am start -W -a android.intent.action.VIEW -d 'taildeck://preview/?$1' '$app'" > /dev/null 2>&1 || true
     shown=$SECONDS
     if wait_home "$app" "$out" "$here" '' 45 chat && gate_survived_focus "$app" "$shown" "$summary"; then
+      # The launch window is kept apart: the emulator's cold-start focus ANR
+      # lands there and is retried above, so only a crash in it counts.
+      adb logcat -d >> "$out/launch-logcat.txt" 2> /dev/null || true
+      adb logcat -c > /dev/null 2>&1 || true
       return 0
     fi
+    adb logcat -d >> "$out/launch-logcat.txt" 2> /dev/null || true
+    adb logcat -c > /dev/null 2>&1 || true
     note "launch attempt $attempt did not reach the chat"
   done
   return 1
@@ -228,7 +235,11 @@ for flow in ${AGENT_FLOWS:-markdown}; do
 done
 
 adb logcat -d >> "$out/logcat.txt" 2> /dev/null || true
-if grep -E "FATAL EXCEPTION|ANR in $app" "$out/logcat.txt" > "$out/crashes.txt"; then
+{
+  grep -E "FATAL EXCEPTION|ANR in $app" "$out/logcat.txt"
+  grep "FATAL EXCEPTION" "$out/launch-logcat.txt"
+} > "$out/crashes.txt" || true
+if [ -s "$out/crashes.txt" ]; then
   note "FAIL crash or ANR (crashes.txt)"
   failures=$((failures + 1))
 else
