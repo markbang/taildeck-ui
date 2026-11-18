@@ -64,13 +64,13 @@ on:
         type: boolean
         default: true
       build:
-        description: Build a release-signed x86_64 APK from this ref
+        description: Build a release-signed x86_64 APK from this ref (ignored when apk-url or apk-artifact is set)
         type: boolean
-        default: false
+        default: true
       apk-url:
         description: APK to download (when no artifact is given)
         type: string
-        default: https://github.com/markbang/taildeck-ui/releases/download/v0.2.8/taildeck-android-x64-v0.2.8.apk
+        default: ''
       apk-artifact:
         description: Artifact holding the x86_64 APK (skips apk-url)
         type: string
@@ -131,8 +131,14 @@ jobs:
               ;;
           esac
           echo "GATES=$gates" >> "$GITHUB_ENV"
+          build=${{ inputs.build }}
+          # A dispatch builds by default; an APK it names explicitly wins.
+          if [ "${{ github.workflow }}" = android-smoke ] &&
+            { [ -n "${{ inputs.apk-artifact }}" ] || [ -n "${{ inputs.apk-url }}" ]; }; then
+            build=false
+          fi
           source=false
-          if [ "$full" = true ] || [ "${{ inputs.build }}" = true ]; then source=true; fi
+          if [ "$full" = true ] || [ "$build" = true ]; then source=true; fi
           if [ -z "${{ inputs.apk-artifact }}" ] && [ -z "${{ inputs.apk-url }}" ]; then source=true; fi
           # A gate that was not selected must not cost an APK build or a Go
           # control plane: the pull-request set needs two APKs, not three, and
@@ -160,7 +166,7 @@ jobs:
             # Ship mode smokes the APK it was given: nothing is built here.
             profile=false demo=false netready=false
           fi
-          for pair in full=$full source=$source profile=$profile demo=$demo \
+          for pair in full=$full build=$build source=$source profile=$profile demo=$demo \
             netready=$netready control=$control; do
             echo "${pair%%=*}=${pair#*=}" >> "$GITHUB_OUTPUT"
             echo "  ${pair%%=*}=${pair#*=}"
@@ -285,16 +291,16 @@ jobs:
         run: rm -f android/app/release.jks android/key.properties
 
       # A build=true run smokes the release APK it just built: the dispatch
-      # default apk-url must not overwrite build/smoke.apk with an old release.
+      # apk-url must not overwrite build/smoke.apk with an old release.
       - name: Download the APK
-        if: ${{ steps.mode.outputs.full != 'true' && !inputs.build && (inputs.apk-artifact || '') == '' && (inputs.apk-url || '') != '' }}
+        if: ${{ steps.mode.outputs.full != 'true' && steps.mode.outputs.build != 'true' && (inputs.apk-artifact || '') == '' && (inputs.apk-url || '') != '' }}
         run: |
           mkdir -p build
           curl -fsSL -o build/smoke.apk "${{ inputs.apk-url }}"
           "$(ls -d "${ANDROID_SDK_ROOT:-$ANDROID_HOME}"/build-tools/*/ | sort -V | tail -1)/aapt2" \
             dump badging build/smoke.apk | head -1
       - name: Download the APK artifact
-        if: ${{ steps.mode.outputs.full != 'true' && !inputs.build && inputs.apk-artifact }}
+        if: ${{ steps.mode.outputs.full != 'true' && steps.mode.outputs.build != 'true' && inputs.apk-artifact }}
         uses: actions/download-artifact@v4
         with:
           name: ${{ inputs.apk-artifact }}
