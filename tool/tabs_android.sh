@@ -221,7 +221,7 @@ settle() { # <index> <tag> <target> <base-count>
   fi
   [ -z "$line" ] || note "switch $1 arrival: $line"
   for attempt in 1 2 3 4 5 6 7 8; do
-    ui toptexts "$ymax" > "$out/headers-$tag.txt" 2>> "$out/uiautomator.txt" || true
+    ui heads "$ymax" > "$out/headers-$tag.txt" 2>> "$out/uiautomator.txt" || true
     settled=$(headers "$out/headers-$tag.txt")
     count=$(header_count "$settled")
     [ "$count" -lt 2 ] || break
