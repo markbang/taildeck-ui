@@ -134,6 +134,14 @@ else
   skip netready "no test control plane"
 fi
 
+# The emulator can die under a gate; keep the host's memory and kernel log.
+pgrep -f qemu-system > /dev/null || note "emulator: the qemu process is gone"
+{
+  free -m
+  ps -eo pid,rss,etime,args --sort=-rss | head -8 | cut -c1-160
+  sudo dmesg -T 2> /dev/null | tail -30
+} > "$out/host.txt" 2>&1
+
 note "ran $total gates: $((total - failed)) passed, $failed failed, $skipped skipped"
 if [ "$record" = true ]; then
   note "record mode: $failed gate(s) failed, see summary"

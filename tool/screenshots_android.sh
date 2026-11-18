@@ -24,6 +24,11 @@ for scale in window_animation_scale transition_animation_scale animator_duration
 done
 sleep 20
 adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS > /dev/null 2>&1 || true
+timeout 590 adb logcat -v threadtime > "$out/logcat.txt" 2>&1 &
+
+# The CI emulator can freeze on a page's first frames and lose qemu a minute
+# later; every adb call after that would block until the gate's timeout.
+alive() { timeout 15 adb shell true > /dev/null 2>&1; }
 
 ui() {
   local attempt
@@ -37,7 +42,7 @@ ui() {
 }
 
 shot() { # <name>
-  adb exec-out screencap -p > "$out/$1.png" 2> /dev/null || rm -f "$out/$1.png"
+  timeout 30 adb exec-out screencap -p > "$out/$1.png" 2> /dev/null || rm -f "$out/$1.png"
   if [ -s "$out/$1.png" ]; then
     note "$1: $(stat -c%s "$out/$1.png") bytes"
   else
@@ -92,11 +97,15 @@ record() { # <name> <seconds> <shell function>
 launch() { # [url]
   local url=${1:-} attempt resumed shown anrs=0
   for attempt in 1 2 3; do
+    if ! alive; then
+      note "launch failed: the emulator stopped answering adb"
+      exit 1
+    fi
     adb shell am force-stop "$app" > /dev/null 2>&1 || true
     sleep 1
     adb logcat -c > /dev/null 2>&1 || true
     if [ -n "$url" ]; then
-      adb shell "am start -W -a android.intent.action.VIEW -d '$url' '$app'" > /dev/null 2>&1 || true
+      timeout 60 adb shell "am start -W -a android.intent.action.VIEW -d '$url' '$app'" > /dev/null 2>&1 || true
     else
       adb shell monkey -p "$app" -c android.intent.category.LAUNCHER 1 > /dev/null 2>&1 || true
     fi
