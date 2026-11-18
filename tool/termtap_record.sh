@@ -530,7 +530,7 @@ drag_vim() {
 #!/bin/sh
 seq 1 400 | sed 's/^/vim line /' > /tmp/dragvim.txt
 rm -f /tmp/dragvim-top /tmp/dragvim-arrow
-exec vim -u NONE -N -c 'set mouse=a' -c 'set laststatus=2' \
+exec vim -u NONE -N -c 'set mouse=a ttymouse=sgr' -c 'set laststatus=2' \
   -c 'nnoremap <Up> :call writefile(["up"], "/tmp/dragvim-arrow", "a")<CR>' \
   -c 'nnoremap <Down> :call writefile(["down"], "/tmp/dragvim-arrow", "a")<CR>' \
   -c 'call timer_start(500, {-> writefile([line("w0")], "/tmp/dragvim-top")}, {"repeat": -1})' \
