@@ -12,13 +12,17 @@ here=$(cd "$(dirname "$0")" && pwd)
 # shellcheck source=tool/android_gate.sh
 . "$here/android_gate.sh"
 mkdir -p "$out"
+rm -f "$out/timing.txt"
 
 # A frozen app is the interesting failure: keep the ANR trace with the log.
 dump_anr() {
   adb logcat -d > "$out/logcat-fail.txt" 2>&1 || true
+  cat "$out/timing.txt" >> "$out/summary.txt" 2>/dev/null || true
   adb root > /dev/null 2>&1 || true
   sleep 2
-  adb shell 'cat /data/anr/*' > "$out/anr.txt" 2>&1 || true
+  # Only the newest trace: the AVD snapshot carries an old launcher ANR.
+  # shellcheck disable=SC2016 # expands on the device
+  adb shell 'cat "$(ls -t /data/anr/anr_* | head -n 1)"' > "$out/anr.txt" 2>&1 || true
   adb shell dumpsys activity top > "$out/activity-top.txt" 2>&1 || true
 }
 
@@ -76,19 +80,50 @@ start() { # $1: preview query
     || fail "the shell did not settle for $1; see launch.txt"
   if ! gate_survived_focus "$app" "$shown_at" "$out/summary.txt"; then
     launch_anr=1
+    anrs=$((anrs + 1))
+    adb logcat -d > "$out/logcat-anr-$anrs.txt" 2>&1 || true
+    if adb logcat -d 2>/dev/null | python3 "$here/compositor_stall.py" "$app" | tee -a "$out/summary.txt"; then
+      launch_stall=1
+    fi
     return 1
   fi
+  timing "$1"
 }
 
-launch() { # $1: preview query; one retry, an emulator can stall a cold start
-  launch_anr=0
-  if ! start "$1"; then
-    echo "retrying $1" | tee -a "$out/summary.txt"
+# The launch's cost as Android and the app each saw it.
+timing() { # $1: preview query
+  local log
+  log=$(adb logcat -d 2>/dev/null)
+  echo "  $1: $(grep -m1 -oE 'Displayed [^ ]+ for user 0: \+[0-9a-z]+' <<< "$log" | sed 's/.*: //'), \
+$(grep -m1 -oE 'taildeck first frame: .*' <<< "$log" | sed 's/taildeck //'), \
+$(grep -m1 -oE 'taildeck frames: .*' <<< "$log" | sed 's/taildeck //')" >> "$out/timing.txt"
+}
+
+# One retry for any failed cold start. An ANR on the retry fails the gate unless
+# both froze with the rest of the screen (tool/compositor_stall.py): that is the
+# emulator's compositor, which a phone does not have, so it earns a third start,
+# twice per run at most.
+anrs=0
+stall_retries=0
+launch() { # $1: preview query
+  local attempt stalls=0
+  for attempt in 1 2 3; do
     launch_anr=0
+    launch_stall=0
     start "$1" && return 0
-    [ "$launch_anr" = 0 ] || fail "$1: the app stopped answering input on two cold starts in a row"
-    fail "am start or first frame failed for $1, see launch.txt"
-  fi
+    stalls=$((stalls + launch_stall))
+    if [ "$attempt" -eq 1 ]; then
+      echo "retrying $1" | tee -a "$out/summary.txt"
+      continue
+    fi
+    [ "$launch_anr" = 1 ] || fail "am start or first frame failed for $1, see launch.txt"
+    if [ "$attempt" -eq 2 ] && [ "$stalls" -eq 2 ] && [ "$stall_retries" -lt 2 ]; then
+      stall_retries=$((stall_retries + 1))
+      echo "retrying $1 a third time: both ANRs were compositor stalls" | tee -a "$out/summary.txt"
+      continue
+    fi
+    fail "$1: the app stopped answering input on $attempt cold starts in a row"
+  done
 }
 
 back() { # $1: seconds to settle (default 1.2)
@@ -226,4 +261,5 @@ shot exit-left
 pass "exit asked once, then left"
 
 adb logcat -d > "$out/logcat.txt" 2>&1 || true
+cat "$out/timing.txt" >> "$out/summary.txt" 2>/dev/null || true
 echo "all back cases passed" | tee -a "$out/summary.txt"

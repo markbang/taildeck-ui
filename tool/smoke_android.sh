@@ -60,6 +60,7 @@ focus=$(adb shell dumpsys window 2>/dev/null | grep -m1 mCurrentFocus | tr -d '\
   grep -m1 -E '^TotalTime' "$out/launch.txt" | tr -d '\r' || true
   grep -m1 -E '^WaitTime' "$out/launch.txt" | tr -d '\r' || true
   grep -m1 "Displayed $app/" "$out/logcat.txt" | tr -d '\r' || true
+  grep -oE 'taildeck (first frame|frames): .*' "$out/logcat.txt" | tr -d '\r' || true
 } | tee -a "$out/summary.txt"
 
 [ -n "$pid" ] || fail "process $app is gone; the app died within ${wait_s}s of launch"
@@ -105,3 +106,22 @@ adb exec-out screencap -p > "$out/appinfo-late.png" || true
 adb shell input keyevent KEYCODE_APP_SWITCH > /dev/null 2>&1 || true
 sleep 3
 adb exec-out screencap -p > "$out/recents.png" || true
+
+# For the record, never a failure: the key sheet's cold start on this build as
+# Android (Displayed) and the app (its first-frame log) each measured it.
+for run in 1 2; do
+  adb shell am force-stop "$app" > /dev/null 2>&1 || true
+  sleep 3
+  adb logcat -c > /dev/null 2>&1 || true
+  adb shell "am start -W -a android.intent.action.VIEW -d 'taildeck://preview/?preview=1&sheet=key' -n $activity" \
+    > "$out/launch-key.txt" 2>&1 || true
+  sleep 12
+  log=$(adb logcat -d 2>/dev/null | tr -d '\r' || true)
+  {
+    echo "sheet=key cold start $run:"
+    grep -m1 -oE 'Displayed [^ ]+ for user 0: \+[0-9a-z]+' <<< "$log" || echo "  no Displayed line"
+    grep -oE 'taildeck (first frame|frames|preview: sheet=key).*' <<< "$log" || true
+    grep -m1 -oE "ANR in .*$app" <<< "$log" || true
+  } | sed 's/^/  /' | tee -a "$out/summary.txt"
+done
+adb shell am force-stop "$app" > /dev/null 2>&1 || true

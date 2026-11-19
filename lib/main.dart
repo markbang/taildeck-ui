@@ -5,10 +5,13 @@ import 'package:flutter/widgets.dart';
 import 'src/app.dart';
 import 'src/app_info.dart';
 import 'src/diagnostics.dart';
+import 'src/frame_log.dart';
 import 'src/preview_env.dart';
 
 Future<void> main() async {
+  final sinceMain = Stopwatch()..start();
   WidgetsFlutterBinding.ensureInitialized();
+  logStartupFrames(sinceMain);
   installErrorHandlers();
   await readLaunchQuery();
   // `?slow=6` stretches every animation, so a recording can see each frame of
