@@ -32,6 +32,7 @@ dump_anr() {
 }
 
 fail() {
+  stop_watch
   echo "FAIL: $*" | tee -a "$out/summary.txt"
   dump_anr
   exit 1
@@ -40,6 +41,9 @@ fail() {
 pass() { echo "ok: $*" | tee -a "$out/summary.txt"; }
 step() { echo "== $*" | tee -a "$out/summary.txt"; }
 
+adb wait-for-device
+# Root reads the app's main thread in /proc and the ANR traces.
+adb root > /dev/null 2>&1 || true
 adb wait-for-device
 if ! adb shell pm path "$app" > /dev/null 2>&1; then
   adb install -g "$apk" > "$out/install.txt" 2>&1 || fail "adb install failed, see install.txt"
@@ -55,11 +59,44 @@ esac
 
 shot() { adb exec-out screencap -p > "$out/$1.png" || true; }
 
+# The app's main thread once a second through the focus window: uptime, its
+# stat (state, CPU ticks), wait channel and syscall, until the ANR or the end.
+# compositor_stall.py reads it when the ANR report has no CPU list from before.
+watch_main() { # <pid> <samples file>
+  local pid=$1 file=$2 _i
+  : > "$file"
+  for _i in $(seq 1 $(("${GATE_FOCUS_WINDOW:-9}" + 3))); do
+    {
+      echo "--- sample"
+      adb shell "cat /proc/uptime /proc/$pid/task/$pid/stat; cat /proc/$pid/task/$pid/wchan; echo; cat /proc/$pid/task/$pid/syscall" 2> /dev/null | tr -d '\r'
+    } >> "$file"
+    if adb logcat -d 2> /dev/null | grep -q "ANR in .*$app"; then
+      echo "--- anr" >> "$file"
+      return 0
+    fi
+    sleep 1
+  done
+}
+
+watcher=
+stop_watch() {
+  [ -n "$watcher" ] || return 0
+  kill "$watcher" 2> /dev/null || true
+  wait "$watcher" 2> /dev/null || true
+  watcher=
+}
+
 # Waits for the first drawn frame, then a moment for the page after it.
 wait_first_frame() {
+  local pid
   for _ in $(seq 1 60); do
     if adb logcat -d 2>/dev/null | grep -q "Displayed $app/"; then
       shown_at=$SECONDS
+      pid=$(adb shell pidof "$app" 2> /dev/null | tr -d '\r' || true)
+      if [ -n "$pid" ]; then
+        watch_main "${pid%% *}" "$out/main-samples.txt" &
+        watcher=$!
+      fi
       sleep 4
       return 0
     fi
@@ -93,6 +130,7 @@ start() { # $1: preview query
     anr_verdict
     return 1
   fi
+  stop_watch
   timing "$1"
 }
 
@@ -110,14 +148,24 @@ anr_after_wait() {
 # Every ANR of a launch, whichever wait met it: the report and its CPU list
 # land before the kill, then tool/compositor_stall.py judges the log.
 anr_verdict() {
+  local n
   launch_anr=1
   anrs=$((anrs + 1))
+  n=$anrs
+  if [ -n "$watcher" ]; then
+    wait "$watcher" 2> /dev/null || true
+    watcher=
+  fi
+  mv "$out/main-samples.txt" "$out/main-samples-$n.txt" 2> /dev/null || : > "$out/main-samples-$n.txt"
   for _ in $(seq 1 20); do
     adb shell pidof "$app" > /dev/null 2>&1 || break
     sleep 1
   done
-  adb logcat -d > "$out/logcat-anr-$anrs.txt" 2>&1 || true
-  if python3 "$here/compositor_stall.py" "$app" < "$out/logcat-anr-$anrs.txt" | tee -a "$out/summary.txt"; then
+  adb logcat -d > "$out/logcat-anr-$n.txt" 2>&1 || true
+  # shellcheck disable=SC2016 # expands on the device
+  adb shell 'cat "$(ls -t /data/anr/anr_* | head -n 1)"' > "$out/anr-trace-$n.txt" 2>&1 || true
+  if python3 "$here/compositor_stall.py" "$app" "$out/main-samples-$n.txt" "$out/anr-trace-$n.txt" \
+    < "$out/logcat-anr-$n.txt" | tee -a "$out/summary.txt"; then
     launch_stall=1
   fi
 }

@@ -50,7 +50,10 @@ start once; a second ANR fails it unless `tool/compositor_stall.py` finds, for
 both ANRs, another process frozen for 3 s or more across the app's and the app
 absent from the ANR report's CPU top. That earns a third start, twice per run
 at most, written to the summary with both processes' numbers; a third stall
-fails as "emulator compositor stall". Each launch's `Displayed` time and the app's own
+fails as "emulator compositor stall". When the ANR report has no CPU list from
+before the ANR, the gate's own samples of the app's main thread stand in: under
+10% CPU through the focus wait and no wait on a file, or on a futex outside
+hwui, EGL or binder in the ANR trace; unreadable samples count as app-only. Each launch's `Displayed` time and the app's own
 `taildeck first frame` / `taildeck frames` lines go to `smoke-back/timing.txt`.
 
 The goldens are tagged `golden` and excluded from CI: a runner's rasterizer is
