@@ -75,6 +75,53 @@ record_only() { # <label>
   return 1
 }
 
+# The CI emulator can freeze guest-wide on a page's first frames and lose
+# qemu a minute later, on any app version. A gate that fails with the
+# emulator gone is run once more on a fresh boot; the loss stays in the
+# results and as a warning, and only the retry's outcome counts.
+emulator_alive() {
+  pgrep -f qemu-system > /dev/null && timeout 15 adb shell true > /dev/null 2>&1
+}
+
+reboot_emulator() { # <label>
+  local sdk=${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}} waited=0
+  {
+    free -m
+    sudo dmesg -T 2> /dev/null | tail -30
+  } > "$out/host-lost-$1.txt" 2>&1
+  pkill -9 -f qemu-system 2> /dev/null || true
+  adb kill-server > /dev/null 2>&1 || true
+  sleep 3
+  # shellcheck disable=SC2086 # the options are a word list
+  nohup "$sdk/emulator/emulator" -port 5554 -avd "${AVD_NAME:-taildeck-api34}" \
+    ${EMULATOR_OPTIONS:--no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none} \
+    -no-snapshot-save > "$out/emulator-retry-$1.log" 2>&1 &
+  timeout 300 adb wait-for-device || return 1
+  until [ "$(adb shell getprop sys.boot_completed 2> /dev/null | tr -d '\r')" = 1 ]; do
+    [ "$waited" -ge 300 ] && return 1
+    sleep 2
+    waited=$((waited + 2))
+  done
+  for scale in window_animation_scale transition_animation_scale animator_duration_scale; do
+    adb shell settings put global "$scale" 0 > /dev/null 2>&1 || true
+  done
+  adb shell input keyevent 82 > /dev/null 2>&1 || true
+}
+
+run_gate() { # <label> <timeout-seconds> <command...>
+  local label=$1 limit=$2 status
+  shift 2
+  echo "::group::gate $label"
+  echo "[$label] $* (timeout ${limit}s)"
+  timeout --kill-after=30 "$limit" "$@"
+  status=$?
+  echo "::endgroup::"
+  return "$status"
+}
+
+# Set by gate(): the last gate lost its emulator (and was retried).
+gate_lost=false
+
 gate() { # <label> <timeout-seconds> <command...>
   local label=$1 limit=$2 start secs status level=error
   shift 2
@@ -87,12 +134,24 @@ gate() { # <label> <timeout-seconds> <command...>
   fi
   start=$(date +%s)
   total=$((total + 1))
-  echo "::group::gate $label"
-  echo "[$label] $* (timeout ${limit}s)"
-  timeout --kill-after=30 "$limit" "$@"
+  gate_lost=false
+  run_gate "$label" "$limit" "$@"
   status=$?
+  if [ "$status" -ne 0 ] && ! emulator_alive; then
+    gate_lost=true
+    note "LOST $label: the emulator died under the gate after $(( $(date +%s) - start ))s; retrying once on a new boot"
+    echo "::warning title=android gate $label::emulator lost (qemu died under the gate); retried once on a new boot"
+    # The gate's out dir is its last argument; keep the lost attempt beside it.
+    [ -d "${*: -1}" ] && rm -rf "${*: -1}-lost" && mv "${*: -1}" "${*: -1}-lost"
+    if reboot_emulator "$label"; then
+      start=$(date +%s)
+      run_gate "$label" "$limit" "$@"
+      status=$?
+    else
+      note "LOST $label: the new emulator did not boot"
+    fi
+  fi
   secs=$(( $(date +%s) - start ))
-  echo "::endgroup::"
   if [ "$status" -eq 0 ]; then
     note "ok $label: ${secs}s"
     return 0
@@ -119,6 +178,7 @@ gate splash 600 bash tool/splash_shots.sh "$apk" "$app" smoke-splash
 gate agents 600 bash tool/agents_android.sh "$apk" "$app" smoke-agents
 gate stills 600 bash tool/screenshots_android.sh "$apk" "$app" smoke-shots
 stills_status=$?
+stills_lost=$gate_lost
 
 # One machine-readable line for the release: "stills: ok 13/13", "stills: lost
 # emulator 4/13", "stills: failed 9/13" or "stills: skipped".
@@ -130,8 +190,12 @@ stills_outcome() {
   missing=$(grep -cE ': no (screenshot|recording)$' smoke-shots/summary.txt 2> /dev/null)
   if [ "$stills_status" -eq 0 ] && [ "${missing:-0}" -eq 0 ] && [ "${got:-0}" -ge "$want" ] &&
     grep -qx 'done' smoke-shots/summary.txt 2> /dev/null; then
-    echo "stills: ok $got/$want"
-  elif ! pgrep -f qemu-system > /dev/null || ! timeout 15 adb shell true > /dev/null 2>&1 ||
+    if [ "$stills_lost" = true ]; then
+      echo "stills: ok $got/$want (retried after a lost emulator)"
+    else
+      echo "stills: ok $got/$want"
+    fi
+  elif [ "$stills_lost" = true ] || ! pgrep -f qemu-system > /dev/null || ! timeout 15 adb shell true > /dev/null 2>&1 ||
     grep -q 'stopped answering adb' smoke-shots/summary.txt 2> /dev/null; then
     echo "stills: lost emulator ${got:-0}/$want"
   else
