@@ -460,17 +460,18 @@ class _TaildeckShellState extends State<TaildeckShell>
     final backend = BackendScope.of(context);
     if (!_previewShell && backend.available && !backend.signedIn) return;
     _previewSheetOpened = true;
-    // The preview sheets need a node: the open page, the tailnet's own, or the
-    // demo one in a build that still carries it.
+    // The ssh and service sheets need a node: the open page, the tailnet's own,
+    // or the demo one in a build that still carries it. The key sheet needs
+    // none, so a release build opens it too.
     final node = _node ?? backend.self ?? (demoData ? demoSelfNode : null);
-    if (node == null) return;
+    if (node == null && which != 'key') return;
     final l10n = AppLocalizations.of(context);
     debugPrint('taildeck preview: sheet=$which');
     switch (which) {
       case 'ssh':
-        await showSshSheet(context, node);
+        await showSshSheet(context, node!);
       case 'service':
-        await showServiceSheet(context, nodes: [node]);
+        await showServiceSheet(context, nodes: [node!]);
       case 'agent':
         await showNewAgentSheet(context);
       case 'key':
