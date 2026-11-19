@@ -1,0 +1,97 @@
+11-19 02:03:00.160   525  2255 I ActivityTaskManager: START u0 {act=android.intent.action.VIEW dat=taildeck://preview/... flg=0x10000000 cmp=top.bangwu.taildeck/top.bangwu.taildeck_ui.MainActivity} with LAUNCH_SINGLE_TOP from uid 0 (BAL_ALLOW_ALLOWLISTED_UID) result code=0
+11-19 02:03:00.169   525   555 I ActivityManager: Start proc 26880:top.bangwu.taildeck/u0a209 for next-top-activity {top.bangwu.taildeck/top.bangwu.taildeck_ui.MainActivity}
+11-19 02:03:00.277   838   881 W Looper  : Slow delivery took 42ms wmshell.anim h=android.view.Choreographer$FrameHandler c=android.view.Choreographer$FrameDisplayEventReceiver@a80cbf9 m=0
+11-19 02:03:00.509   838   881 W Looper  : Slow delivery took 56ms wmshell.anim h=android.view.Choreographer$FrameHandler c=android.view.Choreographer$FrameDisplayEventReceiver@a80cbf9 m=0
+11-19 02:03:00.747   525  2034 I ActivityManager: Flag disabled. Ignoring finishAttachApplication from uid: 10209. pid: 26880
+11-19 02:03:00.873 26880 26904 I flutter : [IMPORTANT:flutter/shell/platform/android/android_context_gl_impeller.cc(104)] Using the Impeller rendering backend (OpenGLES).
+11-19 02:03:00.901 26880 26910 I flutter : The Dart VM service is listening on http://127.0.0.1:45887/WzzRnEMTFaI=/
+11-19 02:03:02.004 26880 26880 I flutter : taildeck route: shell
+11-19 02:03:02.446 26880 26880 I flutter : taildeck preview: node=devbox
+11-19 02:03:02.448 26880 26880 I flutter : taildeck preview: sheet=service
+11-19 02:03:02.464 26880 26880 I Choreographer: Skipped 45 frames!  The application may be doing too much work on its main thread.
+11-19 02:03:04.001 26880 26880 I flutter : taildeck first frame: 2873 ms after main
+11-19 02:03:05.011   525   544 I ActivityTaskManager: Displayed top.bangwu.taildeck/top.bangwu.taildeck_ui.MainActivity for user 0: +4s859ms
+11-19 02:03:06.952   525   616 D ActivityManager: freezing 6236 com.google.android.gms
+11-19 02:03:07.036   525   616 D ActivityManager: freezing 22455 com.google.process.gservices
+11-19 02:03:09.591   838   891 I Choreographer: Skipped 272 frames!  The application may be doing too much work on its main thread.
+11-19 02:03:09.684   838  1687 I OpenGLRenderer: Davey! duration=4652ms; Flags=0, FrameTimelineVsyncId=612662, IntendedVsync=2933867418530, Vsync=2933867418530, InputEventId=0, HandleInputStart=2933867715366, AnimationStart=2933867715907, PerformTraversalsStart=2933867778169, DrawStart=2933868779104, FrameDeadline=2933884085196, FrameInterval=2933867711190, FrameStartTime=16666666, SyncQueued=2933869260538, SyncStart=2933869338674, IssueDrawCommandsStart=2933869494055, SwapBuffers=2938426109487, FrameCompleted=2938519833815, DequeueBufferDuration=3435, QueueBufferDuration=525399, GpuCompleted=2938519833815, SwapBuffersCompleted=2938441474281, DisplayPresentTime=0, CommandSubmissionCompleted=2938426109487, 
+11-19 02:03:10.115   525   627 W InputDispatcher: Window 14df3c4 top.bangwu.taildeck/top.bangwu.taildeck_ui.MainActivity (server) is unresponsive: 14df3c4 top.bangwu.taildeck/top.bangwu.taildeck_ui.MainActivity (server) is not responding. Waited 5037ms for FocusEvent(hasFocus=true)
+11-19 02:03:10.115   525   627 W InputDispatcher: Canceling events for 14df3c4 top.bangwu.taildeck/top.bangwu.taildeck_ui.MainActivity (server) because it is unresponsive
+11-19 02:03:10.116   525   627 I WindowManager: ANR in Window{14df3c4 u0 top.bangwu.taildeck/top.bangwu.taildeck_ui.MainActivity}. Reason:Input dispatching timed out (14df3c4 top.bangwu.taildeck/top.bangwu.taildeck_ui.MainActivity (server) is not responding. Waited 5037ms for FocusEvent(hasFocus=true))
+11-19 02:03:10.148   525 26935 D ActivityManager: created ANR temporary file:/data/anr/temp_anr_6275359016026710276.txt
+11-19 02:03:10.148   525 26935 I ActivityManager: Collecting stacks for pid 26880 into temporary file temp_anr_6275359016026710276.txt
+11-19 02:03:10.172   525 26936 I ActivityManager: dumpStackTraces pids={852=true, 1058=true, 1577=true, 1623=true, 1645=true, 1669=true, 1762=true, 2566=true, 3501=true, 3637=true, 5158=true, 6206=true, 6236=true, 11560=true, 12782=true, 21318=true, 21593=true, 22455=true, 22501=true, 22516=true, 22543=true, 23255=true, 23314=true, 24747=true, 24833=true, 24873=true}
+11-19 02:03:10.173   525 26936 I ActivityManager: Dumping to /data/anr/anr_2026-11-19-02-03-10-172
+11-19 02:03:10.264 26880 26880 I flutter : taildeck frames: 1 in 8 s, first build 0 ms raster 926 ms, worst build 0 ms, worst raster 926 ms
+11-19 02:03:10.265   525   627 I InputDispatcher: 14df3c4 top.bangwu.taildeck/top.bangwu.taildeck_ui.MainActivity (server) spent 5247ms processing FocusEvent(hasFocus=true)
+11-19 02:03:10.265 26880 26880 I Choreographer: Skipped 374 frames!  The application may be doing too much work on its main thread.
+11-19 02:03:10.424   525 26937 I ActivityManager: Skipping next CPU consuming process, not a java proc: 26880
+11-19 02:03:10.425   525 26937 I ActivityManager: Skipping next CPU consuming process, not a java proc: 388
+11-19 02:03:10.425   525 26937 I ActivityManager: Skipping next CPU consuming process, not a java proc: 525
+11-19 02:03:10.425   525 26937 I ActivityManager: Skipping next CPU consuming process, not a java proc: 400
+11-19 02:03:10.425   525 26937 I ActivityManager: Skipping next CPU consuming process, not a java proc: 1560
+11-19 02:03:10.425   525 26937 I ActivityManager: Skipping next CPU consuming process, not a java proc: 22058
+11-19 02:03:10.640   525 26936 I ActivityManager: Collecting stacks for pid 525
+11-19 02:03:10.902   525 26936 I ActivityManager: Collecting stacks for pid 1560
+11-19 02:03:11.065   525 26936 I ActivityManager: Collecting stacks for pid 1688
+11-19 02:03:11.109   525 26936 I ActivityManager: Collecting stacks for pid 1055
+11-19 02:03:11.151   525 26936 I ActivityManager: Collecting stacks for pid 1042
+11-19 02:03:11.169   525 26936 I ActivityManager: Collecting stacks for pid 1005
+11-19 02:03:11.191   525 26936 I ActivityManager: Collecting stacks for pid 838
+11-19 02:03:11.266   525 26936 I ActivityManager: dumpStackTraces nativepids=null
+11-19 02:03:11.266   525 26936 I ActivityManager: dumpStackTraces extraPids=[]
+11-19 02:03:11.266   525 26936 I ActivityManager: Done dumping
+11-19 02:03:11.267   525 26936 E ActivityManager: ANR in top.bangwu.taildeck (top.bangwu.taildeck/top.bangwu.taildeck_ui.MainActivity)
+11-19 02:03:11.267   525 26936 E ActivityManager: PID: 26880
+11-19 02:03:11.267   525 26936 E ActivityManager: Reason: Input dispatching timed out (14df3c4 top.bangwu.taildeck/top.bangwu.taildeck_ui.MainActivity (server) is not responding. Waited 5037ms for FocusEvent(hasFocus=true))
+11-19 02:03:11.267   525 26936 E ActivityManager: Parent: top.bangwu.taildeck/top.bangwu.taildeck_ui.MainActivity
+11-19 02:03:11.267   525 26936 E ActivityManager: ErrorId: 3c44d6e4-4124-4ddc-8321-d06c4259b884
+11-19 02:03:11.267   525 26936 E ActivityManager: Frozen: false
+11-19 02:03:11.267   525 26936 E ActivityManager: Load: 2.78 / 4.29 / 4.95
+11-19 02:03:11.267   525 26936 E ActivityManager: ----- Output from /proc/pressure/memory -----
+11-19 02:03:11.267   525 26936 E ActivityManager: some avg10=0.00 avg60=0.34 avg300=1.08 total=41752282
+11-19 02:03:11.267   525 26936 E ActivityManager: full avg10=0.00 avg60=0.06 avg300=0.15 total=6934925
+11-19 02:03:11.267   525 26936 E ActivityManager: ----- End output from /proc/pressure/memory -----
+11-19 02:03:11.267   525 26936 E ActivityManager: ----- Output from /proc/pressure/cpu -----
+11-19 02:03:11.267   525 26936 E ActivityManager: some avg10=47.96 avg60=33.05 avg300=36.02 total=1327740612
+11-19 02:03:11.267   525 26936 E ActivityManager: full avg10=0.00 avg60=0.00 avg300=0.00 total=0
+11-19 02:03:11.267   525 26936 E ActivityManager: ----- End output from /proc/pressure/cpu -----
+11-19 02:03:11.267   525 26936 E ActivityManager: ----- Output from /proc/pressure/io -----
+11-19 02:03:11.267   525 26936 E ActivityManager: some avg10=1.82 avg60=1.92 avg300=3.12 total=153156619
+11-19 02:03:11.267   525 26936 E ActivityManager: full avg10=0.00 avg60=0.06 avg300=0.24 total=15517961
+11-19 02:03:11.267   525 26936 E ActivityManager: ----- End output from /proc/pressure/io -----
+11-19 02:03:11.267   525 26936 E ActivityManager: 
+11-19 02:03:11.267   525 26936 E ActivityManager: CPU usage from 199238ms to -2ms ago (2026-11-19 01:59:50.919 to 2026-11-19 02:03:10.159):
+11-19 02:03:11.267   525 26936 E ActivityManager:   19% 388/android.hardware.graphics.composer3-service.ranchu: 0.1% user + 19% kernel
+11-19 02:03:11.267   525 26936 E ActivityManager:   9.9% 400/surfaceflinger: 0.5% user + 9.4% kernel / faults: 656 minor 41 major
+11-19 02:03:11.267   525 26936 E ActivityManager:   3.8% 350/android.hardware.graphics.allocator@3.0-service.ranchu: 0% user + 3.8% kernel
+11-19 02:03:11.267   525 26936 E ActivityManager:   2.7% 838/com.android.systemui: 0.2% user + 2.5% kernel / faults: 3873 minor 127 major
+11-19 02:03:11.267   525 26936 E ActivityManager:   2.5% 525/system_server: 1.6% user + 0.8% kernel / faults: 62307 minor 71 major
+11-19 02:03:11.267   525 26936 E ActivityManager:   0.8% 3637/com.google.android.apps.nexuslauncher: 0.1% user + 0.6% kernel / faults: 3002 minor 1 major
+11-19 02:03:11.267   525 26936 E ActivityManager:   0.8% 463/media.swcodec: 0.2% user + 0.5% kernel / faults: 3151 minor 1 major
+11-19 02:03:11.267   525 26936 E ActivityManager:   0.6% 1762/com.google.android.googlequicksearchbox:search: 0.4% user + 0.1% kernel / faults: 26399 minor 154 major
+11-19 02:03:11.267   525 26936 E ActivityManager:   0.4% 18592/adbd: 0.1% user + 0.3% kernel / faults: 157701 minor 2 major
+11-19 02:03:11.267   525 26936 E ActivityManager:   0.2% 131/logd: 0% user + 0.1% kernel / faults: 419 minor 1 major
+11-19 02:03:11.267   525 26936 E ActivityManager: 62% TOTAL: 9.6% user + 52% kernel + 0.3% iowait + 0% softirq
+11-19 02:03:11.267   525 26936 E ActivityManager: CPU usage from 16ms to 251ms later (2026-11-19 02:03:10.173 to 2026-11-19 02:03:10.408):
+11-19 02:03:11.267   525 26936 E ActivityManager:   82% 26880/top.bangwu.taildeck: 46% user + 36% kernel / faults: 4081 minor 35 major
+11-19 02:03:11.267   525 26936 E ActivityManager:     32% 26904/1.raster: 4.6% user + 27% kernel
+11-19 02:03:11.267   525 26936 E ActivityManager:     18% 26880/bangwu.taildeck: 18% user + 0% kernel
+11-19 02:03:11.267   525 26936 E ActivityManager:     18% 26884/Signal Catcher: 9.2% user + 9.2% kernel
+11-19 02:03:11.267   525 26936 E ActivityManager:     9.2% 26931/DartWorker: 9.2% user + 0% kernel
+11-19 02:03:11.267   525 26936 E ActivityManager:     9.2% 26934/DartWorker: 9.2% user + 0% kernel
+11-19 02:03:11.267   525 26936 E ActivityManager:   39% 388/android.hardware.graphics.composer3-service.ranchu: 0% user + 39% kernel
+11-19 02:03:11.267   525 26936 E ActivityManager:     39% 388/binder:388_2: 0% user + 39% kernel
+11-19 02:03:11.267   525 26936 E ActivityManager:   17% 525/system_server: 4.3% user + 13% kernel / faults: 391 minor 1 major
+11-19 02:03:11.267   525 26936 E ActivityManager:     8.7% 26937/AnrAuxiliaryTas: 0% user + 8.7% kernel
+11-19 02:03:11.267   525 26936 E ActivityManager:   4.4% 400/surfaceflinger: 0% user + 4.4% kernel
+11-19 02:03:11.267   525 26936 E ActivityManager:   4.3% 1560/com.google.android.inputmethod.latin: 0% user + 4.3% kernel / faults: 4 minor
+11-19 02:03:11.267   525 26936 E ActivityManager:   4.5% 22058/kworker/1:7H-kverityd: 0% user + 4.5% kernel
+11-19 02:03:11.267   525 26936 E ActivityManager: 92% TOTAL: 29% user + 58% kernel + 4.8% iowait
+11-19 02:03:11.273   525   545 I ActivityManager: Killing 26880:top.bangwu.taildeck/u0a209 (adj 0): user request after error
+11-19 02:03:11.274   525 26936 D ActivityManager: Completed ANR of top.bangwu.taildeck in 1154ms, latency 0ms
+11-19 02:03:11.373   525   548 W WindowManager: 	at android.view.Choreographer$CallbackRecord.run(Choreographer.java:1337)
+11-19 02:03:11.373   525   548 W WindowManager: 	at android.view.Choreographer$CallbackRecord.run(Choreographer.java:1348)
+11-19 02:03:11.373   525   548 W WindowManager: 	at android.view.Choreographer.doCallbacks(Choreographer.java:952)
+11-19 02:03:11.373   525   548 W WindowManager: 	at android.view.Choreographer.doFrame(Choreographer.java:878)
+11-19 02:03:11.373   525   548 W WindowManager: 	at android.view.Choreographer$FrameDisplayEventReceiver.run(Choreographer.java:1322)

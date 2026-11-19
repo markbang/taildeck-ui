@@ -17,6 +17,11 @@ rm -f "$out/timing.txt"
 # A frozen app is the interesting failure: keep the ANR trace with the log.
 dump_anr() {
   adb logcat -d > "$out/logcat-fail.txt" 2>&1 || true
+  # A failure after the launch can still be an ANR; it gets a verdict too.
+  if [ "${launch_anr:-0}" = 0 ] && grep -q "ANR in .*$app" "$out/logcat-fail.txt"; then
+    python3 "$here/compositor_stall.py" "$app" < "$out/logcat-fail.txt" \
+      | sed 's/^/at the failure: /' >> "$out/summary.txt" || true
+  fi
   cat "$out/timing.txt" >> "$out/summary.txt" 2>/dev/null || true
   adb root > /dev/null 2>&1 || true
   sleep 2
@@ -60,7 +65,7 @@ wait_first_frame() {
     fi
     sleep 1
   done
-  fail "no frame from $app within 60s"
+  return 1
 }
 
 # One quoted command: an unquoted '&' in the query would split it on the device.
@@ -72,22 +77,49 @@ start() { # $1: preview query
   adb shell "am start -W -a android.intent.action.VIEW -d 'taildeck://preview/?$1' -n $activity" \
     > "$out/launch.txt" 2>&1 || return 1
   grep -q "Activity: $app/" "$out/launch.txt" || return 1
-  wait_first_frame
+  shown_at=$SECONDS
+  if ! wait_first_frame; then
+    anr_after_wait && return 1
+    fail "no frame from $app within 60s"
+  fi
   # No dock marker: the launches with a sheet cover it, and wait_sheet is what
   # proves that sheet opened. A launch with ssh=demo opens the terminal, whose
   # route is its own.
-  wait_home "$app" "$out" "$here" '' 30 'shell|terminal' \
-    || fail "the shell did not settle for $1; see launch.txt"
+  if ! wait_home "$app" "$out" "$here" '' 30 'shell|terminal'; then
+    anr_after_wait && return 1
+    fail "the shell did not settle for $1; see launch.txt"
+  fi
   if ! gate_survived_focus "$app" "$shown_at" "$out/summary.txt"; then
-    launch_anr=1
-    anrs=$((anrs + 1))
-    adb logcat -d > "$out/logcat-anr-$anrs.txt" 2>&1 || true
-    if adb logcat -d 2>/dev/null | python3 "$here/compositor_stall.py" "$app" | tee -a "$out/summary.txt"; then
-      launch_stall=1
-    fi
+    anr_verdict
     return 1
   fi
   timing "$1"
+}
+
+# A wait that failed inside the focus window may have met the ANR's kill:
+# the window is waited out, and an ANR found takes the same verdict.
+anr_after_wait() {
+  local line
+  while [ $((SECONDS - shown_at)) -lt "${GATE_FOCUS_WINDOW:-9}" ]; do sleep 1; done
+  line=$(adb logcat -d 2>/dev/null | grep -m1 "ANR in .*$app" || true)
+  [ -n "$line" ] || return 1
+  echo "$line" | cut -c1-200 >> "$out/summary.txt"
+  anr_verdict
+}
+
+# Every ANR of a launch, whichever wait met it: the report and its CPU list
+# land before the kill, then tool/compositor_stall.py judges the log.
+anr_verdict() {
+  launch_anr=1
+  anrs=$((anrs + 1))
+  for _ in $(seq 1 20); do
+    adb shell pidof "$app" > /dev/null 2>&1 || break
+    sleep 1
+  done
+  adb logcat -d > "$out/logcat-anr-$anrs.txt" 2>&1 || true
+  if python3 "$here/compositor_stall.py" "$app" < "$out/logcat-anr-$anrs.txt" | tee -a "$out/summary.txt"; then
+    launch_stall=1
+  fi
 }
 
 # The launch's cost as Android and the app each saw it.
