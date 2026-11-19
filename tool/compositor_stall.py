@@ -44,13 +44,14 @@ for raw in sys.stdin:
     if cpu_rows is None and anr_at is not None and cpu_start_re.search(text):
         cpu_rows, in_cpu = [], True
         continue
+    r = cpu_row_re.search(text)
+    if r:
+        names.setdefault(r.group(2), r.group(3))
     if in_cpu:
-        r = cpu_row_re.search(text)
         if "TOTAL" in text or not r:
             in_cpu = False
         else:
             cpu_rows.append((float(r.group(1)), r.group(2), r.group(3)))
-            names[r.group(2)] = r.group(3)
     d = davey_re.search(text)
     k = skipped_re.search(text)
     if d:
@@ -78,7 +79,7 @@ app_froze = (
 )
 if cpu_rows is None:
     cpu = None
-    cpu_text = "no ANR CPU report"
+    cpu_text = "the ANR report has no CPU list from before the ANR"
 else:
     cpu = [r for r in cpu_rows if r[1] in app_pids or r[2] == app]
     top = ", ".join(
@@ -91,7 +92,7 @@ else:
     )
 if other:
     start, end, pid, what = max(other, key=lambda x: x[1] - x[0])
-    other_text = f"{names.get(pid, 'pid ' + pid)} (pid {pid}) froze {end - start} ms ({what})"
+    other_text = f"{names.get(pid, 'a process')} (pid {pid}) froze {end - start} ms ({what})"
 else:
     other_text = "no other process froze ≥ 3 s"
 if other and cpu == []:
