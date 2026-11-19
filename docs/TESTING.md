@@ -90,9 +90,17 @@ has `stills: ok`: two releases in a row without visual evidence is a gate to
 fix, not one to ship past. A release from before this line ran stills as a
 blocking gate, so it counts as green.
 
-When a blocking gate fails and the only error is `emulator: the qemu process
-is gone`, rerun the failed jobs once (`gh run rerun <run-id> --failed`) and
-say so in the release report. Any other red stops the release.
+A gate that fails with the emulator gone (qemu dead or adb silent) is run once
+more on a fresh boot: the results keep `LOST <gate>: the emulator died under
+the gate`, a warning names it, the lost attempt stays in `<out>-lost/`, and
+only the retry's outcome counts. Stills keep their ship-mode record-only
+level through the retry, and write `stills: ok 13/13 (retried after a lost
+emulator)` or, when the retry fails too, `stills: lost emulator …`.
+
+When a blocking gate still fails after that and the only error is
+`emulator: the qemu process is gone`, rerun the failed jobs once (`gh run
+rerun <run-id> --failed`) and say so in the release report. Any other red
+stops the release.
 
 ## Adding a golden
 
