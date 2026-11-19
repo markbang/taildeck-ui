@@ -32,6 +32,7 @@ alive() { timeout 15 adb shell true > /dev/null 2>&1; }
 
 ui() {
   local attempt
+  alive || return 1
   for attempt in 1 2 3; do
     adb shell uiautomator dump /sdcard/ui.xml > /dev/null 2>&1 || true
     adb pull /sdcard/ui.xml "$out/ui.xml" > /dev/null 2>&1 || true
@@ -52,6 +53,10 @@ shot() { # <name>
 
 tap() { # <needle> [x offset from the row's end, in dp]
   local point bounds density x1 _x2 y1 y2
+  if ! alive; then
+    note "tap: the emulator stopped answering adb"
+    return 1
+  fi
   if point=$(ui tap "$1"); then
     if [ -n "${2:-}" ]; then
       density=$(adb shell wm density 2> /dev/null | sed -n 's/.*Physical density: \([0-9]*\).*/\1/p' | tr -d '\r')
@@ -74,17 +79,22 @@ swipe_down() { adb shell input swipe 540 900 540 1800 280 > /dev/null 2>&1 || tr
 
 record() { # <name> <seconds> <shell function>
   local name=$1 seconds=$2 action=$3
+  if ! alive; then
+    note "$name: the emulator stopped answering adb"
+    note "$name: no recording"
+    return 0
+  fi
   adb shell pkill -f screenrecord > /dev/null 2>&1 || true
   sleep 0.7
   adb shell rm -f /sdcard/rec.mp4 > /dev/null 2>&1 || true
-  adb shell screenrecord --time-limit "$((seconds + 2))" --bit-rate 6000000 \
+  timeout "$((seconds + 15))" adb shell screenrecord --time-limit "$((seconds + 2))" --bit-rate 6000000 \
     /sdcard/rec.mp4 > /dev/null 2>&1 &
   local recorder=$!
   sleep 0.4
   "$action" || true
   wait "$recorder" 2> /dev/null || true
   sleep 0.5
-  adb pull /sdcard/rec.mp4 "$out/$name-raw.mp4" > /dev/null 2>&1 || true
+  alive && adb pull /sdcard/rec.mp4 "$out/$name-raw.mp4" > /dev/null 2>&1 || true
   if [ -s "$out/$name-raw.mp4" ]; then
     ffmpeg -loglevel error -y -ss 0.2 -i "$out/$name-raw.mp4" -t "$seconds" \
       -an -vf 'scale=360:-2' "$out/$name.mp4" || true
@@ -135,16 +145,16 @@ launch() { # [url]
 
 settings_url="taildeck://preview/?preview=1&tab=3&lang=en"
 
-flow() { # the settings flow, for the recording
+flow() { # the settings flow, for the recording; taps fail fast once adb is silent
   tap 'Tailnet & device' || true
   sleep 1.5
-  adb shell input keyevent KEYCODE_BACK > /dev/null 2>&1 || true
+  alive && adb shell input keyevent KEYCODE_BACK > /dev/null 2>&1 || true
   sleep 1.5
   tap 'Theme' || true
   sleep 2.5
   tap 'Light' || true
   sleep 1.5
-  adb shell input keyevent KEYCODE_BACK > /dev/null 2>&1 || true
+  alive && adb shell input keyevent KEYCODE_BACK > /dev/null 2>&1 || true
   sleep 1
 }
 

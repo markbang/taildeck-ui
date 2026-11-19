@@ -83,6 +83,14 @@ emulator_alive() {
   pgrep -f qemu-system > /dev/null && timeout 15 adb shell true > /dev/null 2>&1
 }
 
+# A gate can exit 0 after the emulator died under it: a flow step that finds
+# adb silent records "no recording" and returns. So a loss is read from the
+# device (qemu or adb gone now) or from the gate's own summary.
+device_lost() { # <gate command...>
+  local dir=${*: -1}
+  ! emulator_alive || grep -qs 'stopped answering adb' "$dir/summary.txt"
+}
+
 reboot_emulator() { # <label>
   local sdk=${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}} waited=0
   {
@@ -137,7 +145,7 @@ gate() { # <label> <timeout-seconds> <command...>
   gate_lost=false
   run_gate "$label" "$limit" "$@"
   status=$?
-  if [ "$status" -ne 0 ] && ! emulator_alive; then
+  if device_lost "$@"; then
     gate_lost=true
     note "LOST $label: the emulator died under the gate after $(( $(date +%s) - start ))s; retrying once on a new boot"
     echo "::warning title=android gate $label::emulator lost (qemu died under the gate); retried once on a new boot"
@@ -147,8 +155,14 @@ gate() { # <label> <timeout-seconds> <command...>
       start=$(date +%s)
       run_gate "$label" "$limit" "$@"
       status=$?
+      if device_lost "$@"; then
+        note "LOST $label: the retry lost the emulator too"
+        echo "::warning title=android gate $label::emulator lost again on the retry"
+        [ "$status" -eq 0 ] && status=1
+      fi
     else
       note "LOST $label: the new emulator did not boot"
+      [ "$status" -eq 0 ] && status=1
     fi
   fi
   secs=$(( $(date +%s) - start ))
