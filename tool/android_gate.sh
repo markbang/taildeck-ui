@@ -31,7 +31,7 @@ gate_in_front() { # <app>
 # this waits for the kill and fails so the caller starts the app again.
 gate_survived_focus() { # <app> <SECONDS when the first frame was shown> <summary>
   local app=$1 shown=$2 summary=$3
-  while [ $((SECONDS - shown)) -lt 9 ]; do sleep 1; done
+  while [ $((SECONDS - shown)) -lt "${GATE_FOCUS_WINDOW:-9}" ]; do sleep 1; done
   adb logcat -d 2>/dev/null | grep -q "ANR in .*$app" || return 0
   adb logcat -d 2>/dev/null | grep -m1 "ANR in .*$app" | cut -c1-200 >> "$summary"
   for _ in $(seq 1 20); do
