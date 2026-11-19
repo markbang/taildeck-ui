@@ -100,9 +100,10 @@ $(grep -m1 -oE 'taildeck frames: .*' <<< "$log" | sed 's/taildeck //')" >> "$out
 }
 
 # One retry for any failed cold start. An ANR on the retry fails the gate unless
-# both froze with the rest of the screen (tool/compositor_stall.py): that is the
-# emulator's compositor, which a phone does not have, so it earns a third start,
-# twice per run at most.
+# both were the emulator's compositor (tool/compositor_stall.py: another process
+# froze too and the app is absent from the ANR's CPU top), which a phone does
+# not have: that earns a third start, twice per run at most. A third stall
+# still fails, as the emulator's.
 anrs=0
 stall_retries=0
 launch() { # $1: preview query
@@ -122,6 +123,7 @@ launch() { # $1: preview query
       echo "retrying $1 a third time: both ANRs were compositor stalls" | tee -a "$out/summary.txt"
       continue
     fi
+    [ "$stalls" -lt 3 ] || fail "$1: emulator compositor stall on 3 cold starts in a row"
     fail "$1: the app stopped answering input on $attempt cold starts in a row"
   done
 }

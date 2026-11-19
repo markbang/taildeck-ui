@@ -46,9 +46,11 @@ not page anyone. Pull requests and the release call cannot set it.
 
 A cold start on the emulator can ANR while its software compositor stalls:
 every window freezes, not only the app's. The back gate retries a failed cold
-start once; a second ANR fails it unless `tool/compositor_stall.py` finds
-another process frozen for 3 s or more across both ANRs, which earns a third
-start, twice per run at most. Each launch's `Displayed` time and the app's own
+start once; a second ANR fails it unless `tool/compositor_stall.py` finds, for
+both ANRs, another process frozen for 3 s or more across the app's and the app
+absent from the ANR report's CPU top. That earns a third start, twice per run
+at most, written to the summary with both processes' numbers; a third stall
+fails as "emulator compositor stall". Each launch's `Displayed` time and the app's own
 `taildeck first frame` / `taildeck frames` lines go to `smoke-back/timing.txt`.
 
 The goldens are tagged `golden` and excluded from CI: a runner's rasterizer is

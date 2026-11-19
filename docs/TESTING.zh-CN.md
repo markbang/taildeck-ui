@@ -23,7 +23,7 @@ gh workflow run android-smoke --ref <branch> -f record=true -f gates="termtap"
 
 选中的 gate 照样全部运行，结果、summary 和 artifact 都一样，但失败只记为 warning，job 保持绿色，不会发失败通知。PR 和发版调用无法打开它。
 
-模拟器的软件合成器卡住时，冷启动会 ANR：所有窗口一起冻住，不只是应用。back gate 对失败的冷启动重试一次；第二次 ANR 直接判失败，除非 `tool/compositor_stall.py` 在两次 ANR 期间都找到另一个进程冻住 3 秒以上，这时再给第三次启动，每次运行最多两次。每次启动的 `Displayed` 时间和应用自己的 `taildeck first frame` / `taildeck frames` 日志写进 `smoke-back/timing.txt`。
+模拟器的软件合成器卡住时，冷启动会 ANR：所有窗口一起冻住，不只是应用。back gate 对失败的冷启动重试一次；第二次 ANR 直接判失败，除非 `tool/compositor_stall.py` 对两次 ANR 都确认：另一个进程同期冻住 3 秒以上，且应用不在 ANR 报告的 CPU 排行里。这时再给第三次启动，每次运行最多两次，并把两个进程的数字写进 summary；第三次仍卡住则按“emulator compositor stall”判失败。每次启动的 `Displayed` 时间和应用自己的 `taildeck first frame` / `taildeck frames` 日志写进 `smoke-back/timing.txt`。
 
 Golden 用例带 `golden` 标签，CI 不跑：CI 机器的光栅化不够逐像素稳定，不适合卡 PR；同一项检查用本机的 `tool/golden.sh`。
 
