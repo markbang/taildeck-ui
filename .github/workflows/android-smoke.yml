@@ -8,6 +8,11 @@
 # start, splash, Agents and stills gates on that APK). A pull request runs the
 # full set on a profile and a demo debug build made from the pull request.
 #
+# In ship mode (the release call, or a dispatch with full-gate=false) the stills
+# gate is record-only: it runs and writes `stills: <outcome>` to the summary,
+# the ship-stills artifact and the `stills` output, but only cold-start, splash
+# and Agents block (docs/TESTING.md, "Release gate").
+#
 # A dispatch with record=true ("before" and evidence runs) runs every selected
 # gate and writes the same results, summary and artifacts, but a failing gate
 # is a warning and the job stays green. Pull requests and the release call
@@ -49,6 +54,10 @@ on:
         description: Run the webvideo, routing, termtap and netready gates too (needs the signed-in test control plane)
         type: boolean
         default: false
+    outputs:
+      stills:
+        description: "The stills gate's outcome in ship mode, e.g. 'stills: ok 13/13', 'stills: lost emulator 4/13', 'stills: failed 9/13'"
+        value: ${{ jobs.smoke.outputs.stills }}
   workflow_dispatch:
     inputs:
       record:
@@ -110,6 +119,8 @@ jobs:
     name: one emulator, every on-device gate
     runs-on: ubuntu-latest
     timeout-minutes: 80
+    outputs:
+      stills: ${{ steps.stills.outputs.stills }}
     steps:
       - uses: actions/checkout@v4
 
@@ -131,6 +142,12 @@ jobs:
               ;;
           esac
           echo "GATES=$gates" >> "$GITHUB_ENV"
+          # Ship mode smokes a release APK; only there is the stills gate
+          # record-only (tool/android_gate_all.sh, RECORD_GATES).
+          if [ "$full" != true ]; then
+            echo "SHIP=true" >> "$GITHUB_ENV"
+            echo "RECORD_GATES=stills" >> "$GITHUB_ENV"
+          fi
           build=${{ inputs.build }}
           # A dispatch builds by default; an APK it names explicitly wins.
           if [ "${{ github.workflow }}" = android-smoke ] &&
@@ -476,11 +493,24 @@ jobs:
           path: ~/.android/avd
           key: avd-api34-google_apis-x86_64-pixel_6-v1
 
+      - name: Stills outcome
+        id: stills
+        if: always()
+        run: |
+          mkdir -p gates
+          [ -s gates/ship-stills.txt ] || echo "stills: failed (no outcome written)" > gates/ship-stills.txt
+          line=$(head -1 gates/ship-stills.txt)
+          echo "stills=$line" >> "$GITHUB_OUTPUT"
+          if [ "${SHIP:-false}" = true ]; then
+            echo "::notice title=ship stills (record-only)::$line"
+          fi
       - name: Job summary
         if: always()
         run: |
           {
             echo "### One emulator: every on-device gate"
+            echo
+            echo "\`$(head -1 gates/ship-stills.txt 2>/dev/null || echo 'stills: unknown')\`"
             echo
             echo '```'
             cat gates/gate-results.txt 2>/dev/null || echo 'no gate results'
@@ -529,6 +559,12 @@ jobs:
             remember/
             routing/
             netready/
+          if-no-files-found: warn
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ship-stills
+          path: gates/ship-stills.txt
           if-no-files-found: warn
       - uses: actions/upload-artifact@v4
         if: always()

@@ -25,6 +25,27 @@ gh workflow run android-smoke --ref <branch> -f record=true -f gates="termtap"
 
 Golden 用例带 `golden` 标签，CI 不跑：CI 机器的光栅化不够逐像素稳定，不适合卡 PR；同一项检查用本机的 `tool/golden.sh`。
 
+## 发版 gate
+
+`platform-release` 以 ship 模式调用 `android-smoke`，测的是刚签名构建的 x86_64 APK。要对旧构建跑同一组 gate，用 `full-gate=false` dispatch：
+
+```sh
+gh workflow run android-smoke --ref main -f full-gate=false \
+  -f apk-artifact=android -f apk-run-id=<platform-release run> \
+  -f gates="cold-start splash agents stills"
+```
+
+| Gate | ship 模式下 |
+| --- | --- |
+| `cold-start`、`splash`、`agents` | 卡发版 |
+| `stills` | 仅记录：照常运行、保存截图，从不让 job 失败 |
+
+截图只记录，是因为 CI 模拟器在设置页有一个与应用无关的已知 qemu 冻结：点设置行后约 0.7 秒内 guest 冻结，logcat 最后一行来自 `EGL_emulation`，约 60 秒后 qemu 退出，没有 OOM 或 segfault，gate 结果末尾是 `emulator: the qemu process is gone`。截图原本防的回归——页面无休止重绘——由必过的 `ci` job 里的 `test/theme_open_test.dart` 把关。
+
+每次 ship 运行写一行结果：`stills: ok 13/13`、`stills: lost emulator 4/13` 或 `stills: failed 9/13`，出现在 job summary、`ship-stills` artifact、release notes 和 release 附件 `ship-stills.txt` 里。上一个已发布版本和本次都没有 `stills: ok` 时，release job 失败：连续两个版本没有视觉证据，是要修的 gate，不能跳过去发版。有这行记录之前的版本，截图还是卡发版的 gate，按绿色计。
+
+卡发版的 gate 失败、且唯一的错误是 `emulator: the qemu process is gone` 时，重跑一次失败的 job（`gh run rerun <run-id> --failed`），并在发版报告里写明。其他任何红色都停止发版。
+
 ## 加一个 golden
 
 放到 `test/golden/`，用 `goldenApp` 包应用、`usePhone` 定视口（414 × 896，状态栏 47，手势区 34），先断言必须成立的几何，再 `matchesGoldenFile('goldens/<name>.png')`。采样区域里不要有动画，或者让它确定：给脉冲骨架截图会因脉冲相位失败，而不是界面有问题。`SkeletonPill` 的静止帧从墙钟起算，所以截图要落在它上方。
