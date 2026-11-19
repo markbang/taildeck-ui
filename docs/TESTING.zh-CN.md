@@ -46,7 +46,7 @@ gh workflow run android-smoke --ref main -f full-gate=false \
 
 每次 ship 运行写一行结果：`stills: ok 13/13`、`stills: lost emulator 4/13` 或 `stills: failed 9/13`，出现在 job summary、`ship-stills` artifact、release notes 和 release 附件 `ship-stills.txt` 里。上一个已发布版本和本次都没有 `stills: ok` 时，release job 失败：连续两个版本没有视觉证据，是要修的 gate，不能跳过去发版。有这行记录之前的版本，截图还是卡发版的 gate，按绿色计。
 
-某个 gate 失败且模拟器已丢失（qemu 退出或 adb 无响应）时，会在新启动的模拟器上重跑一次：结果里保留 `LOST <gate>` 和一条 warning，丢失的那次存在 `<out>-lost/`，只按重跑结果计。ship 模式下 stills 重跑后仍是仅记录：重跑通过写 `stills: ok 13/13 (retried after a lost emulator)`，重跑也失败写 `stills: lost emulator …`。
+某个 gate 结束时模拟器已丢失（qemu 退出或 adb 无响应），不论退出码是否为 0（录屏流程发现 adb 无响应会记 "no recording" 并返回），都会在新启动的模拟器上重跑一次：结果里保留 `LOST <gate>` 和一条 warning，丢失的那次存在 `<out>-lost/`，只按重跑结果计。ship 模式下 stills 重跑后仍是仅记录：重跑通过写 `stills: ok 13/13 (retried after a lost emulator)`，重跑也失败写 `stills: lost emulator …`。
 
 卡发版的 gate 失败、且唯一的错误是 `emulator: the qemu process is gone` 时，重跑一次失败的 job（`gh run rerun <run-id> --failed`），并在发版报告里写明。其他任何红色都停止发版。
 
