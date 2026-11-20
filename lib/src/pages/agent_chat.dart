@@ -20,6 +20,9 @@ import 'agent_command_output.dart';
 import 'agent_model.dart';
 import 'agent_steps.dart';
 
+/// The session state a model pick was made against.
+typedef _ModelMark = ({ModelSettings settings, String file, String turn});
+
 /// One agent pane: its transcript, a prompt box, restart and model switching.
 class AgentChatPage extends StatefulWidget {
   const AgentChatPage({
@@ -53,7 +56,7 @@ class _AgentChatPageState extends State<AgentChatPage> {
   bool _switchingModel = false;
   String _switchTarget = '';
   bool _switchFailed = false;
-  ModelSettings? _pickedFrom;
+  _ModelMark? _pickedFrom;
   ModelSettings? _picked;
   Timer? _reload;
   List<HerdrCommand> _commands = const [];
@@ -351,11 +354,18 @@ class _AgentChatPageState extends State<AgentChatPage> {
   ModelSettings get _recorded =>
       (model: _transcript?.model ?? '', effort: _transcript?.effort ?? '');
 
-  /// A model or level just picked shows until the transcript records a change,
-  /// as the Kotlin chat does.
+  _ModelMark get _mark => (
+    settings: _recorded,
+    file: _transcript?.file ?? '',
+    turn: _transcript?.turn ?? '',
+  );
+
+  /// A model or level just picked shows until the session records anything
+  /// new: a change of settings, another session, or a turn the agent worked,
+  /// which says what the conversation really runs on.
   ModelSettings get _shownSettings {
     final picked = _picked;
-    return picked != null && _pickedFrom == _recorded ? picked : _recorded;
+    return picked != null && _pickedFrom == _mark ? picked : _recorded;
   }
 
   /// pi would take a command typed mid-turn as a steering message.
@@ -386,7 +396,7 @@ class _AgentChatPageState extends State<AgentChatPage> {
   Future<void> _switch(ModelPick pick) async {
     final l10n = AppLocalizations.of(context);
     final kind = _agent.kind;
-    final from = _recorded;
+    final from = _mark;
     final shown = _shownSettings;
     final model = pick.model;
     final target = model != null

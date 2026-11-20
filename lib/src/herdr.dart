@@ -218,6 +218,8 @@ class HerdrTranscript {
     this.contextUsed = 0,
     this.contextWindow = 0,
     this.todos = const [],
+    this.file = '',
+    this.turn = '',
   });
 
   final bool screenMode;
@@ -232,6 +234,13 @@ class HerdrTranscript {
   /// The agent's task list, rewritten in full on every update.
   final List<HerdrTodo> todos;
 
+  /// The session file read; another file is another session.
+  final String file;
+
+  /// The id of the agent's newest reply, thought or tool call: it changes
+  /// once the agent has worked a turn.
+  final String turn;
+
   bool get isEmpty => screenMode ? screen.trim().isEmpty : messages.isEmpty;
 
   static HerdrTranscript parse(String raw) {
@@ -239,6 +248,13 @@ class HerdrTranscript {
     if (decoded is! Map<String, dynamic>) return const HerdrTranscript();
     final context = decoded['context'];
     final settings = decoded['settings'];
+    var turn = '';
+    for (final item in decoded['messages'] as List? ?? const []) {
+      if (item is Map<String, dynamic> &&
+          const {'assistant', 'thinking', 'tool'}.contains(item['role'])) {
+        turn = item['id'] as String? ?? turn;
+      }
+    }
     final messages = <HerdrMessage>[
       for (final item in decoded['messages'] as List? ?? const [])
         if (item is Map<String, dynamic>)
@@ -276,6 +292,8 @@ class HerdrTranscript {
           ? (context['window'] as num?)?.toInt() ?? 0
           : 0,
       todos: HerdrTodo.parse(decoded['todos']),
+      file: decoded['file'] as String? ?? '',
+      turn: turn,
     );
   }
 }
