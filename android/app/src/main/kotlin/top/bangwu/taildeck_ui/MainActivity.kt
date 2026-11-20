@@ -1,8 +1,13 @@
 package top.bangwu.taildeck_ui
 
+import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.res.Configuration
+import android.net.Uri
 import android.os.Build
+import android.os.PowerManager
+import android.provider.Settings
+import android.util.Log
 import androidx.webkit.ProxyConfig
 import androidx.webkit.ProxyController
 import androidx.webkit.WebViewFeature
@@ -80,21 +85,63 @@ class MainActivity : FlutterActivity() {
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "taildeck/service")
             .setMethodCallHandler { call, result ->
                 when (call.method) {
-                    "start" -> {
-                        val intent = Intent(this, TailnetService::class.java)
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                            startForegroundService(intent)
-                        } else {
-                            startService(intent)
-                        }
-                        result.success(null)
-                    }
+                    "start" -> result.success(startTailnetService())
                     "stop" -> {
                         stopService(Intent(this, TailnetService::class.java))
                         result.success(null)
                     }
+                    "batteryExempt" -> {
+                        val power = getSystemService(PowerManager::class.java)
+                        result.success(power?.isIgnoringBatteryOptimizations(packageName))
+                    }
+                    "requestBatteryExempt" -> result.success(requestBatteryExempt())
                     else -> result.notImplemented()
                 }
             }
+    }
+
+    /**
+     * False when Android refuses: since Android 12 a foreground service cannot
+     * start while the app is in the background, so Flutter asks again when the
+     * app returns.
+     */
+    private fun startTailnetService(): Boolean {
+        val intent = Intent(this, TailnetService::class.java)
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(intent)
+            } else {
+                startService(intent)
+            }
+            true
+        } catch (e: IllegalStateException) {
+            Log.w(TAG, "tailnet service not started: ${e.message}")
+            false
+        } catch (e: SecurityException) {
+            Log.w(TAG, "tailnet service not started: ${e.message}")
+            false
+        }
+    }
+
+    /** The system's allow dialog, or its battery list when that is missing. */
+    private fun requestBatteryExempt(): Boolean {
+        val direct = Intent(
+            Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+            Uri.parse("package:$packageName"),
+        )
+        val list = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+        for (intent in listOf(direct, list)) {
+            try {
+                startActivity(intent)
+                return true
+            } catch (e: ActivityNotFoundException) {
+                Log.w(TAG, "battery settings: ${e.message}")
+            }
+        }
+        return false
+    }
+
+    private companion object {
+        const val TAG = "Taildeck"
     }
 }

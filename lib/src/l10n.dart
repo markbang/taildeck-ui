@@ -619,14 +619,21 @@ class AppLocalizations implements UiLocalizations {
       _zh ? '光标常亮。' : 'The cursor stays solid.';
   String get terminalKeepAlive => _zh ? '后台保持会话' : 'Keep sessions in background';
   String get terminalKeepAliveOn => _zh
-      ? '切到后台后 SSH 会话继续运行，由前台服务维持进程。'
-      : 'SSH sessions keep running while the app is away, held by the foreground service.';
+      ? '切到后台后 tailnet 和 SSH 会话继续运行，由前台服务维持进程。'
+      : 'The tailnet and SSH sessions keep running while the app is away, held by the foreground service.';
   String get terminalKeepAliveOff => _zh
       ? '离开前台即断开会话，前台服务也随之停止。'
       : 'Sessions end when the app leaves the foreground, and the foreground service stops.';
   String get terminalKeepAliveLimits => _zh
-      ? '系统仍可能回收进程：Android 的 dataSync 前台服务有 6 小时上限，Doze 和省电模式会限制网络；iOS 没有等效的前台服务。'
-      : 'The OS can still reclaim the process: Android caps a dataSync foreground service at 6 hours, Doze and battery saver throttle the network, and iOS has no equivalent foreground service.';
+      ? '系统仍可能回收进程：Doze、省电模式和部分厂商的后台清理会打断网络，把电池设为不受限制可以减少这种情况；进程被回收后，下次打开会用已保存的登录自动重连。iOS 没有等效的前台服务。'
+      : 'The OS can still reclaim the process: Doze, battery saver and some vendors\' task killers cut the network, and unrestricted battery use makes that rarer; after a kill the next launch reconnects with the saved login. iOS has no equivalent foreground service.';
+  String get batteryExempt => _zh ? '电池不受限制' : 'Unrestricted battery';
+  String get batteryExemptOn => _zh
+      ? '电池优化不会在后台暂停 tailnet。'
+      : 'Battery optimisation leaves the tailnet running in the background.';
+  String get batteryExemptOff => _zh
+      ? '电池优化可能在后台暂停 tailnet，点按允许后台运行。'
+      : 'Battery optimisation may pause the tailnet in the background. Tap to allow background use.';
 
   String get terminalSnippets => _zh ? '命令片段' : 'Snippets';
   String terminalSnippetsHint(int count) => _zh

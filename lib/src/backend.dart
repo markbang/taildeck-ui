@@ -24,6 +24,23 @@ import 'terminal_snippets.dart';
 
 enum BackendState { unavailable, stopped, starting, needsLogin, running, error }
 
+/// Whether Android's foreground service should hold the process: from the
+/// moment the node is up (`Starting` included, so the service is already
+/// running when the user leaves before `Running`) until sign-out or stop, and in
+/// the background only with keep-alive on. Android refuses a foreground service
+/// started from the background, so the service has to be up before the app
+/// leaves.
+bool serviceWanted({
+  required bool started,
+  required BackendState state,
+  required bool foreground,
+  required bool keepAlive,
+}) {
+  if (!started) return false;
+  final up = state == BackendState.starting || state == BackendState.running;
+  return up && (foreground || keepAlive);
+}
+
 class PingResult {
   const PingResult({this.latencyMs, this.endpoint, this.derp, this.error});
 
@@ -43,14 +60,20 @@ class TaildeckBackend extends ChangeNotifier {
     NativeBridge? bridge,
     BackendStorage? storage,
     AgentNotifications? notifications,
+    NodeService? service,
   }) : this._(
          bridge ?? openNativeBridge(),
          storage ?? openBackendStorage(),
          notifications ?? AgentNotifications(),
+         service ?? openNodeService(),
        );
 
-  TaildeckBackend._(this._bridge, this._storage, this.notifications)
-    : _herdr = _bridge == null ? null : HerdrController(_bridge) {
+  TaildeckBackend._(
+    this._bridge,
+    this._storage,
+    this.notifications,
+    this._service,
+  ) : _herdr = _bridge == null ? null : HerdrController(_bridge) {
     _herdr?.onAttention = _onAttention;
     _applyPreviewAppearance();
   }
@@ -75,7 +98,7 @@ class TaildeckBackend extends ChangeNotifier {
   final NativeBridge? _bridge;
   final BackendStorage? _storage;
   final HerdrController? _herdr;
-  final NodeService _service = openNodeService();
+  final NodeService _service;
 
   /// Agent alerts; the settings page owns the toggle.
   final AgentNotifications notifications;
@@ -144,6 +167,7 @@ class TaildeckBackend extends ChangeNotifier {
   bool _cancelStart = false;
   String _pingIp = '';
   bool _serviceRunning = false;
+  bool? _batteryExempt;
 
   bool get available => _bridge != null && _storage != null;
   BackendState get state => _state;
@@ -355,6 +379,7 @@ class TaildeckBackend extends ChangeNotifier {
     if (!_session.isCompleted) _session.complete();
     notifyListeners();
     await notifications.init();
+    await _readBatteryExempt();
     final mode = await resolvePlatformMode();
     _platform = mode.name;
     _platformWarning = mode.warning ?? '';
@@ -786,11 +811,37 @@ class TaildeckBackend extends ChangeNotifier {
   }
 
   /// The app's lifecycle: alerts fire only while it is away, and without
-  /// background keep-alive the foreground service follows the app.
+  /// background keep-alive the foreground service follows the app. On return
+  /// the service is asked for again if Android refused it in the background,
+  /// and the node rebinds its sockets: a frozen or dozing process comes back
+  /// with NAT mappings and connections that may be gone.
   void setForeground(bool value) {
     if (value == _foreground) return;
     _foreground = value;
     _syncService();
+    if (!value) return;
+    unawaited(_readBatteryExempt());
+    final bridge = _bridge;
+    if (bridge == null || !_started) return;
+    try {
+      bridge.networkChanged();
+    } on BridgeException catch (error) {
+      debugPrint('taildeck: network rebind on resume failed: ${error.message}');
+    }
+    unawaited(refresh());
+  }
+
+  /// Battery optimisation leaves the app alone; null when the platform has no
+  /// such setting or it is not read yet. Settings offers the system prompt.
+  bool? get batteryExempt => _batteryExempt;
+
+  Future<void> requestBatteryExempt() => _service.requestBatteryExempt();
+
+  Future<void> _readBatteryExempt() async {
+    final exempt = await _service.batteryExempt();
+    if (exempt == _batteryExempt) return;
+    _batteryExempt = exempt;
+    notifyListeners();
   }
 
   /// Language the notification text is written in.
@@ -1008,6 +1059,7 @@ class TaildeckBackend extends ChangeNotifier {
       _rawState = 'Starting';
       _state = BackendState.starting;
       _error = '';
+      _syncService();
       debugPrint('taildeck: started, gateway ${reply['gatewayPort']}');
       _scheduleRefresh();
       notifyListeners();
@@ -1192,15 +1244,31 @@ class TaildeckBackend extends ChangeNotifier {
     _syncService();
   }
 
-  /// Android keeps the node in a foreground service while it runs and while
-  /// the app is on screen, or in the background when the user keeps sessions
-  /// alive; sign-out drops the node and with it the service.
+  /// Android keeps the node in a foreground service; see [serviceWanted].
+  /// A refused start is forgotten, so the next sync (the app coming back on
+  /// screen) asks again.
   void _syncService() {
-    final wanted =
-        _state == BackendState.running && (_foreground || _terminalKeepAlive);
+    final wanted = serviceWanted(
+      started: _started,
+      state: _state,
+      foreground: _foreground,
+      keepAlive: _terminalKeepAlive,
+    );
     if (wanted == _serviceRunning) return;
     _serviceRunning = wanted;
-    unawaited(wanted ? _service.start() : _service.stop());
+    if (!wanted) {
+      unawaited(_service.stop());
+      return;
+    }
+    unawaited(
+      _service.start().then((started) {
+        if (started || !_serviceRunning) return;
+        _serviceRunning = false;
+        debugPrint(
+          'taildeck: foreground service refused; retrying on the next sync',
+        );
+      }),
+    );
   }
 
   /// A pane turned blocked or done while the app is away.

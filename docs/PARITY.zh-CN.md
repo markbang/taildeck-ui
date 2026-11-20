@@ -50,7 +50,7 @@ Flutter 客户端对 [markbang/taildeck](https://github.com/markbang/taildeck)�
 | 斜杠命令 | `/` 命令补全 | 每个 harness 的内置命令，加上从节点读到的 `/` 命令和技能，↑↓/Esc 选择并插入 | 部分 | 内置列表验证过；没有节点，节点命令未验证 |
 | 设置与日志 | Tailnet、设备、服务、SSH 密钥、日志 | 分组列表（Tailnet 与设备、SSH 身份、服务、通知、终端、主题、语言、日志、关于）：枚举值在行内弹出锚定菜单，其余进入子页面（与 FlClash 的 OpenContainer 一样，从被点的行展开成整页）；主题页顶部预览当前主题并提供模式选择。子页面用紧凑的悬浮顶栏标出自己（圆形返回、一行标题、页面操作排在末尾），内容从栏下滚过；一级列表滚动时把大标题交给这条顶栏 | 已完成 | 已在模拟器截图，并与 FlClash 同场录制（`tool/screenshots_android.sh`、`tool/settings_flclash_record.sh`、`tool/header_flclash_record.sh`） |
 | 退出登录 | 停止并登出节点 | `td_logout`，带确认 | 未验证 | 需要已登录的节点 |
-| Android 前台服务 | 退到后台时保持节点存活 | `dataSync` 前台服务加一条低优先级通知，节点进入 `Running` 时启动，停止或退出登录时结束 | 未验证 | 已进合并后的 manifest 和 debug APK；没有真机确认进程退到后台后仍存活 |
+| Android 前台服务 | 退到后台时保持节点存活 | `specialUse` 前台服务（与 Kotlin 版相同；`dataSync` 在 Android 15+ 满 6 小时会被停掉）加一条低优先级通知，节点一启动就开，保证离开前台前已在运行；后台被系统拒绝时回到前台再开；停止或退出登录时结束；设置里可申请电池不受限制 | 未验证 | `test/background_service_test.dart`；真机检查步骤在 `docs/TESTING.md`，尚未在手机上跑过 |
 | Android 网络钩子 | 基于 ConnectivityManager 的网卡和 DNS | `PlatformBridge.kt` + JNI（`platform_jni.c`），`"platform": "host"` | 已完成 | #16 合入；CI 能构建，尚未在真机运行 |
 | Android 系统返回键 | Compose 返回栈；在节点列表按返回会退出应用 | `lib/src/back.dart` 一条策略：先关弹窗/对话框/菜单，再退当前页，再回第一个标签，最后需连按两次才退出 | 已完成 | `android-smoke` 里 `tool/back_android.sh` 在模拟器上发真实返回键，逐步校验、进程和前台 Activity |
 | 启动状态 | 节点上报前显示空列表 | 节点、服务、代理、日志在节点 Running（或彻底失败）前显示加载状态；节点名经 tsnet 对端表解析，不走系统解析器 | 完成 | `tool/agents_android.sh` 与网页预览（`?tailnet=starting`、`?herdr=tailnet|connecting|error`）；解析逻辑有 Go 测试 |
