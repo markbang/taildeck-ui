@@ -15,12 +15,17 @@ class _Feed extends DemoHerdrBridge {
   _Feed({super.agentStatus});
 
   final messages = <Map<String, Object>>[];
+  String file = 'session-a.jsonl';
   int reads = 0;
 
   @override
   Future<String> herdrTranscript(String pane) async {
     reads++;
-    return jsonEncode({'messages': messages});
+    return jsonEncode({
+      'file': file,
+      'settings': {'model': 'claude-opus-4-1-20250805', 'effort': 'high'},
+      'messages': messages,
+    });
   }
 }
 
@@ -234,6 +239,36 @@ void main() {
     expect(
       fold.bottom,
       greaterThanOrEqualTo(tester.getRect(_text('omega')).bottom),
+    );
+    await _close(tester);
+  });
+
+  testWidgets('a read that changes only the session file rebuilds', (
+    tester,
+  ) async {
+    final feed = await _open(tester, history: _history(1));
+    final capsule = find.byKey(const ValueKey('model-capsule'));
+    expect(
+      find.descendant(of: capsule, matching: find.text('Opus 4.1')),
+      findsOneWidget,
+    );
+    await tester.tap(capsule);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 600));
+    await tester.tap(find.text('Sonnet'));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(
+      find.descendant(of: capsule, matching: find.text('Sonnet')),
+      findsOneWidget,
+    );
+
+    feed.file = 'session-b.jsonl';
+    await _poll(tester);
+    expect(
+      find.descendant(of: capsule, matching: find.text('Opus 4.1')),
+      findsOneWidget,
     );
     await _close(tester);
   });

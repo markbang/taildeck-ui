@@ -303,6 +303,8 @@ class HerdrTranscript {
       other.effort == effort &&
       other.contextUsed == contextUsed &&
       other.contextWindow == contextWindow &&
+      other.file == file &&
+      other.turn == turn &&
       listEquals(other.messages, messages) &&
       listEquals(other.todos, todos);
 
@@ -315,6 +317,8 @@ class HerdrTranscript {
     effort,
     contextUsed,
     contextWindow,
+    file,
+    turn,
     Object.hashAll(messages),
     Object.hashAll(todos),
   );
