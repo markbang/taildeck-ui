@@ -23,6 +23,7 @@ import '../preview_env.dart';
 import '../term_session.dart';
 import '../terminal_appearance.dart';
 import '../terminal_gestures.dart';
+import '../terminal_input.dart';
 import '../terminal_keys.dart';
 import '../terminal_send.dart';
 import '../terminal_snippets.dart';
@@ -114,12 +115,6 @@ class _TerminalPageState extends State<TerminalPage>
   Animation<double>? _insetTween;
   double _insetValue = 0;
   double _insetTarget = 0;
-  bool _imeClearing = false;
-
-  /// What the IME's field held at the last commit. The field keeps it, so a
-  /// backspace reaches the remote as a KeyCode.DEL rather than only editing
-  /// an invisible buffer; keeping the two in step is what makes that work.
-  String _imeSnap = '';
   bool _arrowsOpen = false;
 
   /// The demo session's transcript; a release build starts empty and only
@@ -156,6 +151,7 @@ class _TerminalPageState extends State<TerminalPage>
   bool _bannerFed = false;
   int _demoRows = 0;
   final _mods = TerminalMods();
+  late final TerminalInput _input;
 
   /// One Send at a time, so the lines of a paste reach the remote in order.
   Future<void> _sending = Future<void>.value();
@@ -191,7 +187,15 @@ class _TerminalPageState extends State<TerminalPage>
     // Hardware keys go through the emulator's encoder in the demo too, so a
     // keyboard can be tried without a tailnet.
     if (terminal.live) _output = terminal.frames.listen(_onOutput);
-    _ime.addListener(_onImeChanged);
+    _input = TerminalInput(
+      ime: _ime,
+      mods: _mods,
+      term: () => _session?.term,
+      deliver: _deliver,
+      onModsConsumed: () {
+        if (mounted) setState(() {});
+      },
+    );
     _inset.addListener(_onInsetTick);
   }
 
@@ -243,107 +247,11 @@ class _TerminalPageState extends State<TerminalPage>
 
   static Uint8List _ansi(String text) => Uint8List.fromList(utf8.encode(text));
 
-  /// Hardware keys go straight through the emulator's encoder. While the IME
-  /// target holds focus, a printable key or Enter belongs to that field, whose
-  /// change handler sends the committed text; everything else (Esc, Tab,
-  /// arrows, Ctrl combinations, Backspace) is a terminal key here.
-  KeyEventResult _onKey(FocusNode node, KeyEvent event) {
-    final session = _session;
-    if (session == null) return KeyEventResult.ignored;
-    if (event is KeyUpEvent) return KeyEventResult.handled;
-    final typing = _imeFocus.hasFocus;
-    final mods = ghosttyModsOf(HardwareKeyboard.instance);
-    final text = event.character;
-    final printable =
-        text != null && text.isNotEmpty && text.codeUnitAt(0) >= 0x20;
-    if (printable && mods & ~GhosttyMods.shift == 0) {
-      if (typing) return KeyEventResult.ignored;
-      final encoded = session.term.encodeKey(
-        ghosttyKeyForText(text),
-        0,
-        text: text,
-      );
-      if (encoded != null) _deliver(encoded);
-      return KeyEventResult.handled;
-    }
-    final key = ghosttyKeyOf(event);
-    if (key == GhosttyKeys.enter && mods == 0) {
-      if (typing) return KeyEventResult.ignored;
-      final encoded = session.term.encodeKey(GhosttyKeys.enter, 0);
-      if (encoded != null) _deliver(encoded);
-      return KeyEventResult.handled;
-    }
-    final encoded = session.term.encodeKey(key, mods);
-    if (encoded != null) _deliver(encoded);
-    return KeyEventResult.handled;
-  }
-
-  /// The IME's committed text, compared with the last commit: appended
-  /// characters are key presses (the armed Ctrl/Alt rides on the first one)
-  /// and removed ones are Backspace presses. The field keeps the buffer and
-  /// is only cleared when the keyboard closes, so Gboard's own backspace
-  /// turns into a real deletion on the remote. A composition in progress is
-  /// left to the IME until it commits.
-  void _onImeChanged() {
-    if (_imeClearing) return;
-    final value = _ime.value;
-    if (value.composing.isValid) return;
-    final text = value.text;
-    if (text == _imeSnap) return;
-    final session = _session;
-    if (session == null) {
-      _imeSnap = text;
-      return;
-    }
-    var common = 0;
-    while (common < text.length &&
-        common < _imeSnap.length &&
-        text.codeUnitAt(common) == _imeSnap.codeUnitAt(common)) {
-      common++;
-    }
-    final removed = _imeSnap.length - common;
-    for (var i = 0; i < removed; i++) {
-      final encoded = session.term.encodeKey(GhosttyKeys.backspace, 0);
-      if (encoded != null) _deliver(encoded);
-    }
-    final added = text.substring(common);
-    var mods = _mods.mask;
-    var consumed = false;
-    for (final rune in added.runes) {
-      if (rune == 0x0a || rune == 0x0d) {
-        final encoded = session.term.encodeKey(GhosttyKeys.enter, 0);
-        if (encoded != null) _deliver(encoded);
-        continue;
-      }
-      final ch = String.fromCharCode(rune);
-      final encoded = session.term.encodeKey(
-        ghosttyKeyForText(ch),
-        mods,
-        text: ch,
-      );
-      if (encoded != null) _deliver(encoded);
-      if (mods != 0) {
-        mods = 0;
-        consumed = true;
-      }
-    }
-    _imeSnap = text;
-    if (consumed && _mods.consume()) setState(() {});
-    // The caret stays at the end; the field is invisible, so any other
-    // selection would only make a later diff ambiguous.
-    if (value.selection.isValid && value.selection.end != text.length) {
-      _imeClearing = true;
-      _ime.selection = TextSelection.collapsed(offset: text.length);
-      _imeClearing = false;
-    }
-  }
-
-  void _clearIme() {
-    _imeClearing = true;
-    _ime.clear();
-    _imeSnap = '';
-    _imeClearing = false;
-  }
+  KeyEventResult _onKey(FocusNode node, KeyEvent event) => _input.onKey(
+    event,
+    typing: _imeFocus.hasFocus,
+    held: ghosttyModsOf(HardwareKeyboard.instance),
+  );
 
   /// The toolbar's keyboard button: the only way in, apart from system back
   /// which Android keeps for closing it.
@@ -379,7 +287,7 @@ class _TerminalPageState extends State<TerminalPage>
   void _hideKeyboard() {
     _imeFocus.unfocus();
     _keyFocus.requestFocus();
-    _clearIme();
+    _input.clear();
     unawaited(SystemChannels.textInput.invokeMethod<void>('TextInput.hide'));
   }
 
@@ -602,7 +510,7 @@ class _TerminalPageState extends State<TerminalPage>
     _fontSave?.cancel();
     // Detach only; the session stays up in the store and back reattaches.
     _output?.cancel();
-    _ime.removeListener(_onImeChanged);
+    _input.dispose();
     _inset.dispose();
     _imeFocus.dispose();
     _keyFocus.dispose();
