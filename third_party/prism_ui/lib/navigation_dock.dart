@@ -1650,6 +1650,16 @@ class _LensClip extends CustomClipper<Path> {
 
 enum _LensPart { both, outside, inside }
 
+/// How filled a destination's glyph is with the lens [offset] destinations
+/// away: an outline until the lens is close, solid once it has settled, so the
+/// fill follows a drag as well as a tap.
+double _dockGlyphFill(double offset) {
+  final reach = (1 - offset.abs() / _fillReach).clamp(0.0, 1.0);
+  return Curves.easeInOut.transform(reach);
+}
+
+const _fillReach = 0.6;
+
 class _FloatingBarItem extends StatefulWidget {
   const _FloatingBarItem({
     required this.destination,
@@ -1730,11 +1740,14 @@ class _FloatingBarItemState extends State<_FloatingBarItem> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            GlyphIcon(
-              widget.destination.glyph,
-              size: _iconSize,
-              color: color,
-              fill: 1,
+            ValueListenableBuilder<double>(
+              valueListenable: widget.lens,
+              builder: (_, lens, _) => GlyphIcon(
+                widget.destination.glyph,
+                size: _iconSize,
+                color: color,
+                fill: _dockGlyphFill(lens - widget.index),
+              ),
             ),
             const SizedBox(height: _labelGap),
             SizedBox(
