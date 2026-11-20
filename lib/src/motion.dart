@@ -303,7 +303,9 @@ class FadeThrough extends StatelessWidget {
 }
 
 /// A dot that fades in and out while something is in progress, like the
-/// Kotlin app's `AgentDot`: alpha 0.35 → 1 over 700 ms, reversed.
+/// Kotlin app's `AgentDot`: alpha 0.35 → 1 over 700 ms, reversed. A ring
+/// leaves it and fades every [haloPeriod], so a live state reads at a glance
+/// even in a still frame. Reduced motion holds the dot solid without the ring.
 class PulsingDot extends StatefulWidget {
   const PulsingDot({
     super.key,
@@ -316,12 +318,16 @@ class PulsingDot extends StatefulWidget {
   final double size;
   final bool pulse;
 
+  static const haloPeriod = Duration(milliseconds: 1400);
+
+  /// How far the ring grows, as a multiple of the dot's size.
+  static const haloScale = 2.0;
+
   @override
   State<PulsingDot> createState() => _PulsingDotState();
 }
 
-class _PulsingDotState extends State<PulsingDot>
-    with SingleTickerProviderStateMixin {
+class _PulsingDotState extends State<PulsingDot> with TickerProviderStateMixin {
   late final _controller = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 700),
@@ -331,6 +337,10 @@ class _PulsingDotState extends State<PulsingDot>
       begin: 0.35,
       end: 1,
     ).chain(CurveTween(curve: Curves.easeInOut)),
+  );
+  late final _halo = AnimationController(
+    vsync: this,
+    duration: PulsingDot.haloPeriod,
   );
 
   @override
@@ -350,37 +360,70 @@ class _PulsingDotState extends State<PulsingDot>
       _controller
         ..stop()
         ..value = 1;
+      _halo
+        ..stop()
+        ..value = 0;
       return;
     }
     if (!_controller.isAnimating) _controller.repeat(reverse: true);
+    if (!_halo.isAnimating) _halo.repeat();
   }
 
   @override
   void dispose() {
     _controller.dispose();
+    _halo.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return FadeTransition(
-      opacity: _alpha,
-      child: TweenAnimationBuilder<Color?>(
-        tween: ColorTween(end: widget.color),
-        duration: motionDuration(context, fade),
-        curve: fade.curve,
-        builder: (context, color, _) => SizedBox.square(
+    return TweenAnimationBuilder<Color?>(
+      tween: ColorTween(end: widget.color),
+      duration: motionDuration(context, fade),
+      curve: fade.curve,
+      builder: (context, color, _) {
+        final tint = color ?? widget.color;
+        return SizedBox.square(
           dimension: widget.size,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: color ?? widget.color,
-              shape: BoxShape.circle,
+          child: CustomPaint(
+            painter: _HaloPainter(_halo, tint),
+            child: FadeTransition(
+              opacity: _alpha,
+              child: DecoratedBox(
+                decoration: BoxDecoration(color: tint, shape: BoxShape.circle),
+              ),
             ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
+}
+
+class _HaloPainter extends CustomPainter {
+  _HaloPainter(this.progress, this.color) : super(repaint: progress);
+
+  final Animation<double> progress;
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final t = progress.value;
+    if (t <= 0) return;
+    final grow = Curves.easeOutCubic.transform(t);
+    final radius =
+        size.shortestSide / 2 * (1 + (PulsingDot.haloScale - 1) * grow);
+    canvas.drawCircle(
+      size.center(Offset.zero),
+      radius,
+      Paint()..color = color.withValues(alpha: color.a * 0.45 * (1 - t)),
+    );
+  }
+
+  @override
+  bool shouldRepaint(_HaloPainter oldDelegate) =>
+      color != oldDelegate.color || progress != oldDelegate.progress;
 }
 
 /// Compose's `AnimatedVisibility`: the child fades in with the default effects

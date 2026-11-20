@@ -40,6 +40,11 @@ class _AnimatedGlyphState extends State<AnimatedGlyph>
     if (oldWidget.filled == widget.filled) {
       return;
     }
+    if (MediaQuery.maybeDisableAnimationsOf(context) ?? false) {
+      _pop.stop();
+      _controller.value = widget.filled ? 1 : 0;
+      return;
+    }
     if (widget.filled) {
       _controller.forward();
       if (!_pop.isAnimating) {

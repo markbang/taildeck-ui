@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:prism_ui/icons/icons.dart';
 import 'package:prism_ui/prism_ui.dart';
 import 'package:taildeck_ui/src/glyphs.dart';
+import 'package:taildeck_ui/src/widgets/foundation.dart';
 
 import 'golden_harness.dart';
 
@@ -84,6 +85,46 @@ Widget _page(ThemeMode mode) => goldenApp(
   ),
 );
 
+Widget _dock(ThemeMode mode, int selected) => goldenApp(
+  themeMode: mode,
+  home: Builder(
+    builder: (context) => Surface(
+      color: SurfaceLevel.page.colorOf(context.colorScheme),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          const Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              StatusPill(
+                label: 'Working',
+                tint: Color(0xFF3FB950),
+                dot: true,
+                pulse: true,
+              ),
+              SizedBox(width: 12),
+              StatusPill(label: 'Idle', tint: Color(0xFF8B949E), dot: true),
+            ],
+          ),
+          NavigationDock(
+            destinations: [
+              for (final (glyph, label) in const [
+                (Glyphs2.nodes, 'Nodes'),
+                (Glyphs2.grid, 'Services'),
+                (Glyphs2.agents, 'Agents'),
+                (Glyphs2.sliders, 'Settings'),
+              ])
+                NavigationDockDestination(glyph: glyph, label: label),
+            ],
+            selectedIndex: selected,
+            onSelected: (_) {},
+          ),
+        ],
+      ),
+    ),
+  ),
+);
+
 void main() {
   setUpAll(() async {
     await loadGoldenFonts();
@@ -101,6 +142,28 @@ void main() {
       await expectLater(
         find.byType(PrismApp),
         matchesGoldenFile('goldens/glyphs_${mode.name}.png'),
+      );
+    });
+  }
+
+  for (final mode in [ThemeMode.light, ThemeMode.dark]) {
+    testWidgets('a dock tab fills as the lens arrives (${mode.name})', (
+      tester,
+    ) async {
+      usePhone(tester, size: const Size(414, 200));
+      await tester.pumpWidget(_dock(mode, 0));
+      await pumpFrames(tester, const Duration(milliseconds: 500));
+      await tester.pumpWidget(_dock(mode, 2));
+      await pumpFrames(tester, const Duration(milliseconds: 128));
+      expect(tester.takeException(), isNull);
+      await expectLater(
+        find.byType(PrismApp),
+        matchesGoldenFile('goldens/dock_moving_${mode.name}.png'),
+      );
+      await pumpFrames(tester, const Duration(milliseconds: 800));
+      await expectLater(
+        find.byType(PrismApp),
+        matchesGoldenFile('goldens/dock_settled_${mode.name}.png'),
       );
     });
   }
