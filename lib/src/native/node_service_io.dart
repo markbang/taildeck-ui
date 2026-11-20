@@ -14,19 +14,38 @@ class _AndroidNodeService implements NodeService {
   bool get _android => Platform.isAndroid;
 
   @override
-  Future<void> start() => _send('start');
+  Future<bool> start() async {
+    if (!_android) return true;
+    try {
+      return await _channel.invokeMethod<bool>('start') ?? false;
+    } on MissingPluginException {
+      return true;
+    } on PlatformException catch (error) {
+      debugPrint('taildeck: service start failed: ${error.message}');
+      return false;
+    }
+  }
 
   @override
-  Future<void> stop() => _send('stop');
+  Future<void> stop() => _send<void>('stop');
 
-  Future<void> _send(String method) async {
-    if (!_android) return;
+  @override
+  Future<bool?> batteryExempt() async =>
+      _android ? await _send<bool>('batteryExempt') : null;
+
+  @override
+  Future<void> requestBatteryExempt() => _send<bool>('requestBatteryExempt');
+
+  Future<T?> _send<T>(String method) async {
+    if (!_android) return null;
     try {
-      await _channel.invokeMethod<void>(method);
+      return await _channel.invokeMethod<T>(method);
     } on MissingPluginException {
       // A host without the Android side; the node runs without the service.
+      return null;
     } on PlatformException catch (error) {
       debugPrint('taildeck: service $method failed: ${error.message}');
+      return null;
     }
   }
 }

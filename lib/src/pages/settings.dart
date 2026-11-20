@@ -825,6 +825,17 @@ class _TerminalSection extends StatelessWidget {
             onChanged: (value) =>
                 unawaited(backend.setTerminalKeepAlive(value)),
           ),
+          if (backend.batteryExempt case final exempt?)
+            DecorationListItem(
+              title: Text(l10n.batteryExempt),
+              subtitle: Text(
+                exempt ? l10n.batteryExemptOn : l10n.batteryExemptOff,
+              ),
+              trailing: exempt ? null : const GlyphIcon(Glyphs.chevronForward),
+              onPressed: exempt
+                  ? null
+                  : () => unawaited(backend.requestBatteryExempt()),
+            ),
 
           DecorationListItem(
             leading: const GlyphIcon(Glyphs2.bolt),

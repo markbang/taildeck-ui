@@ -106,6 +106,23 @@ When a blocking gate still fails after that and the only error is
 rerun <run-id> --failed`) and say so in the release report. Any other red
 stops the release.
 
+## Background keep-alive on a device
+
+Not in CI: the emulator gate cannot sit in the background for minutes. On a
+phone or an emulator with a signed-in node:
+
+```bash
+adb shell input keyevent HOME
+sleep 600
+adb shell dumpsys activity services top.bangwu.taildeck | grep -A3 TailnetService
+adb shell dumpsys activity processes | grep -A2 top.bangwu.taildeck
+```
+
+Pass: `TailnetService` is listed with `isForeground=true` and
+`foregroundServiceType=0x40000000` (specialUse), the process is still there,
+and after reopening the app the node list shows peers without a reconnect.
+`adb shell dumpsys deviceidle force-idle` before the sleep adds Doze.
+
 ## Adding a golden
 
 Put the test in `test/golden/`, wrap the app in `goldenApp` and the view in

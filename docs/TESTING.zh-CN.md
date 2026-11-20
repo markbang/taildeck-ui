@@ -50,6 +50,19 @@ gh workflow run android-smoke --ref main -f full-gate=false \
 
 卡发版的 gate 失败、且唯一的错误是 `emulator: the qemu process is gone` 时，重跑一次失败的 job（`gh run rerun <run-id> --failed`），并在发版报告里写明。其他任何红色都停止发版。
 
+## 真机上的后台保活
+
+CI 不跑：模拟器 gate 没法在后台挂几分钟。在已登录节点的手机或模拟器上：
+
+```bash
+adb shell input keyevent HOME
+sleep 600
+adb shell dumpsys activity services top.bangwu.taildeck | grep -A3 TailnetService
+adb shell dumpsys activity processes | grep -A2 top.bangwu.taildeck
+```
+
+通过：`TailnetService` 在列且 `isForeground=true`、`foregroundServiceType=0x40000000`（specialUse），进程仍在，重新打开 app 后节点列表直接有对端，不用重连。sleep 前加 `adb shell dumpsys deviceidle force-idle` 可同时测 Doze。
+
 ## 加一个 golden
 
 放到 `test/golden/`，用 `goldenApp` 包应用、`usePhone` 定视口（414 × 896，状态栏 47，手势区 34），先断言必须成立的几何，再 `matchesGoldenFile('goldens/<name>.png')`。采样区域里不要有动画，或者让它确定：给脉冲骨架截图会因脉冲相位失败，而不是界面有问题。`SkeletonPill` 的静止帧从墙钟起算，所以截图要落在它上方。
