@@ -6,8 +6,11 @@ import 'demo.dart';
 /// Claude session whose reply exercises the Markdown renderer. Its shape is
 /// what `native/bridge/transcript.go` returns.
 /// `running` stops the last turn mid-way, its newest call still pending.
+/// `stream` plays a turn out over a few seconds, as a working agent writes it.
 String? demoTranscript(String? which) {
-  if (!demoData || (which != 'demo' && which != 'running')) return null;
+  if (!demoData) return null;
+  if (which == 'stream') return demoStream.read();
+  if (which != 'demo' && which != 'running') return null;
   final messages = <Map<String, Object>>[..._messages];
   if (which == 'running') {
     messages.removeLast();
@@ -120,3 +123,67 @@ const _messages = [
         'The change is in [herdr.go](native/bridge/herdr.go).',
   },
 ];
+
+/// A turn that grows with every read: tool calls start and finish, then the
+/// reply arrives in three writes under one id.
+class DemoStream {
+  DemoStream({DateTime Function()? clock}) : _clock = clock ?? DateTime.now;
+
+  final DateTime Function() _clock;
+  DateTime? _start;
+
+  static const step = Duration(milliseconds: 1200);
+
+  String read() {
+    final start = _start ??= _clock();
+    final at = _clock().difference(start).inMilliseconds ~/ step.inMilliseconds;
+    final reply = demoAgentReply;
+    final third = reply.length ~/ 3;
+    final messages = <Map<String, Object>>[
+      {
+        'id': 'u1',
+        'role': 'user',
+        'text': 'Why does the herdr dial fail on a cold start?',
+      },
+      if (at >= 1)
+        {
+          'id': 't1',
+          'role': 'tool',
+          'kind': 'shell',
+          'name': 'Bash',
+          'summary': 'rg -n "dial" lib/src native/bridge',
+          if (at < 2) 'pending': true,
+        },
+      if (at >= 2)
+        {
+          'id': 't2',
+          'role': 'tool',
+          'kind': 'read',
+          'name': 'Read',
+          'summary': 'native/bridge/herdr.go',
+          if (at < 3) 'pending': true,
+        },
+      if (at >= 3)
+        {
+          'id': 'k1',
+          'role': 'thinking',
+          'text': 'The dial runs before the first netmap.',
+        },
+      if (at >= 4)
+        {
+          'id': 'r1',
+          'role': 'assistant',
+          'text': at >= 6
+              ? reply
+              : reply.substring(0, at >= 5 ? third * 2 : third),
+        },
+    ];
+    return jsonEncode({
+      'model': 'claude-opus-4-1',
+      'context': {'used': 48210, 'window': 200000},
+      'messages': messages,
+    });
+  }
+}
+
+final demoStream = DemoStream();

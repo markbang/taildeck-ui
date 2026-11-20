@@ -149,6 +149,15 @@ class _StepsBlockState extends State<StepsBlock> {
   late bool _open = widget.memory.isOpen(widget.fold);
   bool _instant = false;
 
+  /// When the fold last opened or closed. Only that animates its height: a
+  /// reply typed out inside a running fold grows with the list, unclipped.
+  DateTime? _toggledAt;
+
+  bool get _sizing {
+    final at = _toggledAt;
+    return at != null && DateTime.now().difference(at) < slowSpatial.duration;
+  }
+
   @override
   void didUpdateWidget(StepsBlock oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -162,6 +171,7 @@ class _StepsBlockState extends State<StepsBlock> {
       return;
     }
     _open = open;
+    _toggledAt = DateTime.now();
   }
 
   bool _aboveViewport() {
@@ -197,7 +207,10 @@ class _StepsBlockState extends State<StepsBlock> {
 
   void _toggle() {
     widget.memory.choose(widget.fold, !_open);
-    setState(() => _open = !_open);
+    setState(() {
+      _open = !_open;
+      _toggledAt = DateTime.now();
+    });
   }
 
   @override
@@ -292,7 +305,12 @@ class _StepsBlockState extends State<StepsBlock> {
     // already took its whole height out.
     if (_instant) return body;
     return AnimatedSize(
-      duration: motionDuration(context, slowSpatial),
+      // AnimatedSize asserts on a zero duration; 1 ms settles in one frame,
+      // and that frame paints unclipped so a new line never shows cut.
+      duration: _sizing
+          ? motionDuration(context, slowSpatial)
+          : const Duration(milliseconds: 1),
+      clipBehavior: _sizing ? Clip.hardEdge : Clip.none,
       curve: context.disableAnimations ? Curves.linear : slowSpatial.curve,
       alignment: Alignment.topCenter,
       child: body,

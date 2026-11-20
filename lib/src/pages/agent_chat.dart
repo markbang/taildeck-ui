@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:prism_ui/icons/icons.dart';
@@ -19,6 +20,7 @@ import 'agent_chat_layers.dart';
 import 'agent_command_output.dart';
 import 'agent_model.dart';
 import 'agent_steps.dart';
+import 'agent_stream.dart';
 
 /// One agent pane: its transcript, a prompt box, restart and model switching.
 class AgentChatPage extends StatefulWidget {
@@ -42,6 +44,15 @@ class AgentChatPage extends StatefulWidget {
 class _AgentChatPageState extends State<AgentChatPage> {
   static const _maxSuggestions = 6;
 
+  /// While the agent works the session file is re-read this often, so a reply
+  /// shows within half a second of being written; a quiet pane every 4 s, as
+  /// the Kotlin chat does.
+  static const livePoll = Duration(milliseconds: 400);
+  static const idlePoll = Duration(seconds: 4);
+
+  /// A prompt just sent keeps the fast pace until herdr reports the agent busy.
+  static const _sentGrace = Duration(seconds: 8);
+
   final _scroll = ChatScrollController();
   final _input = TextEditingController();
   final _inputFocus = FocusNode();
@@ -56,6 +67,15 @@ class _AgentChatPageState extends State<AgentChatPage> {
   ModelSettings? _pickedFrom;
   ModelSettings? _picked;
   Timer? _reload;
+  Timer? _poll;
+  bool _fetching = false;
+  bool _again = false;
+  bool _againMore = false;
+  DateTime? _sentAt;
+  bool _hidden = false;
+  late final AppLifecycleListener _lifecycle;
+  final _reveal = RevealMemory();
+  Map<String, (Object, Widget)> _rowCache = const {};
   List<HerdrCommand> _commands = const [];
   List<HerdrCommand> _suggestions = const [];
   int _suggestion = 0;
@@ -86,6 +106,7 @@ class _AgentChatPageState extends State<AgentChatPage> {
     widget.herdr.addListener(_onHerdr);
     _input.addListener(_onDraft);
     _scroll.addListener(_onScroll);
+    _lifecycle = AppLifecycleListener(onStateChange: _onLifecycle);
     for (final text in widget.demoQueue) {
       widget.herdr.enqueue(_pane, text);
     }
@@ -95,7 +116,9 @@ class _AgentChatPageState extends State<AgentChatPage> {
   @override
   void dispose() {
     widget.herdr.removeListener(_onHerdr);
+    _lifecycle.dispose();
     _reload?.cancel();
+    _poll?.cancel();
     _scroll.dispose();
     _input.dispose();
     _inputFocus.dispose();
@@ -145,11 +168,80 @@ class _AgentChatPageState extends State<AgentChatPage> {
   static String _message(Object error) =>
       error is Exception ? error.toString() : '$error';
 
+  /// A hidden app reads nothing; coming back reads at once.
+  void _onLifecycle(AppLifecycleState state) {
+    final hidden =
+        state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached;
+    if (hidden == _hidden) return;
+    _hidden = hidden;
+    if (hidden) {
+      _poll?.cancel();
+    } else {
+      unawaited(_load());
+    }
+  }
+
+  bool get _live {
+    final sent = _sentAt;
+    return _working ||
+        sent != null && DateTime.now().difference(sent) < _sentGrace;
+  }
+
+  void _schedulePoll() {
+    _poll?.cancel();
+    if (!mounted || _hidden) return;
+    _poll = Timer(_live ? livePoll : idlePoll, () => unawaited(_load()));
+  }
+
+  /// One read at a time: a call that lands mid-read runs once after it.
   Future<void> _load({bool more = false}) async {
+    if (_fetching) {
+      _again = true;
+      _againMore |= more;
+      return;
+    }
+    _fetching = true;
+    _poll?.cancel();
+    try {
+      await _read(more: more);
+    } finally {
+      _fetching = false;
+      if (mounted) {
+        if (_again) {
+          final again = _againMore;
+          _again = false;
+          _againMore = false;
+          unawaited(_load(more: again));
+        } else {
+          _schedulePoll();
+        }
+      }
+    }
+  }
+
+  Future<void> _read({required bool more}) async {
     try {
       if (more) await widget.herdr.transcriptMore(_pane);
       final transcript = await widget.herdr.transcript(_pane);
       if (!mounted) return;
+      if (transcript == _transcript && _error.isEmpty) return;
+      final first = _transcript == null;
+      final fresh = [
+        for (final message in transcript.messages)
+          if (message.key.isNotEmpty && !_reveal.knows(message.key)) message,
+      ];
+      // The opening read, earlier history, or a session swapped underneath
+      // shows as it is; only a reply arriving now is typed out.
+      final replies = fresh.where((m) => m.role == 'assistant').toList();
+      final typed = !first && !more && replies.length <= 2;
+      _reveal.settle(fresh);
+      if (typed) {
+        for (final reply in replies) {
+          _reveal.arrive(reply.key);
+        }
+      }
       if (!more && _nearBottom) _scroll.follow();
       setState(() {
         _transcript = transcript;
@@ -168,6 +260,11 @@ class _AgentChatPageState extends State<AgentChatPage> {
         _loading = false;
       });
     }
+  }
+
+  /// A reply being typed out keeps the end in view while the reader is there.
+  void _onReveal() {
+    if (_nearBottom) _scroll.follow();
   }
 
   // ---- slash commands ----
@@ -300,6 +397,7 @@ class _AgentChatPageState extends State<AgentChatPage> {
     });
     try {
       await widget.herdr.prompt(_pane, text);
+      _sentAt = DateTime.now();
       if (mounted) _clearDraft();
       await _load();
     } on Object catch (error) {
@@ -701,41 +799,84 @@ class _AgentChatPageState extends State<AgentChatPage> {
                   .copyWith(color: scheme.onSurfaceVariant),
             ),
           ),
-        for (final row in chatRows(transcript.messages, working: _working))
-          if (row is StepsFold)
-            StepsBlock(
-              key: ValueKey('steps-${row.key}'),
-              fold: row,
-              memory: _steps,
-              live: _working,
-              itemBuilder: (message) => _MessageBlock(
-                message: message,
-                herdr: widget.herdr,
-                onOpenImage: _openImage,
-                onOpenSubagent: _openSubagent,
-              ),
-            )
-          else if (row is List<HerdrMessage>)
-            _ToolGroup(
-              key: ValueKey(
-                'tools-${row.first.call.isNotEmpty ? row.first.call : row.first.name}',
-              ),
-              messages: row,
-              herdr: widget.herdr,
-              live: _working,
-              onOpenImage: _openImage,
-              onOpenSubagent: _openSubagent,
-            )
-          else
-            _MessageBlock(
-              message: row as HerdrMessage,
-              herdr: widget.herdr,
-              onOpenImage: _openImage,
-              onOpenSubagent: _openSubagent,
-            ),
+        ..._rows(transcript.messages),
+        if (_working) const LiveCaret(key: ValueKey('live-caret')),
       ],
     );
   }
+
+  /// The transcript's rows. A row whose messages did not change since the
+  /// last read keeps its widget instance, so a poll that appends a message
+  /// rebuilds that message alone, not every row above it.
+  List<Widget> _rows(List<HerdrMessage> messages) {
+    final working = _working;
+    final previous = _rowCache;
+    final next = <String, (Object, Widget)>{};
+    Widget cached(String key, Object signature, Widget Function() build) {
+      var unique = key;
+      for (var n = 1; next.containsKey(unique); n++) {
+        unique = '$key#$n';
+      }
+      final hit = previous[unique];
+      final widget = hit != null && hit.$1 == signature ? hit.$2 : build();
+      next[unique] = (signature, widget);
+      return widget;
+    }
+
+    final rows = <Widget>[];
+    var index = 0;
+    for (final row in chatRows(messages, working: working)) {
+      index++;
+      if (row is StepsFold) {
+        rows.add(
+          cached(
+            'steps-${row.key}',
+            _RowSignature([row.running, working, ...row.items]),
+            () => StepsBlock(
+              key: ValueKey('steps-${row.key}'),
+              fold: row,
+              memory: _steps,
+              live: working,
+              itemBuilder: _messageBlock,
+            ),
+          ),
+        );
+      } else if (row is List<HerdrMessage>) {
+        final key =
+            'tools-${row.first.call.isNotEmpty ? row.first.call : row.first.name}';
+        rows.add(
+          cached(
+            key,
+            _RowSignature([working, ...row]),
+            () => _ToolGroup(
+              key: ValueKey(key),
+              messages: row,
+              herdr: widget.herdr,
+              live: working,
+              onOpenImage: _openImage,
+              onOpenSubagent: _openSubagent,
+            ),
+          ),
+        );
+      } else {
+        final message = row as HerdrMessage;
+        final key = message.key.isNotEmpty ? message.key : 'row-$index';
+        rows.add(cached('msg-$key', message, () => _messageBlock(message)));
+      }
+    }
+    _rowCache = next;
+    return rows;
+  }
+
+  Widget _messageBlock(HerdrMessage message) => _MessageBlock(
+    key: message.key.isEmpty ? null : ValueKey('msg-${message.key}'),
+    message: message,
+    herdr: widget.herdr,
+    reveal: _reveal,
+    onReveal: _onReveal,
+    onOpenImage: _openImage,
+    onOpenSubagent: _openSubagent,
+  );
 
   /// What the agent is doing right now: its newest running tool call.
   String _activity(AppLocalizations l10n) {
@@ -1082,16 +1223,37 @@ class _QueuedChip extends StatelessWidget {
   }
 }
 
+/// What a transcript row was built from; equal signatures reuse the widget.
+class _RowSignature {
+  const _RowSignature(this.parts);
+
+  final List<Object> parts;
+
+  @override
+  bool operator ==(Object other) =>
+      other is _RowSignature && listEquals(other.parts, parts);
+
+  @override
+  int get hashCode => Object.hashAll(parts);
+}
+
 class _MessageBlock extends StatelessWidget {
   const _MessageBlock({
+    super.key,
     required this.message,
     required this.herdr,
     required this.onOpenImage,
     required this.onOpenSubagent,
+    this.reveal,
+    this.onReveal,
   });
 
   final HerdrMessage message;
   final HerdrController herdr;
+
+  /// Types out a reply that just arrived; null shows every message whole.
+  final RevealMemory? reveal;
+  final VoidCallback? onReveal;
   final ValueChanged<Uint8List> onOpenImage;
   final ValueChanged<HerdrMessage> onOpenSubagent;
 
@@ -1236,19 +1398,27 @@ class _MessageBlock extends StatelessWidget {
           ),
         );
       default:
+        final style = AppTextStyle.body
+            .of(context)
+            .copyWith(color: message.error ? scheme.error : null, height: 1.45);
+        Widget markdown(String text) => MarkdownView(
+          text,
+          style: style,
+          loadImage: herdr.image,
+          onOpenImage: onOpenImage,
+        );
+        final memory = reveal;
         return Padding(
           padding: const EdgeInsets.symmetric(vertical: 5),
-          child: MarkdownView(
-            message.text,
-            style: AppTextStyle.body
-                .of(context)
-                .copyWith(
-                  color: message.error ? scheme.error : null,
-                  height: 1.45,
+          child: memory == null || message.key.isEmpty
+              ? markdown(message.text)
+              : RevealText(
+                  id: message.key,
+                  text: message.text,
+                  memory: memory,
+                  onGrow: onReveal,
+                  builder: (context, visible) => markdown(visible),
                 ),
-            loadImage: herdr.image,
-            onOpenImage: onOpenImage,
-          ),
         );
     }
   }
