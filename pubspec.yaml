@@ -46,3 +46,6 @@ flutter:
     - family: NotoSansCJK
       fonts:
         - asset: assets/fonts/NotoSansCJK-subset.otf
+    - family: SymbolsNerdFontMono
+      fonts:
+        - asset: assets/fonts/SymbolsNerdFontMono.ttf

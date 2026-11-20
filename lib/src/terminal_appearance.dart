@@ -201,7 +201,15 @@ String terminalFontFamily(TerminalFontId id) => switch (id) {
   TerminalFontId.sans => 'Roboto',
 };
 
-const terminalFontFallback = <String>['NotoSansCJK', 'DejaVuSansMono'];
+const nerdFontFamily = 'SymbolsNerdFontMono';
+
+/// The Nerd Font symbols come last: they only fill Private Use Area code
+/// points, which the text fonts do not carry.
+const terminalFontFallback = <String>[
+  'NotoSansCJK',
+  'DejaVuSansMono',
+  nerdFontFamily,
+];
 
 /// Parsers keep the default for anything this build does not know.
 TerminalThemeId parseTerminalThemeId(Object? value) =>
