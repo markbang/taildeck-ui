@@ -143,6 +143,7 @@ class HerdrAgent {
 class HerdrMessage {
   const HerdrMessage({
     required this.role,
+    this.id = '',
     this.text = '',
     this.name = '',
     this.summary = '',
@@ -157,6 +158,9 @@ class HerdrMessage {
   });
 
   final String role;
+
+  /// The session's own id for the entry; empty when the agent records none.
+  final String id;
   final String text;
   final String name;
   final String summary;
@@ -181,6 +185,44 @@ class HerdrMessage {
 
   /// A subagent call: its own transcript can be read from the pane's session.
   bool get isSubagent => kind == 'task' && call.isNotEmpty;
+
+  /// Stable across reloads of the same session; empty without an [id]. One
+  /// session line can hold a thinking and a text block under one id.
+  String get key => id.isEmpty ? '' : '$role:$id';
+
+  @override
+  bool operator ==(Object other) =>
+      other is HerdrMessage &&
+      other.role == role &&
+      other.id == id &&
+      other.text == text &&
+      other.name == name &&
+      other.summary == summary &&
+      other.output == output &&
+      other.error == error &&
+      other.pending == pending &&
+      other.kind == kind &&
+      other.call == call &&
+      listEquals(other.images, images) &&
+      other.queued == queued &&
+      other.background == background;
+
+  @override
+  int get hashCode => Object.hash(
+    role,
+    id,
+    text,
+    name,
+    summary,
+    output,
+    error,
+    pending,
+    kind,
+    call,
+    Object.hashAll(images),
+    queued,
+    background,
+  );
 }
 
 /// One item of the agent's own task list (`TodoWrite` / `update_plan`).
@@ -194,6 +236,13 @@ class HerdrTodo {
 
   bool get done => status == 'completed';
   bool get current => status == 'in_progress';
+
+  @override
+  bool operator ==(Object other) =>
+      other is HerdrTodo && other.text == text && other.status == status;
+
+  @override
+  int get hashCode => Object.hash(text, status);
 
   static List<HerdrTodo> parse(Object? raw) => [
     for (final item in raw as List? ?? const [])
@@ -243,6 +292,33 @@ class HerdrTranscript {
 
   bool get isEmpty => screenMode ? screen.trim().isEmpty : messages.isEmpty;
 
+  /// Equal reads mean nothing moved, so a poll can skip the rebuild.
+  @override
+  bool operator ==(Object other) =>
+      other is HerdrTranscript &&
+      other.screenMode == screenMode &&
+      other.screen == screen &&
+      other.truncated == truncated &&
+      other.model == model &&
+      other.effort == effort &&
+      other.contextUsed == contextUsed &&
+      other.contextWindow == contextWindow &&
+      listEquals(other.messages, messages) &&
+      listEquals(other.todos, todos);
+
+  @override
+  int get hashCode => Object.hash(
+    screenMode,
+    screen,
+    truncated,
+    model,
+    effort,
+    contextUsed,
+    contextWindow,
+    Object.hashAll(messages),
+    Object.hashAll(todos),
+  );
+
   static HerdrTranscript parse(String raw) {
     final decoded = jsonDecode(raw);
     if (decoded is! Map<String, dynamic>) return const HerdrTranscript();
@@ -260,6 +336,7 @@ class HerdrTranscript {
         if (item is Map<String, dynamic>)
           HerdrMessage(
             role: item['role'] as String? ?? 'assistant',
+            id: item['id'] as String? ?? '',
             text: item['text'] as String? ?? item['output'] as String? ?? '',
             name: item['name'] as String? ?? '',
             summary:
