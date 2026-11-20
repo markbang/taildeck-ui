@@ -101,6 +101,13 @@ only the retry's outcome counts. Stills keep their ship-mode record-only
 level through the retry, and write `stills: ok 13/13 (retried after a lost
 emulator)` or, when the retry fails too, `stills: lost emulator …`.
 
+Inside the stills run, the device is checked before each shot. A lost device is
+restarted (at most three times, each boot at most 120 s), the screen is opened
+again by replaying the input since its launch, and the shot is taken again; the
+log names the shot, the time and each boot's duration. Only when the restarts
+run out does the run end as `stills: lost emulator`. `tool/screenshots_heal_test.sh`
+and `tool/gate_lost_test.sh` check this offline.
+
 When a blocking gate still fails after that and the only error is
 `emulator: the qemu process is gone`, rerun the failed jobs once (`gh run
 rerun <run-id> --failed`) and say so in the release report. Any other red

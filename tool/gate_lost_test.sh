@@ -20,6 +20,9 @@ cat > "$bin/adb" <<'FAKE'
 dev=$FAKE_DEV
 [ -e "$dev/dead" ] && { echo "error: device offline" >&2; exit 1; }
 case "$1" in
+  devices)
+    [ -e "$dev/dead" ] || printf 'List of devices attached\nemulator-5554\tdevice\n'
+    exit 0 ;;
   shell)
     shift
     case "$1" in
@@ -37,7 +40,12 @@ case "$1" in
           ro.build.version.release) echo 14 ;;
         esac
         exit 0 ;;
-      dumpsys) echo "mResumedActivity: ActivityRecord{1 u0 top.bangwu.taildeck/.MainActivity}"; exit 0 ;;
+      dumpsys)
+        case "$2" in
+          window) echo "  mCurrentFocus=Window{1 u0 top.bangwu.taildeck/.MainActivity}" ;;
+          *) echo "mResumedActivity: ActivityRecord{1 u0 top.bangwu.taildeck/.MainActivity}" ;;
+        esac
+        exit 0 ;;
       pidof) exit 1 ;;
       *) exit 0 ;;
     esac ;;
