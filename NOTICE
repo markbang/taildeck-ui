@@ -23,6 +23,11 @@ Third-party code:
   the drop's glass dissolving into a control that has no surface of its own
   (third_party/prism_ui/lib/popup.dart).
 
+- Symbols Nerd Font Mono, from Nerd Fonts v3.5.1 (https://github.com/ryanoasis/nerd-fonts),
+  subset to the Nerd Font icon code points (assets/fonts/SymbolsNerdFontMono.ttf).
+  The icon sets carry MIT, Apache 2.0, CC BY 4.0 and SIL OFL 1.1 licenses; the
+  texts and the list are in assets/fonts/SymbolsNerdFontMono-LICENSE.txt.
+
 - Taildeck (https://github.com/markbang/taildeck), MIT.
   This repository is a UI redesign of that app; the Android implementation,
   tsnet bridge, SSH terminal and gateways are not included.
