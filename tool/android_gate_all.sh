@@ -36,6 +36,7 @@ record=${RECORD:-false}
 ship=${SHIP:-false}
 record_gates=${RECORD_GATES:-stills}
 [ "$ship" = true ] || record_gates=""
+. "$(dirname "$0")/android_gate.sh"
 mkdir -p "$out"
 results="$out/gate-results.txt"
 : > "$results"
@@ -91,31 +92,6 @@ device_lost() { # <gate command...>
   ! emulator_alive || grep -qs 'stopped answering adb' "$dir/summary.txt"
 }
 
-reboot_emulator() { # <label>
-  local sdk=${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}} waited=0
-  {
-    free -m
-    sudo dmesg -T 2> /dev/null | tail -30
-  } > "$out/host-lost-$1.txt" 2>&1
-  pkill -9 -f qemu-system 2> /dev/null || true
-  adb kill-server > /dev/null 2>&1 || true
-  sleep 3
-  # shellcheck disable=SC2086 # the options are a word list
-  nohup "$sdk/emulator/emulator" -port 5554 -avd "${AVD_NAME:-taildeck-api34}" \
-    ${EMULATOR_OPTIONS:--no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none} \
-    -no-snapshot-save > "$out/emulator-retry-$1.log" 2>&1 &
-  timeout 300 adb wait-for-device || return 1
-  until [ "$(adb shell getprop sys.boot_completed 2> /dev/null | tr -d '\r')" = 1 ]; do
-    [ "$waited" -ge 300 ] && return 1
-    sleep 2
-    waited=$((waited + 2))
-  done
-  for scale in window_animation_scale transition_animation_scale animator_duration_scale; do
-    adb shell settings put global "$scale" 0 > /dev/null 2>&1 || true
-  done
-  adb shell input keyevent 82 > /dev/null 2>&1 || true
-}
-
 run_gate() { # <label> <timeout-seconds> <command...>
   local label=$1 limit=$2 status
   shift 2
@@ -151,7 +127,7 @@ gate() { # <label> <timeout-seconds> <command...>
     echo "::warning title=android gate $label::emulator lost (qemu died under the gate); retried once on a new boot"
     # The gate's out dir is its last argument; keep the lost attempt beside it.
     [ -d "${*: -1}" ] && rm -rf "${*: -1}-lost" && mv "${*: -1}" "${*: -1}-lost"
-    if reboot_emulator "$label"; then
+    if reboot_emulator "$label" "$out" 300; then
       start=$(date +%s)
       run_gate "$label" "$limit" "$@"
       status=$?

@@ -86,3 +86,32 @@ wait_home() { # <app> <out-dir> <tool-dir> [marker] [seconds] [routes]
   done
   return 1
 }
+
+# Restarts the CI emulator on the same AVD and waits for the boot to finish.
+# Used by a gate that lost the device (android_gate_all.sh) and by the stills
+# step between shots (screenshots_android.sh). The host's memory and kernel
+# log go to <out>/host-lost-<label>.txt; the boot waits at most <boot-limit>.
+reboot_emulator() { # <label> <out-dir> <boot-limit-seconds>
+  local label=$1 out=$2 limit=${3:-300} sdk=${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}} waited=0
+  {
+    free -m
+    sudo dmesg -T 2> /dev/null | tail -30
+  } > "$out/host-lost-$label.txt" 2>&1
+  pkill -9 -f qemu-system 2> /dev/null || true
+  adb kill-server > /dev/null 2>&1 || true
+  sleep 3
+  # shellcheck disable=SC2086 # the options are a word list
+  nohup "$sdk/emulator/emulator" -port 5554 -avd "${AVD_NAME:-taildeck-api34}" \
+    ${EMULATOR_OPTIONS:--no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none} \
+    -no-snapshot-save > "$out/emulator-retry-$label.log" 2>&1 &
+  timeout "$limit" adb wait-for-device || return 1
+  until [ "$(adb shell getprop sys.boot_completed 2> /dev/null | tr -d '\r')" = 1 ]; do
+    [ "$waited" -ge "$limit" ] && return 1
+    sleep 2
+    waited=$((waited + 2))
+  done
+  for scale in window_animation_scale transition_animation_scale animator_duration_scale; do
+    adb shell settings put global "$scale" 0 > /dev/null 2>&1 || true
+  done
+  adb shell input keyevent 82 > /dev/null 2>&1 || true
+}
