@@ -41,17 +41,17 @@ void main() {
     await tester.pumpWidget(goldenApp(home: _page()));
     await tester.pump(const Duration(milliseconds: 300));
 
-    // The large title starts where every page's content starts: the status
-    // bar, the toolbar height and the gap under it.
-    final title = tester.getTopLeft(find.text('Settings'));
-    expect(title.dy, greaterThanOrEqualTo(statusBar + pageToolbarHeight));
-    expect(title.dy, lessThanOrEqualTo(statusBar + pageToolbarHeight + 14));
+    // The large title is centred in the 72 dp bar under the status bar, with
+    // no block of blank space above it.
+    final title = tester.getCenter(find.text('Settings'));
+    expect(title.dy, greaterThan(statusBar));
+    expect(title.dy, lessThan(statusBar + pageToolbarHeight));
     expect(
       tester.widget<Text>(find.text('Settings')).style!.fontSize,
-      greaterThan(30),
+      24,
     );
-    // At rest the compact bar stays out of the way.
-    expect(find.byType(PageBar, skipOffstage: true), findsNothing);
+    // At rest there is one title: the compact one waits for the scroll.
+    expect(find.text('Settings'), findsOneWidget);
     await expectLater(
       find.byType(PrismApp),
       matchesGoldenFile('goldens/title_top_300.png'),
@@ -63,27 +63,16 @@ void main() {
     await tester.pumpWidget(goldenApp(home: _page()));
     await tester.pump(const Duration(milliseconds: 300));
 
-    await tester.drag(find.byType(ListView), const Offset(0, -34));
+    await tester.drag(find.byType(ListView), const Offset(0, -24));
     await tester.pump();
 
     expect(find.byType(PageHeader, skipOffstage: true), findsOneWidget);
-    final large = tester
+    // Halfway through the handover the large title fades out as the bar's
+    // compact title comes in: both are in the tree, one size each.
+    final sizes = tester
         .widgetList<Text>(find.text('Settings', skipOffstage: true))
-        .map((text) => text.style!.fontSize!)
-        .toList();
-    // The bar's title is in the tree but still fading in.
-    expect(large.length, 2);
-    expect(
-      tester
-          .widgetList<Opacity>(
-            find.ancestor(
-              of: find.text('Settings').first,
-              matching: find.byType(Opacity),
-            ),
-          )
-          .map((opacity) => opacity.opacity),
-      contains(greaterThan(0.1)),
-    );
+        .map((text) => text.style!.fontSize);
+    expect(sizes, unorderedEquals([24, 17]));
     await expectLater(
       find.byType(PrismApp),
       matchesGoldenFile('goldens/title_collapsing.png'),
