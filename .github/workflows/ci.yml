@@ -25,6 +25,15 @@ jobs:
       - run: flutter pub get
       - run: flutter analyze --no-fatal-infos
       - run: flutter test --exclude-tags golden
+      - name: Goldens
+        run: tool/golden.sh
+      - name: Upload golden failure diffs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: golden-failures
+          path: test/golden/failures/
+          if-no-files-found: ignore
 
   web:
     name: web build and screenshots

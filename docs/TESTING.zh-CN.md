@@ -15,7 +15,7 @@
 
 ## CI 跑什么
 
-PR 只跑 `ci`（analyze、widget 测试、web、Linux、安卓 debug APK）和 `android-smoke`（一次模拟器启动，PR 那组 gate）。所有 `*-record`、`select-metrics` 和 `icon-compare` 只在手动 dispatch 时跑。
+PR 只跑 `ci`（analyze、widget 测试、golden、web、Linux、安卓 debug APK）和 `android-smoke`（一次模拟器启动，PR 那组 gate）。所有 `*-record`、`select-metrics` 和 `icon-compare` 只在手动 dispatch 时跑。
 
 用来展示 bug 的 "before" 运行和取证运行，dispatch `android-smoke` 时加 `record=true`：
 
@@ -27,7 +27,7 @@ gh workflow run android-smoke --ref <branch> -f record=true -f gates="termtap"
 
 模拟器的软件合成器卡住时，冷启动会 ANR：所有窗口一起冻住，不只是应用。back gate 对失败的冷启动重试一次；第二次 ANR 直接判失败，除非 `tool/compositor_stall.py` 对两次 ANR 都确认：另一个进程同期冻住 3 秒以上，且应用不在 ANR 报告的 CPU 排行里。这时再给第三次启动，每次运行最多两次，并把两个进程的数字写进 summary；第三次仍卡住则按“emulator compositor stall”判失败。ANR 报告里没有 ANR 之前的 CPU 列表时，改用 gate 自己对应用主线程的采样：焦点等待期间 CPU 低于 10%，且没有在等文件，也没有在 ANR trace 里 hwui、EGL、binder 之外的 futex 上等待；采样读不到按 app-only 算。每次启动的 `Displayed` 时间和应用自己的 `taildeck first frame` / `taildeck frames` 日志写进 `smoke-back/timing.txt`。
 
-Golden 用例带 `golden` 标签，CI 不跑：CI 机器的光栅化不够逐像素稳定，不适合卡 PR；同一项检查用本机的 `tool/golden.sh`。
+Golden 用例带 `golden` 标签，在 `ci` 的测试 job 里作为独立一步运行 `tool/golden.sh`，位于 widget 测试之后，沿用同一套 Flutter 环境。golden 失败时，`test/golden/failures/`（失败帧的 master、测试图和差异）作为 `golden-failures` artifact 上传。
 
 ## 发版 gate
 
