@@ -32,6 +32,7 @@ void main() {
   setUpAll(() async {
     await loadGoldenFonts();
     useGoldenComparator();
+    pinGoldenMotion();
   });
 
   testWidgets('a first-level page opens on its title, not on a gap', (

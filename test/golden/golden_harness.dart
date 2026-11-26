@@ -35,6 +35,15 @@ Future<void> loadGoldenFonts() async {
   ]);
 }
 
+/// Where looping motion starts in every golden. The references were drawn with
+/// the skeleton bars near their dim point; 900 ms reproduces those frames
+/// (any start from about 830 to 1000 ms passes).
+void pinGoldenMotion() {
+  debugMotionClock = () => _goldenMotionStart;
+}
+
+const _goldenMotionStart = Duration(milliseconds: 900);
+
 /// Goldens compare at the pixel level, ignoring a one-step antialias wobble
 /// (max channel delta 2) that the same frame can draw differently run to run.
 void useGoldenComparator() {

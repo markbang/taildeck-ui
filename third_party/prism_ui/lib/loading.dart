@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/widgets.dart';
 import 'package:prism_ui/context.dart';
 import 'package:prism_ui/icons/icons.dart';
+import 'package:prism_ui/motion.dart';
 import 'package:prism_ui/null_status.dart';
 
 /// Hands a switcher's transition to an [ActivityIndicator.page] inside it, so
@@ -50,17 +51,13 @@ class ActivityIndicator extends StatefulWidget {
 
 class _ActivityIndicatorState extends State<ActivityIndicator>
     with SingleTickerProviderStateMixin {
-  // A screen of delay tests runs dozens of these, which only read as one
-  // motion if each picks up the same moment instead of starting from zero.
-  static final _clock = Stopwatch()..start();
-
   Duration get _loop => widget._page ? _RelayPainter.loop : _ArcPainter.loop;
 
   late final AnimationController _progress = AnimationController(
     vsync: this,
     duration: _loop,
     value:
-        _clock.elapsedMicroseconds %
+        debugMotionClock().inMicroseconds %
         _loop.inMicroseconds /
         _loop.inMicroseconds,
   )..repeat();

@@ -174,5 +174,5 @@ M0–M4 已落地：原生桥接与终端 FFI、SSH 会话、服务与网关、h
 ## 许可
 
 prism_ui 与 Taildeck 均为 GPL-3.0，本重设计沿用该许可。`third_party/prism_ui` 是 vendored 的 0.1.2，附带
-两处本地修改：一处 Web 修复（`SceneBuilder.pushClipRSuperellipse` 需要显式 `clipBehavior`），以及「减少动态效果」支持
-（侧边栏、Dock、弹层和菜单在 `MediaQuery.disableAnimations` 下即时到位）。
+三处本地修改：一处 Web 修复（`SceneBuilder.pushClipRSuperellipse` 需要显式 `clipBehavior`）、「减少动态效果」支持
+（侧边栏、Dock、弹层和菜单在 `MediaQuery.disableAnimations` 下即时到位），以及 `motion.dart` 里的 `debugMotionClock`：骨架屏和转圈从它读取起始相位，使 golden 可以固定相位（生产环境保持进程计时器）。

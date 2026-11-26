@@ -191,5 +191,7 @@ missing tailnet access above, not by missing code.
 ## Licenses
 
 prism_ui and Taildeck are GPL-3.0; this redesign inherits that. `third_party/prism_ui` is a vendored 0.1.2 with
-two local patches: a web fix (`SceneBuilder.pushClipRSuperellipse` needs an explicit `clipBehavior`) and
-reduce-motion checks (the sidebar, dock, sheets and menus land at once under `MediaQuery.disableAnimations`).
+three local patches: a web fix (`SceneBuilder.pushClipRSuperellipse` needs an explicit `clipBehavior`),
+reduce-motion checks (the sidebar, dock, sheets and menus land at once under `MediaQuery.disableAnimations`), and
+`debugMotionClock` in `motion.dart`, which skeletons and spinners read for their start phase so goldens can pin it
+(production keeps the process stopwatch).
