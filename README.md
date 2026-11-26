@@ -138,8 +138,16 @@ flutter pub get
 flutter run -d web-server --web-port 8099
 ```
 
-In mainland China, `source tool/env.sh` first: it points pub and Flutter downloads at mirrors and puts
-`$FLUTTER_HOME` (default `~/flutter347`) on `PATH`. Elsewhere it is not needed.
+`source tool/env.sh` is optional. It sets `PUB_HOSTED_URL` and `FLUTTER_STORAGE_BASE_URL` to the official hosts
+unless you already exported them, and it puts `$FLUTTER_HOME/bin` on `PATH` (`FLUTTER_HOME` defaults to a `flutter`
+already on `PATH`, else `~/flutter`; it stops with a message if that SDK has no `bin/flutter`). To download through a
+mirror, export its URLs before sourcing:
+
+```bash
+export PUB_HOSTED_URL=https://your-pub-mirror.example/
+export FLUTTER_STORAGE_BASE_URL=https://your-storage-mirror.example/
+source tool/env.sh
+```
 
 A native build needs its libraries first: `tool/build_native.sh` and `tool/build_term.sh`.
 
