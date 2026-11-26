@@ -2,6 +2,8 @@ module github.com/markbang/taildeck/bridge
 
 go 1.26.0
 
+toolchain go1.27.4
+
 require (
 	github.com/sagernet/sing v0.9.5-0.20260917142815-f37989cadbf0
 	github.com/sagernet/tailscale v1.102.1-sing-box-1.14-mod.5.0.20261028024127-670967df7dbf

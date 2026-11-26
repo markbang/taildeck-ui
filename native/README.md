@@ -1,3 +1,5 @@
+[English](README.md) · [中文](README.zh-CN.md)
+
 # native
 
 C ABIs behind the Flutter app. `lib/` is untouched by these; a plugin wires
@@ -8,8 +10,10 @@ them up later.
 | `bridge/` | Go tsnet node, `:18680` loopback gateway, SSH client, herdr agent ops (`package tsbridge`) | `libtaildeck_bridge.so` |
 | `term/` | `libghostty-vt` bindings: `term_jni.c` for the old Kotlin app, `term_ffi.c` for dart:ffi | `libghostty-vt.a` + term shim |
 
-`bridge/` is a copy of the engine in `markbang/taildeck` (module path and
-package API unchanged). `cmd/cshared` is the only new Go code.
+`bridge/` is the single source of the Taildeck bridge (module path and package
+API unchanged). `markbang/taildeck` carries a read-only vendored copy, synced by
+a script there. To change the bridge, change it here only, then run the sync in
+`markbang/taildeck` (`tool/sync-bridge.sh <sha>`).
 
 ## Build the bridge
 
@@ -38,7 +42,7 @@ CGO_ENABLED=1 go build -buildmode=c-shared \
   -trimpath -o build/libtaildeck_bridge.so ./cmd/cshared
 ```
 
-Android, same c-shared build with the NDK clang (Go 1.26 module, NDK r28):
+Android, same c-shared build with the NDK clang (Go from the `toolchain` line in `go.mod`, NDK r28):
 
 ```bash
 NDK=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin

@@ -51,9 +51,9 @@ func TestProbePortsPerPortDeadline(t *testing.T) {
 func TestProbePortsOverallDeadline(t *testing.T) {
 	start := time.Now()
 	got := probePorts(context.Background(), 80*time.Millisecond, time.Second, []int{1, 2, 3},
-		func(context.Context, int) (net.Conn, error) {
+		func(ctx context.Context, _ int) (net.Conn, error) {
 			time.Sleep(5 * time.Second) // a dial that ignores its context
-			return nil, nil
+			return nil, ctx.Err()
 		})
 	if len(got) != 0 {
 		t.Fatalf("want no open ports, got %v", got)
