@@ -44,9 +44,9 @@ skipped (#150), so the native-terminal tests cannot silently drop out.
 
 ## What runs in CI
 
-A pull request runs only `ci` (analyze, widget tests, web, Linux, Android debug
-APK) and `android-smoke` (one emulator, the PR set of gates). Every
-`*-record`, `select-metrics` and `icon-compare` workflow runs only when
+A pull request runs only `ci` (analyze, widget tests, goldens, web, Linux,
+Android debug APK) and `android-smoke` (one emulator, the PR set of gates).
+Every `*-record`, `select-metrics` and `icon-compare` workflow runs only when
 dispatched.
 
 "Before" runs that are meant to show a bug, and evidence runs, dispatch
@@ -72,9 +72,10 @@ before the ANR, the gate's own samples of the app's main thread stand in: under
 hwui, EGL or binder in the ANR trace; unreadable samples count as app-only. Each launch's `Displayed` time and the app's own
 `taildeck first frame` / `taildeck frames` lines go to `smoke-back/timing.txt`.
 
-The goldens are tagged `golden` and excluded from CI: a runner's rasterizer is
-not pixel-stable enough to gate a PR, and `tool/golden.sh` is the same check on
-the machine that made them.
+The goldens are tagged `golden` and run in the `ci` test job as its own step,
+`tool/golden.sh`, after the widget tests, on the same Flutter setup. A failing
+golden uploads `test/golden/failures/` (master, test image and diff for each
+failing frame) as the `golden-failures` artifact.
 
 ## Release gate
 
