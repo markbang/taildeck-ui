@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/widgets.dart';
 import 'package:prism_ui/context.dart';
+import 'package:prism_ui/motion.dart';
 import 'package:prism_ui/shape.dart';
 
 /// A pulsing bar that holds the place of one line of [style] text.
@@ -58,13 +59,11 @@ class _SkeletonPillState extends State<SkeletonPill>
   @override
   void initState() {
     super.initState();
-    // Starting from the wall clock keeps bars that appear at different times
-    // pulsing in step.
     _controller = AnimationController(
       vsync: this,
       duration: _period,
       value:
-          DateTime.now().millisecondsSinceEpoch %
+          debugMotionClock().inMilliseconds %
           _period.inMilliseconds /
           _period.inMilliseconds,
     );

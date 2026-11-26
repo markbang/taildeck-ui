@@ -53,6 +53,7 @@ void main() {
   setUpAll(() async {
     await loadGoldenFonts();
     useGoldenComparator();
+    pinGoldenMotion();
   });
 
   testWidgets('the select opens out of its value and returns into it', (

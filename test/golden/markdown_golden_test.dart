@@ -29,6 +29,7 @@ void main() {
   setUpAll(() async {
     await loadGoldenFonts();
     useGoldenComparator();
+    pinGoldenMotion();
   });
 
   for (final mode in [ThemeMode.dark, ThemeMode.light]) {

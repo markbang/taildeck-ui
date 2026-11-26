@@ -6,6 +6,13 @@ import 'package:flutter/widgets.dart';
 const fadeTabDuration = Duration(milliseconds: 220);
 const fadeTabCurve = Curves.easeInOut;
 
+final _sinceStart = Stopwatch()..start();
+
+/// Where looping motion starts: a loop that begins later picks up the same
+/// phase as one already running, so bars and spinners move in step. Tests pin
+/// it so every golden frame is the same from run to run.
+Duration Function() debugMotionClock = () => _sinceStart.elapsed;
+
 /// Plays [spring] over the first [seconds] of an animation, easing out the
 /// remaining residual so the curve still ends exactly at 1.
 class SpringCurve extends Curve {

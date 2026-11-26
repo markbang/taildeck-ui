@@ -46,6 +46,7 @@ void main() {
   setUpAll(() async {
     await loadGoldenFonts();
     useGoldenComparator();
+    pinGoldenMotion();
   });
 
   testWidgets('a failed dial is one human card with Retry', (tester) async {
