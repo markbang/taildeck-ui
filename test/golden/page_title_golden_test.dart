@@ -28,6 +28,23 @@ Widget _page({String? subtitle, VoidCallback? onBack, int rows = 30}) {
   );
 }
 
+double _titleOpacity(WidgetTester tester, double fontSize) {
+  final title = find.byWidgetPredicate(
+    (widget) =>
+        widget is Text &&
+        widget.data == 'Settings' &&
+        widget.style?.fontSize == fontSize,
+  );
+  return tester
+      .widgetList<Opacity>(
+        find.ancestor(of: title, matching: find.byType(Opacity)),
+      )
+      .fold(
+        title.evaluate().isEmpty ? 0.0 : 1.0,
+        (alpha, opacity) => alpha * opacity.opacity,
+      );
+}
+
 void main() {
   setUpAll(() async {
     await loadGoldenFonts();
@@ -46,10 +63,7 @@ void main() {
     final title = tester.getCenter(find.text('Settings'));
     expect(title.dy, greaterThan(statusBar));
     expect(title.dy, lessThan(statusBar + pageToolbarHeight));
-    expect(
-      tester.widget<Text>(find.text('Settings')).style!.fontSize,
-      24,
-    );
+    expect(tester.widget<Text>(find.text('Settings')).style!.fontSize, 24);
     // At rest there is one title: the compact one waits for the scroll.
     expect(find.text('Settings'), findsOneWidget);
     await expectLater(
@@ -67,16 +81,34 @@ void main() {
     await tester.pump();
 
     expect(find.byType(PageHeader, skipOffstage: true), findsOneWidget);
-    // Halfway through the handover the large title fades out as the bar's
-    // compact title comes in: both are in the tree, one size each.
-    final sizes = tester
-        .widgetList<Text>(find.text('Settings', skipOffstage: true))
-        .map((text) => text.style!.fontSize);
-    expect(sizes, unorderedEquals([24, 17]));
+    expect(_titleOpacity(tester, 17), greaterThan(0));
     await expectLater(
       find.byType(PrismApp),
       matchesGoldenFile('goldens/title_collapsing.png'),
     );
+  });
+
+  testWidgets('the two titles never show at once across the handover', (
+    tester,
+  ) async {
+    usePhone(tester, size: const Size(414, 300));
+    await tester.pumpWidget(goldenApp(home: _page()));
+    await tester.pump(const Duration(milliseconds: 300));
+    final list = tester.widget<ListView>(find.byType(ListView));
+
+    for (var offset = 0.0; offset <= 40; offset += 1) {
+      list.controller!.jumpTo(offset);
+      await tester.pump();
+      final large = _titleOpacity(tester, 24);
+      final compact = _titleOpacity(tester, 17);
+      expect(
+        large == 0 || compact == 0,
+        isTrue,
+        reason: 'both titles visible at offset $offset',
+      );
+      if (offset == 0) expect(large, 1);
+      if (offset == 40) expect(compact, 1);
+    }
   });
 
   testWidgets('a subpage names itself in the compact bar', (tester) async {
