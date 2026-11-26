@@ -122,8 +122,15 @@ flutter pub get
 flutter run -d web-server --web-port 8099
 ```
 
-在中国大陆先执行 `source tool/env.sh`：它把 pub 和 Flutter 的下载指向镜像，并把 `$FLUTTER_HOME`（默认 `~/flutter347`）
-加入 `PATH`。其他地区不需要。
+`source tool/env.sh` 是可选的。它把 `PUB_HOSTED_URL` 和 `FLUTTER_STORAGE_BASE_URL` 设为官方地址（若你已在环境里导出则保留你的值），
+并把 `$FLUTTER_HOME/bin` 加入 `PATH`（`FLUTTER_HOME` 默认取 `PATH` 上已有的 `flutter`，否则为 `~/flutter`；若该 SDK 里没有
+`bin/flutter` 会报错并停止）。要通过镜像下载，请在 source 之前导出镜像地址：
+
+```bash
+export PUB_HOSTED_URL=https://你的-pub-镜像.example/
+export FLUTTER_STORAGE_BASE_URL=https://你的-storage-镜像.example/
+source tool/env.sh
+```
 
 原生构建需要先生成原生库：`tool/build_native.sh` 和 `tool/build_term.sh`。
 
