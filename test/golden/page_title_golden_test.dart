@@ -28,6 +28,18 @@ Widget _page({String? subtitle, VoidCallback? onBack, int rows = 30}) {
   );
 }
 
+Finder _title(double fontSize) => find.byWidgetPredicate(
+  (widget) =>
+      widget is Text &&
+      widget.data == 'Settings' &&
+      widget.style?.fontSize == fontSize,
+);
+
+Rect? _rect(WidgetTester tester, double fontSize) {
+  final title = _title(fontSize);
+  return title.evaluate().isEmpty ? null : tester.getRect(title);
+}
+
 double _titleOpacity(WidgetTester tester, double fontSize) {
   final title = find.byWidgetPredicate(
     (widget) =>
@@ -73,29 +85,37 @@ void main() {
     );
   });
 
-  testWidgets('the large title hands over as the list scrolls', (tester) async {
+  testWidgets('the large title scales down in place as the list scrolls', (
+    tester,
+  ) async {
     usePhone(tester, size: const Size(414, 300));
     await tester.pumpWidget(goldenApp(home: _page()));
     await tester.pump(const Duration(milliseconds: 300));
+    final before = tester.getRect(_title(24));
 
     await tester.drag(find.byType(ListView), const Offset(0, -24));
     await tester.pump();
 
     expect(find.byType(PageHeader, skipOffstage: true), findsOneWidget);
-    expect(_titleOpacity(tester, 17), greaterThan(0));
+    final scaled = tester.getRect(_title(24));
+    expect(scaled.width, lessThan(before.width));
+    expect(scaled.left, closeTo(before.left, 0.5));
+    expect(_titleOpacity(tester, 17), 0);
     await expectLater(
       find.byType(PrismApp),
       matchesGoldenFile('goldens/title_collapsing.png'),
     );
   });
 
-  testWidgets('the two titles never show at once across the handover', (
+  testWidgets('one title at a time, and the scaled tail never past the other', (
     tester,
   ) async {
     usePhone(tester, size: const Size(414, 300));
     await tester.pumpWidget(goldenApp(home: _page()));
     await tester.pump(const Duration(milliseconds: 300));
     final list = tester.widget<ListView>(find.byType(ListView));
+    final bar = tester.getRect(find.byType(PageBar));
+    final lineCentre = tester.getCenter(find.byType(PageBar)).dy;
 
     for (var offset = 0.0; offset <= 40; offset += 1) {
       list.controller!.jumpTo(offset);
@@ -103,12 +123,52 @@ void main() {
       final large = _titleOpacity(tester, 24);
       final compact = _titleOpacity(tester, 17);
       expect(
-        large == 0 || compact == 0,
-        isTrue,
-        reason: 'both titles visible at offset $offset',
+        large > 0.5 && compact > 0.5,
+        isFalse,
+        reason: 'two titles above 0.5 at offset $offset',
       );
-      if (offset == 0) expect(large, 1);
-      if (offset == 40) expect(compact, 1);
+      final largeRect = _rect(tester, 24);
+      final compactRect = _rect(tester, 17);
+      if (compactRect != null && largeRect != null && compact > 0) {
+        // The gate: the compact title shows only once the scaled title is
+        // within 2 % of its width.
+        expect(
+          largeRect.width,
+          lessThanOrEqualTo(
+            compactRect.width * (1 + PageBar.compactGate) + 1e-6,
+          ),
+          reason: 'compact title shown while the large is too wide at $offset',
+        );
+      }
+      if (largeRect != null &&
+          compactRect != null &&
+          large > 0 &&
+          compact > 0) {
+        // Tail check: the scaled title's painted right edge is at most the
+        // compact title's right edge plus the gate's 2 %.
+        expect(
+          largeRect.right,
+          lessThanOrEqualTo(
+            compactRect.right + compactRect.width * PageBar.compactGate + 1e-6,
+          ),
+          reason: 'large tail past the compact title at offset $offset',
+        );
+      }
+      // Anchored: each title shares the left edge and the line box's centre.
+      for (final rect in [largeRect, compactRect]) {
+        if (rect == null) continue;
+        expect(rect.left, closeTo(bar.left + 20, 0.5));
+        expect(rect.center.dy, closeTo(lineCentre, 0.5));
+      }
+      expect(tester.getRect(find.byType(PageBar)), bar);
+      if (offset == 0) {
+        expect(large, 1);
+        expect(compact, 0);
+      }
+      if (offset == 40) {
+        expect(compact, 1);
+        expect(large, 0);
+      }
     }
   });
 
