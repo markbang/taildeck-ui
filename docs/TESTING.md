@@ -33,6 +33,15 @@ draws with the real emulator. CI's `linux` job runs this mode: it builds both
 libs, then runs the widget tests with them loaded, and fails if a test is
 skipped. Run it locally too before changing the terminal page or the SSH flow.
 
+With the real terminal loaded, the cursor blinks forever: `TerminalCanvas`
+(`lib/src/pages/term_view.dart`) keeps a repeating animation running while the
+cursor shows, so `pumpAndSettle` never settles and times out. Tests that open
+a terminal therefore store `terminalCursorBlink: false`, as
+`test/remember_connection_test.dart` does (#149). Keep it off in those tests. A
+new test that opens a terminal must do the same, or pump a fixed duration
+instead of calling `pumpAndSettle`. The `linux` job fails if any widget test is
+skipped (#150), so the native-terminal tests cannot silently drop out.
+
 ## What runs in CI
 
 A pull request runs only `ci` (analyze, widget tests, web, Linux, Android debug
