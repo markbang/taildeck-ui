@@ -110,7 +110,7 @@ clang -c -Wall -Wextra -O2 -Inative/term/build/ghostty/include term_ffi.c
 
 ```bash
 CGO_ENABLED=1 go build -buildmode=c-shared -o native/bridge/build/libtaildeck_bridge.so ./native/bridge/cmd/cshared
-/root/flutter347/bin/dart run tool/ffi_smoke.dart
+dart run tool/ffi_smoke.dart
 ```
 
 它通过 `dart:ffi` 加载 `.so`，用错误输入调用 `td_status` / `td_logs` / `td_start`，打印 JSON 并释放每个字符串。

@@ -7,10 +7,8 @@
 set -euo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
 cd "$root"
+source tool/env.sh
 flutter=${FLUTTER:-flutter}
-if ! command -v "$flutter" > /dev/null; then
-  flutter="${FLUTTER_HOME:-$HOME/flutter347}/bin/flutter"
-fi
 args=()
 for arg in "$@"; do
   case "$arg" in

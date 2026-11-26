@@ -130,7 +130,7 @@ keycode. `term_jni.c` still compiles for the old app and is not built here.
 
 ```bash
 CGO_ENABLED=1 go build -buildmode=c-shared -o native/bridge/build/libtaildeck_bridge.so ./native/bridge/cmd/cshared
-/root/flutter347/bin/dart run tool/ffi_smoke.dart
+dart run tool/ffi_smoke.dart
 ```
 
 It loads the `.so` through `dart:ffi`, calls `td_status` / `td_logs` / `td_start`
