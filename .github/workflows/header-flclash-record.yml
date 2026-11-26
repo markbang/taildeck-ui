@@ -34,7 +34,8 @@ jobs:
           cache: gradle
       - uses: actions/setup-go@v6
         with:
-          go-version: 1.27.x
+          go-version-file: native/bridge/go.mod
+          cache-dependency-path: native/bridge/go.sum
       - uses: mlugg/setup-zig@v2
         with:
           version: 0.17.1
