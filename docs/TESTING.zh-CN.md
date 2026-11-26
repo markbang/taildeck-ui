@@ -11,6 +11,8 @@
 3. **Linux 桌面** —— `flutter run -d linux`。用手机大小的窗口看动效、滚动和间距，Dart 界面和手机上同一份。
 4. **CI 模拟器或手机** —— 只测这台机器跑不了的：Go tsnet 节点、SSH、软键盘和输入法、通知、平台启动路径。发版前 `android-smoke` 跑冷启动、返回键、Ping 和崩溃扫描。
 
+加载原生库的 widget 测试：把 `TAILDECK_BRIDGE` 和 `TAILDECK_TERM` 指向 `tool/build_native.sh linux` 与 `tool/build_term.sh linux` 产出的库，再跑一次 `flutter test`。两个原生终端测试会运行，终端页用真实的模拟器绘制。CI 不跑这个模式：`linux` job 会构建两个库，但之后不跑 widget 测试。改动终端页或 SSH 流程前请在本机跑一遍。
+
 ## CI 跑什么
 
 PR 只跑 `ci`（analyze、widget 测试、web、Linux、安卓 debug APK）和 `android-smoke`（一次模拟器启动，PR 那组 gate）。所有 `*-record`、`select-metrics` 和 `icon-compare` 只在手动 dispatch 时跑。

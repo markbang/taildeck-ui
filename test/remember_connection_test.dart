@@ -201,7 +201,11 @@ void main() {
     ) async {
       final bridge = _Bridge();
       final storage = MemoryStorage()
-        ..config = const StoredConfig(signedIn: true);
+        ..config = const StoredConfig(
+          signedIn: true,
+          // A live terminal blinks its cursor forever; pumpAndSettle would wait.
+          terminalCursorBlink: false,
+        );
       final backend = await tester.runAsync(() => _backend(bridge, storage));
       await _pumpShell(tester, backend!);
 
@@ -233,6 +237,7 @@ void main() {
       final storage = MemoryStorage()
         ..config = const StoredConfig(
           signedIn: true,
+          terminalCursorBlink: false,
           connections: {'nBangwu': _tailscale},
         );
       final backend = await tester.runAsync(() => _backend(bridge, storage));
@@ -306,6 +311,7 @@ void main() {
       final storage = MemoryStorage()
         ..config = const StoredConfig(
           signedIn: true,
+          terminalCursorBlink: false,
           connections: {
             'nBangwu': SavedConnection(user: 'mark', auth: SshAuth.password),
           },
