@@ -34,14 +34,16 @@ Windows/macOS/iOS 证书。
 `127.0.0.1:18680` 网关用默认浏览器打开；Agents 通过与终端相同的 SSH 连接读取并操作节点上的 herdr。
 
 **Windows、macOS 和 iOS** 已接好原生库（DLL、dylib、静态库），在打 tag 或手动触发时由 CI 构建未签名包
-（`.github/workflows/platform-release.yml`）。三者都还没运行过；iOS 的 Dart 侧还不会加载链接进来的静态库，
-在此之前会回退到模拟数据。
+（`.github/workflows/platform-release.yml`）。三者都还没运行过。iOS 的 Dart 加载器已经接好（`lib/src/native/bridge_impl.dart`
+用 `DynamicLibrary.process()` 打开链接进来的静态库），但还没有在真机或模拟器上跑过 iOS 构建。
 
 **Web**（https://markbang.github.io/taildeck-ui/）仍然只是界面预览：模拟数据、模拟终端，没有 tailnet。
 
-已知缺口：构建这台机器无法访问 Tailscale 控制面，也没有 auth key，所以登录、对端列表、SSH、herdr 和端口扫描
-虽已实现，却没有端到端验证过。CI 只构建 Android APK，没有真机跑过。每项功能的状态见
-[docs/PARITY.zh-CN.md](docs/PARITY.zh-CN.md)。
+已知缺口：构建这台机器无法访问 Tailscale 控制面，也没有 auth key，所以没有任何东西对着真正的 Tailscale 服务验证过；
+live tailnet 上的 herdr 和端口扫描同样未经验证。CI 里的 Android 模拟器（`android-smoke`）是目前仅有的设备端证据。
+Pull request 在一个模拟器上跑冷启动、标签页、返回键、Ping 和 Agents；手动或发版运行还可以选择登录、路由、终端和应用内
+WebView，它们对着测试用的控制面和测试对端（`tool/motion/`）运行，不是 Tailscale 的服务。还没有任何真机跑过这个应用。
+每项功能的状态见 [docs/PARITY.zh-CN.md](docs/PARITY.zh-CN.md)。
 
 ## 改动内容
 
@@ -114,10 +116,13 @@ lib/src/
 ## 运行
 
 ```bash
-source tool/env.sh          # 国内镜像 + Flutter 3.47.9
+flutter --version           # CI 使用的是 Flutter 3.47.9
 flutter pub get
 flutter run -d web-server --web-port 8099
 ```
+
+在中国大陆先执行 `source tool/env.sh`：它把 pub 和 Flutter 的下载指向镜像，并把 `$FLUTTER_HOME`（默认 `~/flutter347`）
+加入 `PATH`。其他地区不需要。
 
 原生构建需要先生成原生库：`tool/build_native.sh` 和 `tool/build_term.sh`。
 
@@ -167,9 +172,10 @@ M0–M4 已落地：原生桥接与终端 FFI、SSH 会话、服务与网关、h
 [docs/SIGNING.zh-CN.md](docs/SIGNING.zh-CN.md)，按钮状态、加载反馈、选择器、动效与文案见
 [docs/UI-GUIDELINES.zh-CN.md](docs/UI-GUIDELINES.zh-CN.md)。
 
-仍缺：应用内 WebView（链接目前在系统浏览器打开）、通知里的允许/拒绝/回复、代理忙时的消息队列、子代理会话、
-图片附件、斜杠命令补全，以及让节点在退到后台后继续运行的 Android 前台服务。验证卡在上面说的 tailnet 访问，
-不是缺代码。
+仍缺：通知里的允许/拒绝/回复、代理忙时的消息队列、子代理会话、图片附件和斜杠命令补全。应用内 WebView
+（`lib/src/webview/`，Android 和 iOS）与 Android 前台服务（`TailnetService`，让节点在后台保持运行）已在代码里。WebView 有
+模拟器门禁（`webvideo`），手动和发版运行会选择它。后台保活只有 [docs/TESTING.zh-CN.md](docs/TESTING.zh-CN.md#真机上的后台保活)
+里的人工检查，仓库里没有记录跑过的结果。对真实 tailnet 的验证卡在上面说的访问权限，不是缺代码。
 
 ## 许可
 

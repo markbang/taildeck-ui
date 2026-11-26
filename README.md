@@ -35,15 +35,19 @@ terminal. Services are stored locally and can be added, edited, deleted, scanned
 through the `127.0.0.1:18680` gateway; Agents read and drive herdr on a node over the same SSH connection.
 
 **Windows, macOS and iOS** have the native libraries wired (a DLL, a dylib, a static archive) and build unsigned in
-CI on a tag or a manual run (`.github/workflows/platform-release.yml`). None of them has been run yet; iOS also
-still needs its Dart side to open the linked archive, so it falls back to mock data until then.
+CI on a tag or a manual run (`.github/workflows/platform-release.yml`). None of them has been run yet. The iOS Dart
+loader is in place (`lib/src/native/bridge_impl.dart` opens the linked archive with `DynamicLibrary.process()`), but
+no iOS build has been run on a device or simulator.
 
 **Web** at https://markbang.github.io/taildeck-ui/ stays a UI preview: mock data, a simulated terminal and no
 tailnet.
 
-Known gap: the machine this was built on has no Tailscale control-plane access and no auth key, so login, peer
-lists, SSH, herdr and port scans are implemented but have not been verified end to end. CI builds the Android APK;
-no device has run it. [docs/PARITY.md](docs/PARITY.md) lists the state of every feature.
+Known gap: the machine this was built on has no Tailscale control-plane access and no auth key, so nothing has been
+checked against the real Tailscale service, and herdr and port scans on a live tailnet are unverified. The Android
+emulator in CI (`android-smoke`) is the only on-device evidence. A pull request runs cold start, tabs, back, ping and
+Agents on one emulator. A manual or release run can also select sign-in, routing, the terminal and the in-app WebView,
+which run against a test control plane and test peers (`tool/motion/`), not Tailscale's. No physical Android device has
+run the app yet. [docs/PARITY.md](docs/PARITY.md) lists the state of every feature.
 
 ## What changed
 
@@ -128,10 +132,13 @@ detail offers to resume or disconnect it.
 ## Run
 
 ```bash
-source tool/env.sh          # China mirrors + Flutter 3.47.9
+flutter --version           # Flutter 3.47.9 is what CI builds with
 flutter pub get
 flutter run -d web-server --web-port 8099
 ```
+
+In mainland China, `source tool/env.sh` first: it points pub and Flutter downloads at mirrors and puts
+`$FLUTTER_HOME` (default `~/flutter347`) on `PATH`. Elsewhere it is not needed.
 
 A native build needs its libraries first: `tool/build_native.sh` and `tool/build_term.sh`.
 
@@ -183,10 +190,12 @@ settings, keys and logs, Android host network hooks, and unsigned Windows/macOS/
 release signing and [docs/UI-GUIDELINES.md](docs/UI-GUIDELINES.md) for button states, loading feedback, selects,
 motion and copy.
 
-Still missing: an in-app WebView (links open in the system browser), notification actions with allow/deny/reply,
-prompt queues while an agent is busy, subagent transcripts, image attachments, slash-command completion, and an
-Android foreground service that keeps the node alive when the app is backgrounded. Verification is blocked by the
-missing tailnet access above, not by missing code.
+Still missing: notification actions with allow/deny/reply, prompt queues while an agent is busy, subagent
+transcripts, image attachments and slash-command completion. The in-app WebView (`lib/src/webview/`, Android and iOS)
+and the Android foreground service (`TailnetService`, which keeps the node alive in the background) are in the code.
+The WebView has an emulator gate (`webvideo`) that manual and release runs select. The background keep-alive has only
+the manual check in [docs/TESTING.md](docs/TESTING.md#background-keep-alive-on-a-device), and no run of it is recorded
+in the repo. Verification against a live tailnet is blocked by the missing access above, not by missing code.
 
 ## Licenses
 
