@@ -13,6 +13,8 @@
 
 加载原生库的 widget 测试：把 `TAILDECK_BRIDGE` 和 `TAILDECK_TERM` 指向 `tool/build_native.sh linux` 与 `tool/build_term.sh linux` 产出的库，再跑一次 `flutter test`。两个原生终端测试会运行，终端页用真实的模拟器绘制。CI 的 `linux` job 会跑这个模式：构建两个库后，加载它们再跑 widget 测试，有测试被跳过就失败。改动终端页或 SSH 流程前也请在本机跑一遍。
 
+加载真实终端时光标会一直闪：`TerminalCanvas`（`lib/src/pages/term_view.dart`）在光标显示期间持续运行一个重复动画，所以 `pumpAndSettle` 永远等不到稳定、最后超时。因此打开终端的测试在配置里存 `terminalCursorBlink: false`，如 `test/remember_connection_test.dart`（#149）。这些测试里保持关闭，不要改回开启。新增打开终端的测试也要这样做，或改为 pump 固定时长，不用 `pumpAndSettle`。`linux` job 只要有 widget 测试被跳过就失败（#150），原生终端测试因此不会悄悄消失。
+
 ## CI 跑什么
 
 PR 只跑 `ci`（analyze、widget 测试、web、Linux、安卓 debug APK）和 `android-smoke`（一次模拟器启动，PR 那组 gate）。所有 `*-record`、`select-metrics` 和 `icon-compare` 只在手动 dispatch 时跑。
