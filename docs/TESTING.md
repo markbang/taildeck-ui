@@ -26,6 +26,13 @@ only honest answer.
    launch path. `android-smoke` covers cold start, back, Ping and a crash scan
    before a release.
 
+Native-loaded widget tests: point `TAILDECK_BRIDGE` and `TAILDECK_TERM` at the
+libs from `tool/build_native.sh linux` and `tool/build_term.sh linux`, then run
+`flutter test` again. The two native-terminal tests run, and the terminal page
+draws with the real emulator. CI does not run this mode: its `linux` job builds
+both libs but runs no widget tests after them. Run it locally before changing
+the terminal page or the SSH flow.
+
 ## What runs in CI
 
 A pull request runs only `ci` (analyze, widget tests, web, Linux, Android debug
