@@ -45,9 +45,10 @@ tailnet.
 Known gap: the machine this was built on has no Tailscale control-plane access and no auth key, so nothing has been
 checked against the real Tailscale service, and herdr and port scans on a live tailnet are unverified. The Android
 emulator in CI (`android-smoke`) is the only on-device evidence. A pull request runs cold start, tabs, back, ping and
-Agents on one emulator. A manual or release run can also select sign-in, routing, the terminal and the in-app WebView,
-which run against a test control plane and test peers (`tool/motion/`), not Tailscale's. No physical Android device has
-run the app yet. [docs/PARITY.md](docs/PARITY.md) lists the state of every feature.
+Agents on one emulator. A release runs cold start, splash, Agents and stills (stills record-only). Sign-in, routing,
+the terminal and the in-app WebView run only on a manual `android-smoke` dispatch with `full-gate` on (its default),
+against a test control plane and test peers (`tool/motion/`), not Tailscale's. No physical Android device has run the
+app yet. [docs/PARITY.md](docs/PARITY.md) lists the state of every feature.
 
 ## What changed
 
@@ -193,9 +194,10 @@ motion and copy.
 Still missing: notification actions with allow/deny/reply, prompt queues while an agent is busy, subagent
 transcripts, image attachments and slash-command completion. The in-app WebView (`lib/src/webview/`, Android and iOS)
 and the Android foreground service (`TailnetService`, which keeps the node alive in the background) are in the code.
-The WebView has an emulator gate (`webvideo`) that manual and release runs select. The background keep-alive has only
-the manual check in [docs/TESTING.md](docs/TESTING.md#background-keep-alive-on-a-device), and no run of it is recorded
-in the repo. Verification against a live tailnet is blocked by the missing access above, not by missing code.
+The WebView has an emulator gate (`webvideo`) that only a manual full `android-smoke` dispatch selects; it has never run
+in CI. The background keep-alive has only the manual check in [docs/TESTING.md](docs/TESTING.md#background-keep-alive-on-a-device),
+and no run of it is recorded in the repo. Verification against a live tailnet is blocked by the missing access above,
+not by missing code.
 
 ## Licenses
 

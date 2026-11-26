@@ -264,7 +264,9 @@ jobs:
       apk-artifact: android
       # Ship mode: the cold start, splash, Agents and stills gates on the APK
       # this run built (stills record-only). The pull request that produced it
-      # ran the rest.
+      # ran cold start, tabs, back, ping and Agents; sign-in, routing, the
+      # terminal and the WebView run only on a manual android-smoke dispatch
+      # with full-gate on.
       full-gate: false
 
   linux:
