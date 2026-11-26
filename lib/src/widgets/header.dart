@@ -85,20 +85,24 @@ class PageBar extends StatelessWidget {
                             // once the list has scrolled.
                             if (compact < 1)
                               Opacity(
-                                opacity: 1 - _fadeOut(compact),
-                                child: Semantics(
-                                  header: compact < 0.5,
-                                  child: Text(
-                                    title,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: AppTextStyle.pageTitle.of(context),
+                                opacity: _largeAlpha(compact),
+                                child: Transform.scale(
+                                  scale: _titleScale(compact),
+                                  alignment: AlignmentDirectional.centerStart,
+                                  child: Semantics(
+                                    header: compact < 0.5,
+                                    child: Text(
+                                      title,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: AppTextStyle.pageTitle.of(context),
+                                    ),
                                   ),
                                 ),
                               ),
                             if (compact > 0)
                               Opacity(
-                                opacity: _fadeIn(compact),
+                                opacity: _compactAlpha(compact),
                                 child: Semantics(
                                   header: compact >= 0.5,
                                   child: Text(
@@ -145,13 +149,31 @@ class PageBar extends StatelessWidget {
     );
   }
 
-  /// The large title goes over the first half of the collapse, and the compact
-  /// one comes in over the second, once it has gone: the two never show at
-  /// once, so the page never reads as two titles.
-  static double _fadeOut(double collapse) => (collapse / 0.5).clamp(0.0, 1.0);
+  /// One title, scaled from the page title's size to the compact one's, so
+  /// the large text shrinks into the bar with no change of layout. Both use
+  /// the same weight, so their widths scale as their sizes do.
+  static final _compactScale =
+      AppTextStyle.headline.size / AppTextStyle.pageTitle.size;
 
-  static double _fadeIn(double collapse) =>
-      ((collapse - 0.5) / 0.5).clamp(0.0, 1.0);
+  static double _titleScale(double collapse) =>
+      1 - (1 - _compactScale) * collapse;
+
+  /// The compact title fades in only once the scaled title is within 2 % of
+  /// its width, and it ends where the widths match. Until then the scaled
+  /// title's tail never sticks out past the compact one's.
+  static const compactGate = 0.02;
+
+  /// The collapse at which the scaled title is [compactGate] wider than the
+  /// compact one; the compact title fades in from there to the end.
+  static final _compactStart =
+      (1 - _compactScale * (1 + compactGate)) / (1 - _compactScale);
+
+  static double _compactAlpha(double collapse) {
+    if (collapse <= _compactStart) return 0;
+    return ((collapse - _compactStart) / (1 - _compactStart)).clamp(0.0, 1.0);
+  }
+
+  static double _largeAlpha(double collapse) => 1 - _compactAlpha(collapse);
 }
 
 /// [PageBar] floating over the content it belongs to, on a translucent
