@@ -85,7 +85,7 @@ class PageBar extends StatelessWidget {
                             // once the list has scrolled.
                             if (compact < 1)
                               Opacity(
-                                opacity: 1 - _fadeOut(compact),
+                                opacity: _largeAlpha(compact),
                                 child: Semantics(
                                   header: compact < 0.5,
                                   child: Text(
@@ -98,7 +98,7 @@ class PageBar extends StatelessWidget {
                               ),
                             if (compact > 0)
                               Opacity(
-                                opacity: _fadeIn(compact),
+                                opacity: _compactAlpha(compact),
                                 child: Semantics(
                                   header: compact >= 0.5,
                                   child: Text(
@@ -145,13 +145,14 @@ class PageBar extends StatelessWidget {
     );
   }
 
-  /// The large title goes over the first half of the collapse, and the compact
-  /// one comes in over the second, once it has gone: the two never show at
-  /// once, so the page never reads as two titles.
-  static double _fadeOut(double collapse) => (collapse / 0.5).clamp(0.0, 1.0);
+  /// The titles cross at 0.31 of the handover: each is a power of its share of
+  /// the collapse, (1 - p)^1.7 and p^1.7, so both are 0.5^1.7 at p = 0.5. The
+  /// bar is never blank, and the two never both show at strength.
+  static double _largeAlpha(double collapse) =>
+      math.pow(1 - collapse, 1.7).toDouble();
 
-  static double _fadeIn(double collapse) =>
-      ((collapse - 0.5) / 0.5).clamp(0.0, 1.0);
+  static double _compactAlpha(double collapse) =>
+      math.pow(collapse, 1.7).toDouble();
 }
 
 /// [PageBar] floating over the content it belongs to, on a translucent

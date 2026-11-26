@@ -89,7 +89,7 @@ void main() {
     );
   });
 
-  testWidgets('the two titles never show at once across the handover', (
+  testWidgets('the handover crossfades without a blank bar or two titles', (
     tester,
   ) async {
     usePhone(tester, size: const Size(414, 300));
@@ -97,15 +97,23 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
     final list = tester.widget<ListView>(find.byType(ListView));
 
+    // The titles cross at 0.31: the stronger one is never below 0.30, so the
+    // bar is never blank, and the weaker one never above 0.35, so it never
+    // reads as a second title.
     for (var offset = 0.0; offset <= 40; offset += 1) {
       list.controller!.jumpTo(offset);
       await tester.pump();
       final large = _titleOpacity(tester, 24);
       final compact = _titleOpacity(tester, 17);
       expect(
-        large == 0 || compact == 0,
-        isTrue,
-        reason: 'both titles visible at offset $offset',
+        large > compact ? large : compact,
+        greaterThanOrEqualTo(0.30),
+        reason: 'blank bar at offset $offset',
+      );
+      expect(
+        large < compact ? large : compact,
+        lessThanOrEqualTo(0.35),
+        reason: 'two titles at offset $offset',
       );
       if (offset == 0) expect(large, 1);
       if (offset == 40) expect(compact, 1);
