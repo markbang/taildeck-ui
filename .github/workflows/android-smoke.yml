@@ -6,7 +6,9 @@
 #
 # The release workflow calls this with the shipped APK (ship mode: the cold
 # start, splash, Agents and stills gates on that APK). A pull request runs the
-# full set on a profile and a demo debug build made from the pull request.
+# fast set (cold start, tabs, back, ping, Agents) on a profile and a demo debug
+# build made from the pull request; the control-plane gates (webvideo, termtap,
+# remember, routing, netready) run only on a manual dispatch with full-gate on.
 #
 # In ship mode (the release call, or a dispatch with full-gate=false) the stills
 # gate is record-only: it runs and writes `stills: <outcome>` to the summary,
@@ -137,7 +139,7 @@ jobs:
               full=true
               # A pull request gets the fast on-device set in one boot
               # (target: under 20 minutes); the long 20x loops and the
-              # terminal interaction gate wait for a label or a manual run.
+              # terminal interaction gate run only on a manual dispatch.
               gates="cold-start tabs back ping agents"
               ;;
           esac

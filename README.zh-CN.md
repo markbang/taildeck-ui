@@ -175,7 +175,7 @@ M0–M4 已落地：原生桥接与终端 FFI、SSH 会话、服务与网关、h
 
 仍缺：通知里的允许/拒绝/回复、代理忙时的消息队列、子代理会话、图片附件和斜杠命令补全。应用内 WebView
 （`lib/src/webview/`，Android 和 iOS）与 Android 前台服务（`TailnetService`，让节点在后台保持运行）已在代码里。WebView 有
-模拟器门禁（`webvideo`），只有手动完整触发 `android-smoke` 会选择它，CI 里从未跑过。后台保活只有 [docs/TESTING.zh-CN.md](docs/TESTING.zh-CN.md#真机上的后台保活)
+模拟器门禁（`webvideo`），只有手动完整触发 `android-smoke` 会选择它；CI 里它只在单独触发的运行中通过过，没有进过完整运行。后台保活只有 [docs/TESTING.zh-CN.md](docs/TESTING.zh-CN.md#真机上的后台保活)
 里的人工检查，仓库里没有记录跑过的结果。对真实 tailnet 的验证卡在上面说的访问权限，不是缺代码。
 
 ## 许可

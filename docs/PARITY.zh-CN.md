@@ -16,7 +16,7 @@ Flutter 客户端对 [markbang/taildeck](https://github.com/markbang/taildeck)�
 真实登录、对端列表、SSH、herdr 和端口扫描。https://markbang.github.io/taildeck-ui/ 的网页预览跑在模拟数据上，
 下表不把预览算作验证。
 
-CI 的模拟器门禁还会让应用连上测试用的控制面和测试对端（`tool/motion/`）。这是模拟器门禁：不是真机，也不是真实 tailnet。每行都会说明其证据属于哪一类。最近一次完整记录的运行是 [run 43937554757](https://github.com/markbang/taildeck-ui/actions/runs/43937554757)（2026-11-16，手动触发的完整门禁，11 项全部通过）。
+CI 的模拟器门禁还会让应用连上测试用的控制面和测试对端（`tool/motion/`）。这是模拟器门禁：不是真机，也不是真实 tailnet。每行都会说明其证据属于哪一类。最近一次完整门禁运行是 [run 43937554757](https://github.com/markbang/taildeck-ui/actions/runs/43937554757)（2026-11-16，手动触发，当时的 11 项门禁全部通过）。`webvideo` 和 `remember` 门禁是之后加入的，它们只在单独触发的运行里通过过（[run 44367447671](https://github.com/markbang/taildeck-ui/actions/runs/44367447671)、[run 44376405564](https://github.com/markbang/taildeck-ui/actions/runs/44376405564)、[run 44380137078](https://github.com/markbang/taildeck-ui/actions/runs/44380137078)），此后没有任何运行覆盖全部 13 项门禁。
 
 ## 演示数据
 
@@ -40,9 +40,9 @@ CI 的模拟器门禁还会让应用连上测试用的控制面和测试对端�
 | 服务 | 添加、编辑、删除，按节点分组 | `services.json`，按节点、协议、端口、路径添加/编辑/删除 | 已完成 | 已截图；通过原生存储层持久化 |
 | 服务图标 | 每行一个首字母方块 | 经节点取站点 favicon（`td_favicon`），ICO 在 Go 里转 PNG，SVG 交给 `flutter_svg`；本地缓存带 ETag、7 天软过期、1 天失败缓存；设置有开关和「刷新图标」 | 部分 | 获取链路有 Go `httptest` 测试覆盖（link 标签、manifest、ico 回退、svg、超时、体积上限），界面用 `/?favicons=demo` 验证；这里没有对端应答，真实站点还没给过图标 |
 | 端口扫描 | 经节点扫描 32 个常用端口 | `td_probe`，同一份端口表 | 未验证 | 已接到节点；网页预览会提示需要原生构建 |
-| 打开服务 | 应用内 WebView 或经网关用默认浏览器 | 按设置分流：Android/iOS 用应用内 WebView，其他平台用默认浏览器，两者都经 `127.0.0.1:18680` | 未验证 | 共用 `gatewayUrl` 与分流已接好，回退提示有截图。CI 里网关从未被实际用到：唯一打开服务的门禁 `webvideo` 从未跑过 |
-| 18680 网关 | 本地回环正向代理，每个服务独立源 | 复用 `bridge/` 里的同一 Go 网关 | 未验证 | 代码原样复用。只有 `webvideo` 门禁会走到它，而该门禁在 CI 里从未跑过 |
-| 应用内 WebView | 支持代理覆盖的 WebView，tailnet 主机走网关 | `webview_flutter` 加载网关地址，带返回/刷新、进度与重试 | 部分 | 仅 Android 与 iOS；桌面和网页仍用系统浏览器并就地说明。`webvideo` 模拟器门禁只在手动完整触发时运行，CI 里从未跑过；没有真机跑过 WebView。下载、文件选择与 HTTP 认证尚未接入 |
+| 打开服务 | 应用内 WebView 或经网关用默认浏览器 | 按设置分流：Android/iOS 用应用内 WebView，其他平台用默认浏览器，两者都经 `127.0.0.1:18680` | 部分 | 共用 `gatewayUrl` 与分流已接好，回退提示有截图。`webvideo` 门禁在测试控制面上点开节点页里保存的 http 服务，用应用内 WebView 打开它（run 44367447671、44376405564）。CI 里没有走默认浏览器的路径，也没有 https 服务 |
+| 18680 网关 | 本地回环正向代理，每个服务独立源 | 复用 `bridge/` 里的同一 Go 网关 | 部分 | 代码原样复用。`webvideo` 门禁会走它（run 44367447671、44376405564）：门禁自己的请求经 `127.0.0.1:18680`，用每个服务的 Host（`motionpeer-3000.localhost`）和代理两种写法都拿到 206；WebView 直接加载 tailnet 地址 `http://motionpeer:3000`，代理覆盖把它交给网关 |
+| 应用内 WebView | 支持代理覆盖的 WebView，tailnet 主机走网关 | `webview_flutter` 加载网关地址，带返回/刷新、进度与重试 | 部分 | 仅 Android 与 iOS；桌面和网页仍用系统浏览器并就地说明。`webvideo` 模拟器门禁只在手动完整触发时运行；它在测试控制面上通过过（单独触发的运行 run 44367447671、44376405564，H.264 与 HLS 片段都播放超过 1.5 秒）；没有真机跑过 WebView。下载、文件选择与 HTTP 认证尚未接入 |
 | Agents 列表 | 按工作区的 herdr pane、状态、错误 | 经 SSH 读取真实 `agent.list`，工作区分区、状态胶囊；连接表单收在「连接设置」后面 | 部分 | 启动先等节点 Running 且读到对端表，只拨一次；切到该页会唤醒已保存的目标一次，只有这次拨号自己的失败才显示成一句人话加手动「重试」（不会自行重拨）；`android-smoke` 里的 `tool/agents_android.sh` 覆盖冷启动；`tool/agents_switch_record.sh` 覆盖切页，属于仅手动触发的 `agents-switch-record` 工作流。真实 pane 未测 |
 | Agent 聊天 | 会话记录、输入、重启、模型切换、更多历史 | 会话记录或屏幕文本、输入、重启、`/model` 与 effort 选择、翻页 | 部分 | 同样没有真实 herdr；缺的东西见下面几行 |
 | 通知 | 在通知里允许 / 拒绝 / 回复 | `flutter_local_notifications`，应用在后台时 pane 变为 `blocked` 或 `done` 就提醒，点按打开该 pane 的聊天；设置里有中英文开关 | 部分 | 目前只能点按打开，还没有允许 / 拒绝 / 回复按钮。Android 与 iOS 已构建；没有真机，投递与权限弹窗未验证 |
