@@ -41,8 +41,9 @@ Windows/macOS/iOS 证书。
 
 已知缺口：构建这台机器无法访问 Tailscale 控制面，也没有 auth key，所以没有任何东西对着真正的 Tailscale 服务验证过；
 live tailnet 上的 herdr 和端口扫描同样未经验证。CI 里的 Android 模拟器（`android-smoke`）是目前仅有的设备端证据。
-Pull request 在一个模拟器上跑冷启动、标签页、返回键、Ping 和 Agents；手动或发版运行还可以选择登录、路由、终端和应用内
-WebView，它们对着测试用的控制面和测试对端（`tool/motion/`）运行，不是 Tailscale 的服务。还没有任何真机跑过这个应用。
+Pull request 在一个模拟器上跑冷启动、标签页、返回键、Ping 和 Agents；发版运行跑冷启动、启动页、Agents 和截图（截图只记录）。
+登录、路由、终端和应用内 WebView 只在手动触发 `android-smoke` 且 `full-gate` 开启（默认开启）时运行，它们对着测试用的控制面和
+测试对端（`tool/motion/`）运行，不是 Tailscale 的服务。还没有任何真机跑过这个应用。
 每项功能的状态见 [docs/PARITY.zh-CN.md](docs/PARITY.zh-CN.md)。
 
 ## 改动内容
@@ -174,7 +175,7 @@ M0–M4 已落地：原生桥接与终端 FFI、SSH 会话、服务与网关、h
 
 仍缺：通知里的允许/拒绝/回复、代理忙时的消息队列、子代理会话、图片附件和斜杠命令补全。应用内 WebView
 （`lib/src/webview/`，Android 和 iOS）与 Android 前台服务（`TailnetService`，让节点在后台保持运行）已在代码里。WebView 有
-模拟器门禁（`webvideo`），手动和发版运行会选择它。后台保活只有 [docs/TESTING.zh-CN.md](docs/TESTING.zh-CN.md#真机上的后台保活)
+模拟器门禁（`webvideo`），只有手动完整触发 `android-smoke` 会选择它，CI 里从未跑过。后台保活只有 [docs/TESTING.zh-CN.md](docs/TESTING.zh-CN.md#真机上的后台保活)
 里的人工检查，仓库里没有记录跑过的结果。对真实 tailnet 的验证卡在上面说的访问权限，不是缺代码。
 
 ## 许可
