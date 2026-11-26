@@ -85,7 +85,7 @@ class PageBar extends StatelessWidget {
                             // once the list has scrolled.
                             if (compact < 1)
                               Opacity(
-                                opacity: 1 - _swap(compact),
+                                opacity: 1 - _fadeOut(compact),
                                 child: Semantics(
                                   header: compact < 0.5,
                                   child: Text(
@@ -98,7 +98,7 @@ class PageBar extends StatelessWidget {
                               ),
                             if (compact > 0)
                               Opacity(
-                                opacity: _swap(compact),
+                                opacity: _fadeIn(compact),
                                 child: Semantics(
                                   header: compact >= 0.5,
                                   child: Text(
@@ -145,9 +145,12 @@ class PageBar extends StatelessWidget {
     );
   }
 
-  /// The compact title comes in over the second half of the collapse, once
-  /// the larger one has gone.
-  static double _swap(double collapse) =>
+  /// The large title goes over the first half of the collapse, and the compact
+  /// one comes in over the second, once it has gone: the two never show at
+  /// once, so the page never reads as two titles.
+  static double _fadeOut(double collapse) => (collapse / 0.5).clamp(0.0, 1.0);
+
+  static double _fadeIn(double collapse) =>
       ((collapse - 0.5) / 0.5).clamp(0.0, 1.0);
 }
 
