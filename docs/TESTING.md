@@ -29,9 +29,9 @@ only honest answer.
 Native-loaded widget tests: point `TAILDECK_BRIDGE` and `TAILDECK_TERM` at the
 libs from `tool/build_native.sh linux` and `tool/build_term.sh linux`, then run
 `flutter test` again. The two native-terminal tests run, and the terminal page
-draws with the real emulator. CI does not run this mode: its `linux` job builds
-both libs but runs no widget tests after them. Run it locally before changing
-the terminal page or the SSH flow.
+draws with the real emulator. CI's `linux` job runs this mode: it builds both
+libs, then runs the widget tests with them loaded, and fails if a test is
+skipped. Run it locally too before changing the terminal page or the SSH flow.
 
 ## What runs in CI
 
